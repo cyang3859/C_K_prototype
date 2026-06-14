@@ -740,6 +740,12 @@
                 e.vy += GRAVITY * DASH_GRAVITY_MULT; e.vy = Math.min(e.vy, 16);
             }
 
+            // FIX: When landing and touching ground, disable flight immediately
+            if (e.landing && e.onGround) {
+                e.flightActive = false;
+                e.landing = false;
+            }
+
             if (e.onGround) { e.flightActive = false; e.landing = false; }
 
             // apply + collide
