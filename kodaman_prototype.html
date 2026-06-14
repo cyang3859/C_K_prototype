@@ -1538,7 +1538,6 @@
                 ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center';
                 const cx = mx + (d.x0 + (d.x1 - d.x0) / 2) * sx;
                 ctx.fillText(d.name, cx, my - 10);
-                const done = districtObjectivesDone(d.id);
                 ctx.font = '11px Arial';
                 ctx.fillStyle = done ? '#90ee90' : (d.unlocked ? '#ffd24d' : '#ff8080');
                 ctx.fillText(d.unlocked ? (done ? '✓ cleared' : 'in progress') : '🔒 locked', cx, my + mh + 18);
