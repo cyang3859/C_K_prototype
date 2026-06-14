@@ -376,7 +376,7 @@
                 onGround: false,
                 facing: 1,
                 flightActive: false,
-                takeoffPhase: 0,        // NEW: animates the takeoff thrust
+                takeoffPhase: 0,        // NEW: animates the takeoff thrust (CHANGED: semicolon to comma)
                 landHeldPrev: false,
                 jumpHeldPrev: false,
                 forceLand: false,
@@ -1823,6 +1823,55 @@
             requestAnimationFrame(loop);
         }
         loop();
+
+        function drawManhattan() {
+            // sky gradient
+            const sky = ctx.createLinearGradient(0, 0, 0, H);
+            sky.addColorStop(0, '#0a1428');
+            sky.addColorStop(0.5, '#1a2a4a');
+            sky.addColorStop(1, '#2a3a5a');
+            ctx.fillStyle = sky;
+            ctx.fillRect(0, 0, W, H);
+
+            // stars
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 60; i++) {
+                const x = (i * 157 + 23) % W;
+                const y = (i * 89 + 47) % (H * 0.6);
+                ctx.fillRect(x, y, 1.5, 1.5);
+            }
+
+            // buildings (simple rects with lit windows)
+            const buildings = [
+                { x: 80, y: 220, w: 120, h: 320 },
+                { x: 240, y: 280, w: 100, h: 260 },
+                { x: 380, y: 180, w: 140, h: 360 },
+                { x: 560, y: 240, w: 110, h: 300 },
+                { x: 720, y: 160, w: 130, h: 380 },
+            ];
+            ctx.fillStyle = '#1a2a3a';
+            for (const b of buildings) {
+                ctx.fillRect(b.x, b.y, b.w, b.h);
+                // windows
+                ctx.fillStyle = '#ffd84d';
+                for (let wy = b.y + 20; wy < b.y + b.h; wy += 30) {
+                    for (let wx = b.x + 15; wx < b.x + b.w; wx += 25) {
+                        if (Math.random() > 0.3) ctx.fillRect(wx, wy, 12, 14);
+                    }
+                }
+                ctx.fillStyle = '#1a2a3a';
+            }
+
+            // moon
+            ctx.fillStyle = '#f0e68c';
+            ctx.beginPath();
+            ctx.arc(W - 80, 60, 40, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#0a1428';
+            ctx.beginPath();
+            ctx.arc(W - 70, 50, 40, 0, Math.PI * 2);
+            ctx.fill();
+        }
     </script>
 </body>
 
