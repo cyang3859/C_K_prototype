@@ -349,71 +349,15 @@
             { x: 14780, y: 480, w: 76, h: 92, vx: 0.6, minX: 14660, maxX: 14900, alive: true, hp: 6, frozen: 0, type: 'warlord', vy: 0, district: 'uptown', boss: true },
         ];
 
-        // Give every enemy a small health pool, a dodge ability, and timers.
-        // Regular enemies take ~3 hits; the boss keeps its larger pool.
-        for (const en of enemies) {
-            en.maxHp = en.boss ? en.hp : 3;
-            en.hp = en.maxHp;
-            en.dodgeCD = 0;          // frames until it can dodge again
-            en.dodgeTimer = 0;       // active dodge animation frames
-            en.dodgeVY = 0;          // vertical hop while dodging
-        }
-
-        // SURROUND: pull a couple of ground enemies in toward each civilian so it
-        // visually reads as "this person is cornered and needs saving." We only
-        // move non-boss, same-district ground enemies and re-center their patrol.
-        function clusterEnemiesAroundCivilians() {
-            for (const c of civilians) {
-                const candidates = enemies
-                    .filter(e => !e.boss && e.district === c.district && e.vy === undefined)
-                    .map(e => ({ e, d: Math.abs((e.x) - c.x) }))
-                    .sort((a, b) => a.d - b.d)
-                    .slice(0, 2);
-                let side = -1;
-                for (const { e } of candidates) {
-                    const px = c.x + side * 70;          // flank the civilian
-                    e.x = px; e.minX = px - 60; e.maxX = px + 60;
-                    e.y = GROUND_Y - e.h;
-                    side = 1;
-                }
-            }
-        }
-        clusterEnemiesAroundCivilians();
-
         // ---------- OBJECTIVES ----------
         // Each district has objectives that light up the map as you complete them.
         // Civilians (rescue via persona-swap proximity), emitters (destroy), and a
         // boss. Clearing Downtown + Docks unlocks the Uptown gateway.
-        // Civilians to rescue. ~1 per 3 enemies (43 enemies -> ~15 civilians).
-        // Each roams a small patrol range; enemies cluster near them (set up below).
-        // w/h give them a real avatar size (bigger than before).
-        function mkCiv(x, district, name) {
-            return {
-                x, y: GROUND_Y - 38, w: 22, h: 38, rescued: false, carried: false,
-                district, name,
-                homeX: x, roamDir: Math.random() < 0.5 ? -1 : 1, roamPhase: Math.random() * 100,
-                vx: 0
-            };
-        }
         const civilians = [
-            // DOWNTOWN (~5) — placed where ground enemies patrol
-            mkCiv(640, 'downtown', 'Sarah'),
-            mkCiv(1250, 'downtown', 'Marcus'),
-            mkCiv(2240, 'downtown', 'Elena'),
-            mkCiv(3340, 'downtown', 'James'),
-            mkCiv(4050, 'downtown', 'Priya'),
-            // DOCKS (~5)
-            mkCiv(5740, 'docks', 'Diego'),
-            mkCiv(6840, 'docks', 'Mei'),
-            mkCiv(7990, 'docks', 'Omar'),
-            mkCiv(8340, 'docks', 'Lena'),
-            mkCiv(9340, 'docks', 'Tariq'),
-            // UPTOWN (~5)
-            mkCiv(10740, 'uptown', 'Nora'),
-            mkCiv(12940, 'uptown', 'Sam'),
-            mkCiv(13540, 'uptown', 'Ava'),
-            mkCiv(11440, 'uptown', 'Leo'),
-            mkCiv(14140, 'uptown', 'Zoe'),
+            { x: 2050, y: GROUND_Y - 30, rescued: false, district: 'downtown', name: 'Sarah', carried: false },
+            { x: 3850, y: GROUND_Y - 30, rescued: false, district: 'downtown', name: 'Marcus', carried: false },
+            { x: 6500, y: GROUND_Y - 30, rescued: false, district: 'docks', name: 'Elena', carried: false },
+            { x: 9000, y: GROUND_Y - 30, rescued: false, district: 'docks', name: 'James', carried: false },
         ];
         // Rescue buildings — carry a civilian here and drop them off to safety.
         // One per district so you never have to cross a locked gateway to rescue.
@@ -679,74 +623,53 @@
             }
         }
 
-        // Shared enemy-hit handler: rolls a dodge chance, otherwise applies damage.
-        // Returns true if the hit landed. 'kind' drives the impact FX.
-        function tryHitEnemy(en, dmg, knock, kind, attacker) {
-            if (!en.alive) return false;
-            // DODGE: agile enemies occasionally sidestep (not while frozen, with cooldown).
-            // Boss never fully dodges. Keep the chance modest so combat stays fair.
-            if (!en.boss && en.frozen <= 0 && en.dodgeCD <= 0 && Math.random() < 0.28) {
-                en.dodgeTimer = 10;
-                en.dodgeCD = 70;                       // can't dodge again for a bit
-                en.dodgeVY = -6;                       // little hop
-                en.dodgeDir = attacker ? -attacker.facing : (Math.random() < 0.5 ? -1 : 1);
-                spawnDodgePuff(en.x + en.w / 2, en.y + en.h / 2);
-                return false;                          // attack whiffed
-            }
-            en.hp -= dmg;
-            flashEnemy(en);
-            en.knockback = (en.knockback || 0) + knock * (attacker ? attacker.facing : 1);
-            en.hitReact = 8;
-            const killed = en.hp <= 0;
-            spawnImpact(en.x + en.w / 2, en.y + en.h / 2, kind, killed);
-            if (killed) { en.alive = false; en.deathBurst = true; }
-            return true;
-        }
-
-        // small dust puff when an enemy dodges
-        function spawnDodgePuff(cx, cy) {
-            for (let i = 0; i < 6; i++) {
-                const a = Math.PI + (i / 6) * Math.PI;   // puff to the sides/down
-                hitFX.push({
-                    x: cx, y: cy, vx: Math.cos(a) * 2, vy: Math.sin(a) * 1.5,
-                    life: 0, max: 16, type: 'sparkle', color: 'rgba(200,210,225,0.8)', size: 2
-                });
-            }
-            hitFX.push({ x: cx, y: cy - 12, life: 0, max: 18, type: 'word', text: 'MISS', color: '#c8d2e0', outline: '#2a3040' });
-        }
-
         function doPunch(e) {
             e.punchTimer = PUNCH_EFFECT;
+            // attacker LUNGES forward into the punch
             e.lunge = 7 * e.facing;
-            // Generous hitbox: extends in front AND overlaps the body vertically with
-            // padding, so any part of an enemy in front gets hit (not pixel-perfect).
-            const reach = PUNCH_RANGE + 14;
             const box = {
-                x: e.facing === 1 ? e.x + e.w * 0.4 : e.x + e.w * 0.6 - reach,
-                y: e.y - 24, w: reach, h: e.h + 48
+                x: e.facing === 1 ? e.x + e.w : e.x - PUNCH_RANGE,
+                y: e.y, w: PUNCH_RANGE, h: e.h
             };
             for (const en of enemies) {
-                if (en.alive && aabb(box, en)) tryHitEnemy(en, PUNCH_DMG, 9, 'punch', e);
+                if (en.alive && aabb(box, en)) {
+                    en.hp -= PUNCH_DMG;
+                    flashEnemy(en);
+                    // enemy gets knocked back and reacts
+                    en.knockback = (en.knockback || 0) + 9 * e.facing;
+                    en.hitReact = 8;
+                    const killed = en.hp <= 0;
+                    spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'punch', killed);
+                    if (killed) { en.alive = false; en.deathBurst = true; }
+                }
             }
             damageEmitters(box, PUNCH_DMG);
         }
         function doLaser(e) {
             e.laserTimer = LASER_EFFECT;
+            // gentle recoil pushes the attacker slightly backward
             e.lunge = -1.5 * e.facing;
-            // Taller beam band so the laser connects across the enemy's body height.
             const box = e.facing === 1
-                ? { x: e.x + e.w * 0.5, y: e.y + e.h * 0.05, w: WORLD_WIDTH, h: e.h * 0.5 }
-                : { x: 0, y: e.y + e.h * 0.05, w: e.x + e.w * 0.5, h: e.h * 0.5 };
+                ? { x: e.x + e.w, y: e.y + e.h * 0.15, w: WORLD_WIDTH, h: e.h * 0.2 }
+                : { x: 0, y: e.y + e.h * 0.15, w: e.x, h: e.h * 0.2 };
             for (const en of enemies) {
-                if (en.alive && aabb(box, en)) tryHitEnemy(en, LASER_DMG, 4, 'laser', e);
+                if (en.alive && aabb(box, en)) {
+                    en.hp -= LASER_DMG;
+                    flashEnemy(en);
+                    en.knockback = (en.knockback || 0) + 4 * e.facing;
+                    en.hitReact = 6;
+                    const killed = en.hp <= 0;
+                    spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'laser', killed);
+                    if (killed) en.alive = false;
+                }
             }
             damageEmitters(box, LASER_DMG);
         }
         function doFreeze(e) {
             e.freezeTimer = FREEZE_EFFECT;
             const box = {
-                x: e.facing === 1 ? e.x + e.w * 0.4 : e.x + e.w * 0.6 - FREEZE_RANGE,
-                y: e.y - 20, w: FREEZE_RANGE, h: e.h + 40
+                x: e.facing === 1 ? e.x + e.w : e.x - FREEZE_RANGE,
+                y: e.y - 10, w: FREEZE_RANGE, h: e.h + 20
             };
             for (const en of enemies) {
                 if (en.alive && aabb(box, en)) {
@@ -802,19 +725,18 @@
             }
 
             // ---- CIVILIAN PICKUP & DROP-OFF (hero only) ----
-            // Flow: approach a civilian (in EITHER persona) -> pick them up (carry).
+            // Flow: approach a civilian in CIVILIAN persona -> pick them up (carry).
             // Carry them to a rescue building (The Weekly Planet) -> drop off -> safe.
             if (e === hero) {
-                // PICK UP: near an un-carried, un-rescued civilian (any persona now)
-                if (!carriedCivilian) {
+                // PICK UP: in civilian persona, near an un-carried, un-rescued civilian
+                if (e.persona === 'civilian' && !carriedCivilian) {
                     for (const c of civilians) {
                         if (c.rescued || c.carried) continue;
                         const ocx = e.x + e.w / 2, ocy = e.y + e.h / 2;
-                        const ccx = c.x + c.w / 2, ccy = c.y + c.h / 2;
-                        if (Math.hypot(ocx - ccx, ocy - ccy) < 60) {
+                        if (Math.hypot(ocx - c.x, ocy - c.y) < 55) {
                             c.carried = true;
                             carriedCivilian = c;
-                            spawnRescueFX(ccx, ccy - 10);   // gentle pickup sparkle
+                            spawnRescueFX(c.x, c.y - 20);   // gentle pickup sparkle
                             titleCard = {
                                 text: 'Carrying ' + c.name,
                                 sub: 'Bring them to THE WEEKLY PLANET',
@@ -997,13 +919,21 @@
             if (input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
 
-            // carried civilian rides in the hero's arms (works in either persona now)
+            // carried civilian rides with the hero (tucked at the side)
             if (e === hero && carriedCivilian && !cutscene.active) {
-                const c = carriedCivilian;
-                // held against the chest, slightly in front, riding at arm height
-                c.x = e.x + e.w / 2 - c.w / 2 + e.facing * 10;
-                c.y = e.y + e.h * 0.32;
-                c.vx = 0;
+                // if the hero switches back to SUPER, gently set the civilian down here
+                if (e.persona !== 'civilian') {
+                    const c = carriedCivilian;
+                    c.carried = false;
+                    c.x = e.x + e.w / 2;
+                    c.y = GROUND_Y - 30;          // place them safely on the ground
+                    carriedCivilian = null;
+                    titleCard = { text: 'Set ' + c.name + ' down', sub: 'Swap to civilian to carry again', timer: 90 };
+                } else {
+                    // ride along: positioned beside/in front of the hero
+                    carriedCivilian.x = e.x + e.w / 2 + e.facing * 6;
+                    carriedCivilian.y = e.y + e.h * 0.45;
+                }
             }
         }
 
@@ -1093,22 +1023,6 @@
                 if (!en.alive) continue;
                 if (en.hitFlash > 0) en.hitFlash--;
                 if (en.hitReact > 0) en.hitReact--;
-                if (en.dodgeCD > 0) en.dodgeCD--;
-
-                // active dodge: a quick sideways hop out of harm's way
-                if (en.dodgeTimer > 0) {
-                    en.dodgeTimer--;
-                    en.x += (en.dodgeDir || 1) * 3.2;
-                    en.dodgeVY += 0.8;                 // gravity on the hop
-                    en.y += en.dodgeVY;
-                    // settle back to ground for non-flyers
-                    if (en.vy === undefined && en.y > GROUND_Y - en.h) {
-                        en.y = GROUND_Y - en.h; en.dodgeVY = 0;
-                    }
-                    en.x = Math.max(en.minX - 90, Math.min(en.maxX + 90, en.x));
-                    en.phase = (en.phase || 0) + 0.1;
-                    continue;                          // skip normal patrol during a dodge
-                }
 
                 // knockback shove (applies even while frozen, then decays)
                 if (en.knockback) {
@@ -1131,22 +1045,6 @@
                     en.y = en.baseY + Math.sin(Date.now() * 0.0015) * 50;
                 }
                 en.phase = (en.phase || 0) + 0.1;
-            }
-        }
-
-        // Civilians pace nervously within a small range near their spawn (homeX),
-        // unless they're being carried or already rescued.
-        function updateCivilians() {
-            for (const c of civilians) {
-                if (c.rescued || c.carried) continue;
-                c.roamPhase = (c.roamPhase || 0) + 1;
-                // change direction occasionally or at the edge of their range
-                if (c.roamPhase % 90 === 0) c.roamDir *= (Math.random() < 0.5 ? -1 : 1);
-                const range = 55;
-                if (c.x < c.homeX - range) c.roamDir = 1;
-                if (c.x > c.homeX + range) c.roamDir = -1;
-                c.vx = c.roamDir * 0.45;
-                c.x += c.vx;
             }
         }
 
@@ -1891,21 +1789,6 @@
                 ctx.fillRect(en.x, en.y, en.w, en.h);
                 ctx.globalAlpha = 1;
             }
-
-            // ---- health bar (non-boss; boss uses its own chest pips) ----
-            if (!en.boss && en.maxHp > 1) {
-                const bw = en.w + 6, bx = en.x - 3, by = en.y - 16, bh = 4;
-                ctx.fillStyle = 'rgba(0,0,0,0.55)';
-                ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-                const frac = Math.max(0, en.hp) / en.maxHp;
-                // color shifts green -> yellow -> red as health drops
-                const col = frac > 0.6 ? '#5fd97a' : frac > 0.3 ? '#ffd24d' : '#ff5a4d';
-                ctx.fillStyle = '#2a2f3a';
-                ctx.fillRect(bx, by, bw, bh);
-                ctx.fillStyle = col;
-                ctx.fillRect(bx, by, bw * frac, bh);
-            }
-
             ctx.restore();
         }
 
@@ -2106,61 +1989,6 @@
             ctx.restore();
         }
 
-        // ---- a larger, animated civilian figure ----
-        // cx = center x, topY = top of head area, scale, walkPhase for leg swing,
-        // distressed = arms up / worried vs. relieved when carried.
-        function drawCivilianFigure(c, cx, topY, scale, walkPhase, distressed) {
-            ctx.save();
-            const s = scale;
-            const skin = (c.name.charCodeAt(1) % 3 === 0) ? '#c79a6e' : (c.name.charCodeAt(1) % 3 === 1) ? '#e8c8a0' : '#a87a55';
-            const shirt = ['#4a6a9a', '#8a5a4a', '#5a8a6a', '#7a5a8a', '#a08040'][c.name.charCodeAt(0) % 5];
-            const hairCol = ['#2a2a2a', '#4a3520', '#6a5030', '#1a1a1a'][c.name.charCodeAt(2) % 4];
-            const headR = 7 * s;
-            const headY = topY + headR + 2;
-            const bodyTop = headY + headR - 1;
-            const bodyH = 18 * s, bodyW = 13 * s;
-
-            // legs (walk swing)
-            const swing = Math.sin(walkPhase) * 4 * s;
-            ctx.fillStyle = '#2f3340';
-            ctx.fillRect(cx - 5 * s, bodyTop + bodyH, 4 * s, 10 * s + swing);
-            ctx.fillRect(cx + 1 * s, bodyTop + bodyH, 4 * s, 10 * s - swing);
-
-            // body
-            ctx.fillStyle = shirt;
-            ctx.fillRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
-
-            // arms — raised/worried when distressed, down when relieved
-            ctx.fillStyle = skin;
-            if (distressed) {
-                const wob = Math.sin(Date.now() * 0.008 + cx) * 2 * s;
-                ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop - 4 * s + wob, 3 * s, 9 * s);
-                ctx.fillRect(cx + bodyW / 2, bodyTop - 4 * s - wob, 3 * s, 9 * s);
-            } else {
-                ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop + 3 * s, 3 * s, 9 * s);
-                ctx.fillRect(cx + bodyW / 2, bodyTop + 3 * s, 3 * s, 9 * s);
-            }
-
-            // head
-            ctx.fillStyle = skin;
-            ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI * 2); ctx.fill();
-            // hair
-            ctx.fillStyle = hairCol;
-            ctx.beginPath(); ctx.arc(cx, headY - 1 * s, headR + 0.5, Math.PI * 0.85, Math.PI * 2.15); ctx.fill();
-            // eyes
-            ctx.fillStyle = '#1a1a1a';
-            ctx.fillRect(cx - 3 * s, headY - 1 * s, 1.6 * s, 2 * s);
-            ctx.fillRect(cx + 1.4 * s, headY - 1 * s, 1.6 * s, 2 * s);
-            // mouth: worried (open) vs relieved (small smile)
-            if (distressed) {
-                ctx.beginPath(); ctx.arc(cx, headY + 3.5 * s, 1.6 * s, 0, Math.PI * 2); ctx.fill();
-            } else {
-                ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.arc(cx, headY + 2 * s, 2 * s, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-            }
-            ctx.restore();
-        }
-
         // ---------- DRAW ----------
         function draw() {
             drawManhattan();
@@ -2313,38 +2141,69 @@
                 ctx.restore();
             }
 
-            // ---- civilians to rescue (named human NPCs, now larger & roaming) ----
+            // ---- civilians to rescue (named human NPCs) ----
             for (const c of civilians) {
                 if (c.rescued || c.carried) continue;   // carried ones are drawn on the hero
-                const walkPhase = (c.roamPhase || 0) * 0.2;
-                drawCivilianFigure(c, c.x + c.w / 2, c.y, 1, walkPhase, true);
-
-                // help indicator + name/prompt when the hero is near
-                const ccx = c.x + c.w / 2;
-                const bob = Math.sin(Date.now() * 0.005 + ccx) * 4;
                 ctx.save();
+                const ccx = c.x, ccy = c.y - 24;
+
+                // body - casual clothes (stable color per civilian, not flickering)
+                ctx.fillStyle = (c.name.charCodeAt(0) % 2) ? '#4a6a9a' : '#8a6a4a';
+                ctx.fillRect(ccx - 6, ccy + 4, 12, 14);
+
+                // head
+                ctx.fillStyle = '#e8c8a0';
+                ctx.beginPath(); ctx.arc(ccx, ccy, 6, 0, Math.PI * 2); ctx.fill();
+
+                // hair
+                ctx.fillStyle = '#3a3a3a';
+                ctx.beginPath();
+                ctx.arc(ccx, ccy - 2, 7, Math.PI * 0.8, Math.PI * 2.2);
+                ctx.fill();
+
+                // eyes (distressed)
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(ccx - 2.5, ccy - 1, 1.5, 2);
+                ctx.fillRect(ccx + 1, ccy - 1, 1.5, 2);
+
+                // help indicator
+                const bob = Math.sin(Date.now() * 0.005 + ccx) * 4;
                 ctx.fillStyle = 'rgba(255,160,80,0.95)';
-                ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('!', ccx, c.y - 16 + bob);
-                const distHero = Math.hypot(hero.x - ccx, hero.y - (c.y + c.h / 2));
-                if (distHero < 170) {
+                ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('!', ccx, ccy - 16 + bob);
+
+                // name + context prompt appears when the hero is near
+                const distHero = Math.hypot(hero.x - ccx, hero.y - ccy);
+                if (distHero < 160) {
                     ctx.fillStyle = '#ffd24d';
-                    ctx.font = 'bold 12px Arial';
-                    ctx.fillText(c.name, ccx, c.y - 32);
-                    if (!carriedCivilian) {
+                    ctx.font = 'bold 11px Arial';
+                    ctx.fillText(c.name, ccx, ccy - 30);
+                    ctx.font = '9px Arial';
+                    if (hero.persona !== 'civilian') {
+                        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                        ctx.fillText('swap to civilian to carry', ccx, ccy - 44);
+                    } else if (!carriedCivilian) {
                         ctx.fillStyle = 'rgba(150,255,150,0.9)';
-                        ctx.font = '10px Arial';
-                        ctx.fillText('approach to carry', ccx, c.y - 46);
+                        ctx.fillText('approach to pick up', ccx, ccy - 44);
                     }
                 }
                 ctx.restore();
             }
 
-            // ---- carried civilian (held in the hero's arms) ----
+            // ---- carried civilian (rides on the hero) ----
             if (carriedCivilian && !cutscene.active) {
                 const c = carriedCivilian;
-                // drawn slightly smaller & cradled, relieved (not distressed)
-                drawCivilianFigure(c, c.x + c.w / 2, c.y, 0.85, 0, false);
+                ctx.save();
+                // small bundled figure tucked against the hero
+                ctx.fillStyle = (c.name.charCodeAt(0) % 2) ? '#4a6a9a' : '#8a6a4a';
+                ctx.fillRect(c.x - 5, c.y - 6, 10, 12);
+                ctx.fillStyle = '#e8c8a0';
+                ctx.beginPath(); ctx.arc(c.x, c.y - 8, 5, 0, Math.PI * 2); ctx.fill();
+                // little relieved face
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(c.x - 2, c.y - 9, 1.3, 1.3);
+                ctx.fillRect(c.x + 1, c.y - 9, 1.3, 1.3);
+                ctx.restore();
             }
 
             // enemies
@@ -2791,7 +2650,6 @@
             updateEntity(hero, p1);
             updateEntity(hound, p2);
             updateEnemies();
-            updateCivilians();
             updateWorldState();
             updateHitFX();
             updateCamera();
