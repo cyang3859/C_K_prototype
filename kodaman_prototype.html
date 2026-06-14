@@ -954,11 +954,16 @@
             if (e.dashing) { ctx.shadowColor = '#7fd3ff'; ctx.shadowBlur = 18; }
             else if (e.flightActive) { ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 14; }
 
-            // Pose detection
+            // IMPROVED POSE DETECTION
             const flying = e.flightActive;
+            const moving = Math.abs(e.vx) > 0.3;  // any noticeable horizontal movement
             const running = e.dashing || (e.onGround && Math.abs(e.vx) > 1.2);
-            // running gait phase (legs pump)
-            e.gaitPhase = (e.gaitPhase || 0) + (running ? 0.4 : 0.15);
+            const standing = e.onGround && !moving;  // NEW: idle pose
+
+            // running gait phase (legs pump) - only animate if actually moving
+            if (moving || flying) {
+                e.gaitPhase = (e.gaitPhase || 0) + (running ? 0.4 : 0.15);
+            }
 
             // ONE transform for the whole character. Origin at entity's top-left,
             // and +x always points FORWARD (the way the character faces).
@@ -996,6 +1001,10 @@
                     // legs together, trailing straight back
                     ctx.fillRect(w * 0.36, h * 0.62, w * 0.14, h * 0.4);
                     ctx.fillRect(w * 0.5, h * 0.62, w * 0.14, h * 0.4);
+                } else if (standing) {
+                    // STANDING POSE: feet apart, neutral
+                    ctx.fillRect(w * 0.32, h * 0.62, w * 0.16, h * 0.38);
+                    ctx.fillRect(w * 0.52, h * 0.62, w * 0.16, h * 0.38);
                 } else {
                     // running: front leg forward, back leg back
                     ctx.fillRect(w * 0.32, h * 0.62 - legSwing, w * 0.16, h * 0.38);
@@ -1006,6 +1015,10 @@
                 if (flying) {
                     ctx.fillRect(w * 0.34, h * 0.98, w * 0.16, h * 0.08);
                     ctx.fillRect(w * 0.5, h * 0.98, w * 0.16, h * 0.08);
+                } else if (standing) {
+                    // standing boots - symmetrical
+                    ctx.fillRect(w * 0.30, h * 0.9, w * 0.2, h * 0.1);
+                    ctx.fillRect(w * 0.5, h * 0.9, w * 0.2, h * 0.1);
                 } else {
                     ctx.fillRect(w * 0.30, h * 0.9 - legSwing, w * 0.2, h * 0.1);
                     ctx.fillRect(w * 0.5, h * 0.9 + legSwing, w * 0.2, h * 0.1);
@@ -1043,6 +1056,10 @@
                 if (flying) {
                     ctx.fillRect(w * 0.36, h * 0.64, w * 0.14, h * 0.38);
                     ctx.fillRect(w * 0.5, h * 0.64, w * 0.14, h * 0.38);
+                } else if (standing) {
+                    // standing civilian pose
+                    ctx.fillRect(w * 0.32, h * 0.64, w * 0.16, h * 0.36);
+                    ctx.fillRect(w * 0.52, h * 0.64, w * 0.16, h * 0.36);
                 } else {
                     ctx.fillRect(w * 0.32, h * 0.64 - legSwing, w * 0.16, h * 0.36);
                     ctx.fillRect(w * 0.52, h * 0.64 + legSwing, w * 0.16, h * 0.36);
