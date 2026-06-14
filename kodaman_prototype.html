@@ -167,6 +167,11 @@
         const LASER_CD = 60, LASER_EFFECT = 12, LASER_DMG = 2;
         const FREEZE_CD = 80, FREEZE_EFFECT = 18, FREEZE_RANGE = 110, FREEZE_DURATION = 150;
 
+        // ---------- AUDIO MANAGEMENT ----------
+        const musicBGM = new Audio('last_son.mp3'); // 👈 Looking directly in the same folder
+        musicBGM.loop = true;
+        musicBGM.volume = 0.4;
+
         // ---------- WORLD (open-zone: 3 connected districts) ----------
         // The city is one continuous, freely-flyable space. It's divided into named
         // DISTRICTS laid side by side. Each district owns a region box, objectives,
@@ -415,7 +420,14 @@
         window.addEventListener('keydown', e => {
             // ---- front-end screens intercept input ----
             if (gameScreen === 'title') {
-                if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
+                if (e.code === 'Enter' || e.code === 'Space') {
+                    gameScreen = 'howto';
+
+                    // Starts playing your local file
+                    musicBGM.play().catch(() => { console.log("Audio waiting for user click."); });
+
+                    e.preventDefault();
+                }
                 return;
             }
             if (gameScreen === 'howto') {
