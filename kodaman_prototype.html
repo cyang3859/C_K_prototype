@@ -291,7 +291,7 @@
         //   warlord  - armored alien tyrant   brute - hulking monster
         //   genius   - powered battlesuit      energy - unstable energy being
         const enemies = [
-            // ---- DOWNTOWN ----
+            // ---- DOWNTOWN (9 → 14 enemies) ----
             { x: 600, y: 920, w: 40, h: 52, vx: 1.2, minX: 540, maxX: 760, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
             { x: 980, y: 910, w: 38, h: 50, vx: -1.0, minX: 860, maxX: 1080, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
             { x: 1450, y: 760, w: 44, h: 44, vx: 1.5, minX: 1320, maxX: 1580, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 700, maxY: 840, district: 'downtown' },
@@ -301,7 +301,15 @@
             { x: 3050, y: 560, w: 44, h: 44, vx: 1.4, minX: 2920, maxX: 3220, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 480, maxY: 660, district: 'downtown' },
             { x: 4000, y: 920, w: 40, h: 52, vx: 1.0, minX: 3900, maxX: 4120, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
             { x: 4340, y: 915, w: 38, h: 50, vx: -1.1, minX: 4240, maxX: 4440, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
-            // ---- DOCKS ---- (energy-heavy aerial combat over water)
+            // NEW: ground patrol pair
+            { x: 1200, y: 920, w: 40, h: 52, vx: 1.3, minX: 1100, maxX: 1350, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
+            { x: 3300, y: 920, w: 40, h: 52, vx: -1.2, minX: 3150, maxX: 3450, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
+            // NEW: aerial patrol
+            { x: 2600, y: 680, w: 44, h: 44, vx: -1.6, minX: 2400, maxX: 2800, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.4, minY: 600, maxY: 780, district: 'downtown' },
+            { x: 3700, y: 500, w: 44, h: 44, vx: 1.5, minX: 3550, maxX: 3850, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.6, minY: 420, maxY: 620, district: 'downtown' },
+            { x: 4600, y: 620, w: 38, h: 50, vx: -1.0, minX: 4450, maxX: 4750, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
+
+            // ---- DOCKS (8 → 16 enemies) ---- (energy-heavy aerial combat over water)
             { x: 5700, y: 700, w: 44, h: 44, vx: 1.4, minX: 5560, maxX: 5840, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 620, maxY: 820, district: 'docks' },
             { x: 6300, y: 560, w: 44, h: 44, vx: -1.3, minX: 6150, maxX: 6450, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 480, maxY: 700, district: 'docks' },
             { x: 6800, y: 740, w: 40, h: 52, vx: 0.9, minX: 6720, maxX: 6900, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'docks' },
@@ -310,7 +318,15 @@
             { x: 8600, y: 560, w: 44, h: 44, vx: 1.3, minX: 8460, maxX: 8760, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 480, maxY: 700, district: 'docks' },
             { x: 9300, y: 700, w: 40, h: 52, vx: -1.1, minX: 9220, maxX: 9400, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'docks' },
             { x: 9850, y: 540, w: 44, h: 44, vx: 1.4, minX: 9720, maxX: 9980, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 460, maxY: 680, district: 'docks' },
-            // ---- UPTOWN ---- (vertical gauntlet up to the boss)
+            // NEW: wave formation over bay
+            { x: 5400, y: 620, w: 44, h: 44, vx: 1.6, minX: 5250, maxX: 5550, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.4, minY: 520, maxY: 740, district: 'docks' },
+            { x: 6600, y: 480, w: 44, h: 44, vx: -1.4, minX: 6450, maxX: 6750, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 400, maxY: 600, district: 'docks' },
+            { x: 7700, y: 640, w: 38, h: 50, vx: 1.1, minX: 7550, maxX: 7850, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'docks' },
+            { x: 8300, y: 700, w: 40, h: 52, vx: -0.95, minX: 8150, maxX: 8450, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'docks' },
+            { x: 9000, y: 480, w: 44, h: 44, vx: 1.35, minX: 8850, maxX: 9150, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 400, maxY: 620, district: 'docks' },
+            { x: 9650, y: 620, w: 44, h: 44, vx: -1.5, minX: 9500, maxX: 9800, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 540, maxY: 740, district: 'docks' },
+
+            // ---- UPTOWN (7 → 15 enemies) ---- (vertical gauntlet up to the boss)
             { x: 10700, y: 760, w: 40, h: 52, vx: 1.0, minX: 10620, maxX: 10800, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
             { x: 11200, y: 600, w: 44, h: 44, vx: -1.3, minX: 11060, maxX: 11360, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 520, maxY: 720, district: 'uptown' },
             { x: 11700, y: 440, w: 38, h: 50, vx: 0.9, minX: 11620, maxX: 11800, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
@@ -318,6 +334,17 @@
             { x: 12900, y: 380, w: 40, h: 52, vx: -1.0, minX: 12820, maxX: 13000, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
             { x: 13500, y: 520, w: 44, h: 44, vx: 1.5, minX: 13360, maxX: 13660, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 440, maxY: 660, district: 'uptown' },
             { x: 14100, y: 340, w: 38, h: 50, vx: -1.2, minX: 14020, maxX: 14200, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
+            // NEW: flanking patrols on lower tower
+            { x: 10900, y: 620, w: 44, h: 44, vx: 1.3, minX: 10750, maxX: 11050, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.4, minY: 540, maxY: 740, district: 'uptown' },
+            { x: 11400, y: 480, w: 40, h: 52, vx: -1.1, minX: 11280, maxX: 11520, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
+            // NEW: mid-tower ascent gauntlet
+            { x: 12100, y: 680, w: 44, h: 44, vx: 1.35, minX: 11950, maxX: 12250, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 580, maxY: 780, district: 'uptown' },
+            { x: 12700, y: 480, w: 38, h: 50, vx: 1.0, minX: 12580, maxX: 12820, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
+            // NEW: upper summit defenders
+            { x: 13100, y: 620, w: 44, h: 44, vx: -1.4, minX: 12950, maxX: 13250, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 540, maxY: 740, district: 'uptown' },
+            { x: 13800, y: 460, w: 40, h: 52, vx: 1.05, minX: 13720, maxX: 13900, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
+            { x: 14400, y: 560, w: 44, h: 44, vx: -1.45, minX: 14250, maxX: 14550, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.55, minY: 480, maxY: 680, district: 'uptown' },
+
             // BOSS at the summit
             { x: 14780, y: 480, w: 76, h: 92, vx: 0.6, minX: 14660, maxX: 14900, alive: true, hp: 6, frozen: 0, type: 'warlord', vy: 0, district: 'uptown', boss: true },
         ];
@@ -1039,7 +1066,7 @@
                 ctx.fillStyle = torso;
                 ctx.beginPath();
                 ctx.moveTo(w * 0.3, h * 0.32);
-                ctx.lineTo(w * 0.7, h * 0.32);
+                ctx.lineTo(w * 0.7, h *  0.32);
                 ctx.lineTo(w * 0.66, h * 0.66);
                 ctx.lineTo(w * 0.34, h * 0.66);
                 ctx.closePath();
