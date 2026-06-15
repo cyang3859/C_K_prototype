@@ -167,11 +167,6 @@
         const LASER_CD = 60, LASER_EFFECT = 12, LASER_DMG = 2;
         const FREEZE_CD = 80, FREEZE_EFFECT = 18, FREEZE_RANGE = 110, FREEZE_DURATION = 150;
 
-        // ---------- AUDIO MANAGEMENT ----------
-        const musicBGM = new Audio('last_son.mp3'); // 👈 Looking directly in the same folder
-        musicBGM.loop = true;
-        musicBGM.volume = 0.4;
-
         // ---------- WORLD (open-zone: 3 connected districts) ----------
         // The city is one continuous, freely-flyable space. It's divided into named
         // DISTRICTS laid side by side. Each district owns a region box, objectives,
@@ -354,16 +349,73 @@
             { x: 14780, y: 480, w: 76, h: 92, vx: 0.6, minX: 14660, maxX: 14900, alive: true, hp: 6, frozen: 0, type: 'warlord', vy: 0, district: 'uptown', boss: true },
         ];
 
+        // Give every enemy a small health pool, a dodge ability, and timers.
+        // Regular enemies take ~3 hits; the boss keeps its larger pool.
+        for (const en of enemies) {
+            en.maxHp = en.boss ? en.hp : 3;
+            en.hp = en.maxHp;
+            en.dodgeCD = 0;          // frames until it can dodge again
+            en.dodgeTimer = 0;       // active dodge animation frames
+            en.dodgeVY = 0;          // vertical hop while dodging
+        }
+
+        // SURROUND: pull a couple of ground enemies in toward each civilian so it
+        // visually reads as "this person is cornered and needs saving." We only
+        // move non-boss, same-district ground enemies and re-center their patrol.
+        function clusterEnemiesAroundCivilians() {
+            for (const c of civilians) {
+                const candidates = enemies
+                    .filter(e => !e.boss && e.district === c.district && e.vy === undefined)
+                    .map(e => ({ e, d: Math.abs((e.x) - c.x) }))
+                    .sort((a, b) => a.d - b.d)
+                    .slice(0, 2);
+                let side = -1;
+                for (const { e } of candidates) {
+                    const px = c.x + side * 70;          // flank the civilian
+                    e.x = px; e.minX = px - 60; e.maxX = px + 60;
+                    e.y = GROUND_Y - e.h;
+                    side = 1;
+                }
+            }
+        }
+
         // ---------- OBJECTIVES ----------
         // Each district has objectives that light up the map as you complete them.
         // Civilians (rescue via persona-swap proximity), emitters (destroy), and a
         // boss. Clearing Downtown + Docks unlocks the Uptown gateway.
+        // Civilians to rescue. ~1 per 3 enemies (43 enemies -> ~15 civilians).
+        // Each roams a small patrol range; enemies cluster near them (set up below).
+        // w/h give them a real avatar size (bigger than before).
+        function mkCiv(x, district, name) {
+            return {
+                x, y: GROUND_Y - 38, w: 22, h: 38, rescued: false, carried: false,
+                district, name,
+                homeX: x, roamDir: Math.random() < 0.5 ? -1 : 1, roamPhase: Math.random() * 100,
+                vx: 0
+            };
+        }
         const civilians = [
-            { x: 2050, y: GROUND_Y - 30, rescued: false, district: 'downtown', name: 'Sarah', carried: false },
-            { x: 3850, y: GROUND_Y - 30, rescued: false, district: 'downtown', name: 'Marcus', carried: false },
-            { x: 6500, y: GROUND_Y - 30, rescued: false, district: 'docks', name: 'Elena', carried: false },
-            { x: 9000, y: GROUND_Y - 30, rescued: false, district: 'docks', name: 'James', carried: false },
+            // DOWNTOWN (~5) — placed where ground enemies patrol
+            mkCiv(640, 'downtown', 'Sarah'),
+            mkCiv(1250, 'downtown', 'Marcus'),
+            mkCiv(2240, 'downtown', 'Elena'),
+            mkCiv(3340, 'downtown', 'James'),
+            mkCiv(4050, 'downtown', 'Priya'),
+            // DOCKS (~5)
+            mkCiv(5740, 'docks', 'Diego'),
+            mkCiv(6840, 'docks', 'Mei'),
+            mkCiv(7990, 'docks', 'Omar'),
+            mkCiv(8340, 'docks', 'Lena'),
+            mkCiv(9340, 'docks', 'Tariq'),
+            // UPTOWN (~5)
+            mkCiv(10740, 'uptown', 'Nora'),
+            mkCiv(12940, 'uptown', 'Sam'),
+            mkCiv(13540, 'uptown', 'Ava'),
+            mkCiv(11440, 'uptown', 'Leo'),
+            mkCiv(14140, 'uptown', 'Zoe'),
         ];
+        // Now that civilians exist, pull enemies in to surround them.
+        clusterEnemiesAroundCivilians();
         // Rescue buildings — carry a civilian here and drop them off to safety.
         // One per district so you never have to cross a locked gateway to rescue.
         const rescueBuildings = [
@@ -388,6 +440,45 @@
         // Front-end screen flow: 'title' -> 'howto' -> 'playing'
         let gameScreen = 'title';
         let levelComplete = false;
+
+        // ---------- SCENE SYSTEM: city <-> Weekly Planet interior ----------
+        // scene is 'city' (the open districts) or 'interior' (inside the building).
+        let scene = 'city';
+        // Saved city position so we can restore the hero/hound on exit.
+        let savedCityState = null;
+        let enterCooldown = 0;   // frames after a transition before another can trigger
+
+        // The interior is a self-contained room with its own coordinate space.
+        // Sized so the FULL height fits the 540px viewport (floor near the bottom),
+        // with the camera following the hero. Width is wider than the screen so you
+        // can walk/fly around a real newsroom.
+        const interior = {
+            w: 1800, h: 540,           // room: full height fits the viewport
+            floorY: 470,               // floor surface, comfortably on-screen
+            ceilingY: 20,
+            exitDoor: { x: 60, w: 70 },// door back out to the city (left side)
+            // SAFE ZONE: carry a rescued civilian here (right side) and press F to drop
+            // them off. This is where the rescue actually completes.
+            safeZone: { x: 1620, w: 160 },
+            // newsroom desks (decor + NPC workstations), sitting on the floor
+            desks: [
+                { x: 360, y: 410 }, { x: 560, y: 410 }, { x: 760, y: 410 },
+                { x: 1120, y: 410 }, { x: 1320, y: 410 }, { x: 1520, y: 410 }
+            ],
+            // working NPCs (reporters/editors). 'sit' work at desks, 'walk' move around.
+            npcs: [
+                { x: 360, baseX: 360, type: 'sit', name: 'Reporter', phase: 0 },
+                { x: 560, baseX: 560, type: 'sit', name: 'Editor', phase: 1.5 },
+                { x: 760, baseX: 760, type: 'sit', name: 'Writer', phase: 3.0 },
+                { x: 1120, baseX: 1120, type: 'sit', name: 'Photographer', phase: 0.7 },
+                { x: 1320, baseX: 1320, type: 'sit', name: 'Intern', phase: 2.2 },
+                { x: 1520, baseX: 1520, type: 'sit', name: 'Columnist', phase: 4.1 },
+                { x: 950, baseX: 950, type: 'walk', name: 'Editor-in-Chief', phase: 0, dir: 1, range: 220, speed: 0.8 },
+                { x: 480, baseX: 480, type: 'walk', name: 'Copy Editor', phase: 0, dir: -1, range: 160, speed: 0.6 },
+            ],
+            // rescued civilians who now live here safely (filled as you rescue them)
+            residents: []
+        };
 
 
         // ---------- ENTITIES ----------
@@ -415,19 +506,73 @@
         let p2Mode = 'ai';
         let controlsVisible = true;
 
+        // ---------- SCENE TRANSITIONS ----------
+        // Enter the Weekly Planet interior: save city positions, drop the hero/hound
+        // just inside the door, switch scene. Full powers (flight) remain available.
+        function enterInterior(building) {
+            savedCityState = {
+                hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive,
+                dx: hound.x, dy: hound.y, dvx: hound.vx, dvy: hound.vy, df: hound.facing,
+                district: currentDistrict
+            };
+            scene = 'interior';
+            // place hero/hound just inside, on the floor near the entrance
+            hero.x = interior.exitDoor.x + 150; hero.y = interior.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.landing = false;
+            hero.takeoffPhase = 0; hero.onGround = true; hero.facing = 1;
+            hound.x = interior.exitDoor.x + 80; hound.y = interior.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.flightActive = false; hound.onGround = true; hound.facing = 1;
+            enterCooldown = 30;
+            if (carriedCivilian) {
+                titleCard = { text: 'THE WEEKLY PLANET', sub: 'Take ' + carriedCivilian.name + ' to the safe zone (right side) →', timer: 200 };
+            } else {
+                titleCard = { text: 'THE WEEKLY PLANET', sub: 'A safe haven. Press ENTER at the door to leave.', timer: 160 };
+            }
+        }
+        // Exit back to the city at the door we came from.
+        function exitInterior() {
+            scene = 'city';
+            if (savedCityState) {
+                hero.x = savedCityState.hx; hero.y = savedCityState.hy;
+                hero.vx = 0; hero.vy = 0; hero.facing = savedCityState.hf;
+                hero.flightActive = false; hero.onGround = true; hero.takeoffPhase = 0;
+                hound.x = savedCityState.dx; hound.y = savedCityState.dy;
+                hound.vx = 0; hound.vy = 0; hound.facing = savedCityState.df;
+                hound.flightActive = false; hound.onGround = true;
+                currentDistrict = savedCityState.district;
+            }
+            enterCooldown = 30;
+            titleCard = { text: 'BACK ON THE STREETS', sub: '', timer: 100 };
+        }
+
+        // Complete the rescue: drop the carried civilian at the interior safe zone.
+        // THIS is where a civilian actually becomes "rescued" — only after you've
+        // carried them inside and set them down in the newsroom.
+        function dropOffCivilian() {
+            const c = carriedCivilian;
+            if (!c) return;
+            c.rescued = true;
+            c.carried = false;
+            carriedCivilian = null;
+            // they join the newsroom as a happy resident near the safe zone
+            const sz = interior.safeZone;
+            interior.residents.push({
+                name: c.name,
+                x: sz.x + 30 + interior.residents.length * 28,
+                baseX: sz.x + 30 + interior.residents.length * 28,
+                phase: Math.random() * 6, dir: 1, range: 40
+            });
+            spawnRescueFX(hero.x + hero.w / 2, hero.y + hero.h * 0.4);
+            const done = civilians.filter(cc => cc.rescued).length;
+            titleCard = { text: c.name + ' is safe!', sub: 'Civilians rescued: ' + done + '/' + civilians.length, timer: 150 };
+        }
+
         // ---------- INPUT ----------
         const keys = {};
         window.addEventListener('keydown', e => {
             // ---- front-end screens intercept input ----
             if (gameScreen === 'title') {
-                if (e.code === 'Enter' || e.code === 'Space') {
-                    gameScreen = 'howto';
-
-                    // Starts playing your local file
-                    musicBGM.play().catch(() => { console.log("Audio waiting for user click."); });
-
-                    e.preventDefault();
-                }
+                if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
                 return;
             }
             if (gameScreen === 'howto') {
@@ -441,6 +586,33 @@
             if (e.code === 'KeyR') { hound.forceLand = true; hound.flightActive = false; }
             if (e.code === 'KeyM') mapOpen = !mapOpen;
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
+            // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
+            if (e.code === 'Enter' && enterCooldown <= 0) {
+                if (scene === 'city') {
+                    for (const b of rescueBuildings) {
+                        if (b.district !== currentDistrict) continue;
+                        const heroMid = hero.x + hero.w / 2;
+                        const doorMid = b.x + b.w / 2;
+                        const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                        if (Math.abs(heroMid - doorMid) < b.w / 2 + 16 && nearGround) {
+                            enterInterior(b); e.preventDefault(); break;
+                        }
+                    }
+                } else if (scene === 'interior') {
+                    const heroMid = hero.x + hero.w / 2;
+                    const doorMid = interior.exitDoor.x + interior.exitDoor.w / 2;
+                    if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
+                }
+            }
+            // F: drop off the carried civilian at the interior safe zone (completes rescue)
+            if (e.code === 'KeyF' && scene === 'interior' && carriedCivilian) {
+                const heroMid = hero.x + hero.w / 2;
+                const sz = interior.safeZone;
+                if (heroMid > sz.x && heroMid < sz.x + sz.w) {
+                    dropOffCivilian();
+                    e.preventDefault();
+                }
+            }
             if (e.code === 'KeyH') {
                 controlsVisible = !controlsVisible;
                 document.getElementById('controls').classList.toggle('hidden', !controlsVisible);
@@ -635,53 +807,74 @@
             }
         }
 
+        // Shared enemy-hit handler: rolls a dodge chance, otherwise applies damage.
+        // Returns true if the hit landed. 'kind' drives the impact FX.
+        function tryHitEnemy(en, dmg, knock, kind, attacker) {
+            if (!en.alive) return false;
+            // DODGE: agile enemies occasionally sidestep (not while frozen, with cooldown).
+            // Boss never fully dodges. Keep the chance modest so combat stays fair.
+            if (!en.boss && en.frozen <= 0 && en.dodgeCD <= 0 && Math.random() < 0.28) {
+                en.dodgeTimer = 10;
+                en.dodgeCD = 70;                       // can't dodge again for a bit
+                en.dodgeVY = -6;                       // little hop
+                en.dodgeDir = attacker ? -attacker.facing : (Math.random() < 0.5 ? -1 : 1);
+                spawnDodgePuff(en.x + en.w / 2, en.y + en.h / 2);
+                return false;                          // attack whiffed
+            }
+            en.hp -= dmg;
+            flashEnemy(en);
+            en.knockback = (en.knockback || 0) + knock * (attacker ? attacker.facing : 1);
+            en.hitReact = 8;
+            const killed = en.hp <= 0;
+            spawnImpact(en.x + en.w / 2, en.y + en.h / 2, kind, killed);
+            if (killed) { en.alive = false; en.deathBurst = true; }
+            return true;
+        }
+
+        // small dust puff when an enemy dodges
+        function spawnDodgePuff(cx, cy) {
+            for (let i = 0; i < 6; i++) {
+                const a = Math.PI + (i / 6) * Math.PI;   // puff to the sides/down
+                hitFX.push({
+                    x: cx, y: cy, vx: Math.cos(a) * 2, vy: Math.sin(a) * 1.5,
+                    life: 0, max: 16, type: 'sparkle', color: 'rgba(200,210,225,0.8)', size: 2
+                });
+            }
+            hitFX.push({ x: cx, y: cy - 12, life: 0, max: 18, type: 'word', text: 'MISS', color: '#c8d2e0', outline: '#2a3040' });
+        }
+
         function doPunch(e) {
             e.punchTimer = PUNCH_EFFECT;
-            // attacker LUNGES forward into the punch
             e.lunge = 7 * e.facing;
+            // Generous hitbox: extends in front AND overlaps the body vertically with
+            // padding, so any part of an enemy in front gets hit (not pixel-perfect).
+            const reach = PUNCH_RANGE + 14;
             const box = {
-                x: e.facing === 1 ? e.x + e.w : e.x - PUNCH_RANGE,
-                y: e.y, w: PUNCH_RANGE, h: e.h
+                x: e.facing === 1 ? e.x + e.w * 0.4 : e.x + e.w * 0.6 - reach,
+                y: e.y - 24, w: reach, h: e.h + 48
             };
             for (const en of enemies) {
-                if (en.alive && aabb(box, en)) {
-                    en.hp -= PUNCH_DMG;
-                    flashEnemy(en);
-                    // enemy gets knocked back and reacts
-                    en.knockback = (en.knockback || 0) + 9 * e.facing;
-                    en.hitReact = 8;
-                    const killed = en.hp <= 0;
-                    spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'punch', killed);
-                    if (killed) { en.alive = false; en.deathBurst = true; }
-                }
+                if (en.alive && aabb(box, en)) tryHitEnemy(en, PUNCH_DMG, 9, 'punch', e);
             }
             damageEmitters(box, PUNCH_DMG);
         }
         function doLaser(e) {
             e.laserTimer = LASER_EFFECT;
-            // gentle recoil pushes the attacker slightly backward
             e.lunge = -1.5 * e.facing;
+            // Taller beam band so the laser connects across the enemy's body height.
             const box = e.facing === 1
-                ? { x: e.x + e.w, y: e.y + e.h * 0.15, w: WORLD_WIDTH, h: e.h * 0.2 }
-                : { x: 0, y: e.y + e.h * 0.15, w: e.x, h: e.h * 0.2 };
+                ? { x: e.x + e.w * 0.5, y: e.y + e.h * 0.05, w: WORLD_WIDTH, h: e.h * 0.5 }
+                : { x: 0, y: e.y + e.h * 0.05, w: e.x + e.w * 0.5, h: e.h * 0.5 };
             for (const en of enemies) {
-                if (en.alive && aabb(box, en)) {
-                    en.hp -= LASER_DMG;
-                    flashEnemy(en);
-                    en.knockback = (en.knockback || 0) + 4 * e.facing;
-                    en.hitReact = 6;
-                    const killed = en.hp <= 0;
-                    spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'laser', killed);
-                    if (killed) en.alive = false;
-                }
+                if (en.alive && aabb(box, en)) tryHitEnemy(en, LASER_DMG, 4, 'laser', e);
             }
             damageEmitters(box, LASER_DMG);
         }
         function doFreeze(e) {
             e.freezeTimer = FREEZE_EFFECT;
             const box = {
-                x: e.facing === 1 ? e.x + e.w : e.x - FREEZE_RANGE,
-                y: e.y - 10, w: FREEZE_RANGE, h: e.h + 20
+                x: e.facing === 1 ? e.x + e.w * 0.4 : e.x + e.w * 0.6 - FREEZE_RANGE,
+                y: e.y - 20, w: FREEZE_RANGE, h: e.h + 40
             };
             for (const en of enemies) {
                 if (en.alive && aabb(box, en)) {
@@ -693,6 +886,11 @@
 
         // ---------- COLLISION ----------
         function collide(e) {
+            // In the interior scene, room collision is handled by clampToRoom() after
+            // updateEntity. Skip all city-world collision (ground, gaps, platforms,
+            // hazards, orbs, civilian pickup, building entry) so they don't interfere.
+            if (scene === 'interior') return;
+
             e.onGround = false;
             const ground = { x: 0, y: GROUND_Y, w: WORLD_WIDTH, h: GROUND_H };
             let overGap = false;
@@ -737,18 +935,19 @@
             }
 
             // ---- CIVILIAN PICKUP & DROP-OFF (hero only) ----
-            // Flow: approach a civilian in CIVILIAN persona -> pick them up (carry).
+            // Flow: approach a civilian (in EITHER persona) -> pick them up (carry).
             // Carry them to a rescue building (The Weekly Planet) -> drop off -> safe.
             if (e === hero) {
-                // PICK UP: in civilian persona, near an un-carried, un-rescued civilian
-                if (e.persona === 'civilian' && !carriedCivilian) {
+                // PICK UP: near an un-carried, un-rescued civilian (any persona now)
+                if (!carriedCivilian) {
                     for (const c of civilians) {
                         if (c.rescued || c.carried) continue;
                         const ocx = e.x + e.w / 2, ocy = e.y + e.h / 2;
-                        if (Math.hypot(ocx - c.x, ocy - c.y) < 55) {
+                        const ccx = c.x + c.w / 2, ccy = c.y + c.h / 2;
+                        if (Math.hypot(ocx - ccx, ocy - ccy) < 60) {
                             c.carried = true;
                             carriedCivilian = c;
-                            spawnRescueFX(c.x, c.y - 20);   // gentle pickup sparkle
+                            spawnRescueFX(ccx, ccy - 10);   // gentle pickup sparkle
                             titleCard = {
                                 text: 'Carrying ' + c.name,
                                 sub: 'Bring them to THE WEEKLY PLANET',
@@ -759,22 +958,10 @@
                     }
                 }
 
-                // DROP OFF: carrying someone, reach a rescue building in this district
-                if (carriedCivilian && !cutscene.active) {
-                    for (const b of rescueBuildings) {
-                        if (b.district !== currentDistrict) continue;
-                        const heroMid = e.x + e.w / 2;
-                        const doorMid = b.x + b.w / 2;
-                        // near the door AND at/near ground level (not flying overhead).
-                        // Check ground position directly rather than the freshly-reset onGround flag.
-                        const nearGround = (e.y + e.h) >= GROUND_Y - 40;
-                        if (Math.abs(heroMid - doorMid) < b.w / 2 + 20 && nearGround) {
-                            // begin the entry cut-scene
-                            cutscene = { active: true, timer: 0, max: 150, building: b, civ: carriedCivilian, phase: 'in' };
-                            break;
-                        }
-                    }
-                }
+                // AT THE BUILDING while carrying: prompt to go inside (handled by the
+                // ENTER key, which carries the civilian in with you). The rescue now
+                // completes INSIDE at the safe zone, not at the door.
+                // (No automatic rescue here anymore.)
             }
 
             // fall through gap = respawn
@@ -931,21 +1118,13 @@
             if (input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
 
-            // carried civilian rides with the hero (tucked at the side)
+            // carried civilian rides in the hero's arms (works in either persona now)
             if (e === hero && carriedCivilian && !cutscene.active) {
-                // if the hero switches back to SUPER, gently set the civilian down here
-                if (e.persona !== 'civilian') {
-                    const c = carriedCivilian;
-                    c.carried = false;
-                    c.x = e.x + e.w / 2;
-                    c.y = GROUND_Y - 30;          // place them safely on the ground
-                    carriedCivilian = null;
-                    titleCard = { text: 'Set ' + c.name + ' down', sub: 'Swap to civilian to carry again', timer: 90 };
-                } else {
-                    // ride along: positioned beside/in front of the hero
-                    carriedCivilian.x = e.x + e.w / 2 + e.facing * 6;
-                    carriedCivilian.y = e.y + e.h * 0.45;
-                }
+                const c = carriedCivilian;
+                // held against the chest, slightly in front, riding at arm height
+                c.x = e.x + e.w / 2 - c.w / 2 + e.facing * 10;
+                c.y = e.y + e.h * 0.32;
+                c.vx = 0;
             }
         }
 
@@ -1035,6 +1214,22 @@
                 if (!en.alive) continue;
                 if (en.hitFlash > 0) en.hitFlash--;
                 if (en.hitReact > 0) en.hitReact--;
+                if (en.dodgeCD > 0) en.dodgeCD--;
+
+                // active dodge: a quick sideways hop out of harm's way
+                if (en.dodgeTimer > 0) {
+                    en.dodgeTimer--;
+                    en.x += (en.dodgeDir || 1) * 3.2;
+                    en.dodgeVY += 0.8;                 // gravity on the hop
+                    en.y += en.dodgeVY;
+                    // settle back to ground for non-flyers
+                    if (en.vy === undefined && en.y > GROUND_Y - en.h) {
+                        en.y = GROUND_Y - en.h; en.dodgeVY = 0;
+                    }
+                    en.x = Math.max(en.minX - 90, Math.min(en.maxX + 90, en.x));
+                    en.phase = (en.phase || 0) + 0.1;
+                    continue;                          // skip normal patrol during a dodge
+                }
 
                 // knockback shove (applies even while frozen, then decays)
                 if (en.knockback) {
@@ -1046,8 +1241,52 @@
                 }
 
                 if (en.frozen > 0) { en.frozen--; continue; }
-                en.x += en.vx;
-                if (en.x < en.minX || en.x > en.maxX) en.vx *= -1;
+
+                // ---- GUARD CIVILIANS: ground enemies sense a nearby un-rescued
+                // civilian and converge to flank it, making rescues harder. Flyers
+                // and the boss keep their normal patrol.
+                let guarding = null;
+                if (!en.boss && en.vy === undefined) {
+                    const SENSE = 360;          // how far an enemy can "sense" a civilian
+                    let best = null, bestD = SENSE;
+                    for (const c of civilians) {
+                        if (c.rescued || c.carried) continue;
+                        if (c.district !== en.district) continue;
+                        const d = Math.abs((en.x + en.w / 2) - (c.x + c.w / 2));
+                        if (d < bestD) { bestD = d; best = c; }
+                    }
+                    guarding = best;
+                }
+
+                if (guarding) {
+                    // Spread guards into distinct posts around the civilian so several
+                    // enemies form a ring rather than stacking on one spot. Each enemy
+                    // gets a stable slot from its index among this civilian's guards.
+                    const cmid = guarding.x + guarding.w / 2;
+                    const emid = en.x + en.w / 2;
+                    // assign a slot: alternate sides, increasing distance
+                    if (en._slot === undefined) en._slot = (enemies.indexOf(en) % 4);
+                    const slotSide = (en._slot % 2 === 0) ? -1 : 1;
+                    const slotDist = 40 + Math.floor(en._slot / 2) * 38;   // 40, 40, 78, 78...
+                    const post = cmid + slotSide * slotDist - en.w / 2;
+                    const dx = post - en.x;
+                    const speed = 1.7;
+                    if (Math.abs(dx) > 2) {
+                        en.vx = Math.sign(dx) * Math.min(speed, Math.abs(dx));
+                        en.x += en.vx;
+                    } else {
+                        en.x = post;
+                        en.vx = 0;
+                    }
+                    en.facing = cmid < emid ? -1 : 1;
+                    en.guardingCiv = true;
+                } else {
+                    // normal patrol
+                    en.guardingCiv = false;
+                    en.x += en.vx;
+                    if (en.x < en.minX || en.x > en.maxX) en.vx *= -1;
+                }
+
                 if (en.type === 'energy' && en.vy !== undefined) {
                     en.y += en.vy;
                     if (en.y < en.minY || en.y > en.maxY) en.vy *= -1;
@@ -1057,6 +1296,22 @@
                     en.y = en.baseY + Math.sin(Date.now() * 0.0015) * 50;
                 }
                 en.phase = (en.phase || 0) + 0.1;
+            }
+        }
+
+        // Civilians pace nervously within a small range near their spawn (homeX),
+        // unless they're being carried or already rescued.
+        function updateCivilians() {
+            for (const c of civilians) {
+                if (c.rescued || c.carried) continue;
+                c.roamPhase = (c.roamPhase || 0) + 1;
+                // change direction occasionally or at the edge of their range
+                if (c.roamPhase % 90 === 0) c.roamDir *= (Math.random() < 0.5 ? -1 : 1);
+                const range = 55;
+                if (c.x < c.homeX - range) c.roamDir = 1;
+                if (c.x > c.homeX + range) c.roamDir = -1;
+                c.vx = c.roamDir * 0.45;
+                c.x += c.vx;
             }
         }
 
@@ -1673,6 +1928,20 @@
         function drawEnemy(en) {
             const frozen = en.frozen > 0;
             ctx.save();
+
+            // guard alert: a small pulsing marker shows this enemy is locked onto a
+            // civilian (telegraphs the "they're being surrounded" threat to the player)
+            if (en.guardingCiv && !frozen) {
+                const p = 0.5 + Math.sin(Date.now() * 0.012 + en.x) * 0.5;
+                ctx.save();
+                ctx.globalAlpha = 0.5 + p * 0.5;
+                ctx.fillStyle = '#ff5a5a';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('!', en.x + en.w / 2, en.y - 10);
+                ctx.restore();
+            }
+
             // flinch: small jitter while reacting to a hit
             if (en.hitReact > 0) {
                 const j = en.hitReact * 0.5;
@@ -1801,6 +2070,21 @@
                 ctx.fillRect(en.x, en.y, en.w, en.h);
                 ctx.globalAlpha = 1;
             }
+
+            // ---- health bar (non-boss; boss uses its own chest pips) ----
+            if (!en.boss && en.maxHp > 1) {
+                const bw = en.w + 6, bx = en.x - 3, by = en.y - 16, bh = 4;
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+                const frac = Math.max(0, en.hp) / en.maxHp;
+                // color shifts green -> yellow -> red as health drops
+                const col = frac > 0.6 ? '#5fd97a' : frac > 0.3 ? '#ffd24d' : '#ff5a4d';
+                ctx.fillStyle = '#2a2f3a';
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.fillStyle = col;
+                ctx.fillRect(bx, by, bw * frac, bh);
+            }
+
             ctx.restore();
         }
 
@@ -1998,6 +2282,74 @@
                 ctx.fillText('▼ BRING THEM HERE ▼', globeX, doorY - 14);
                 ctx.globalAlpha = 1;
             }
+            // "press ENTER to go inside" prompt when the hero stands at the door
+            if (b.district === currentDistrict && !carriedCivilian) {
+                const heroMid = hero.x + hero.w / 2;
+                const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                if (Math.abs(heroMid - globeX) < b.w / 2 + 16 && nearGround) {
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#ffe072';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.fillText('Press ENTER to go inside', globeX, doorY - 14);
+                    ctx.globalAlpha = 1;
+                }
+            }
+            ctx.restore();
+        }
+
+        // ---- a larger, animated civilian figure ----
+        // cx = center x, topY = top of head area, scale, walkPhase for leg swing,
+        // distressed = arms up / worried vs. relieved when carried.
+        function drawCivilianFigure(c, cx, topY, scale, walkPhase, distressed) {
+            ctx.save();
+            const s = scale;
+            const skin = (c.name.charCodeAt(1) % 3 === 0) ? '#c79a6e' : (c.name.charCodeAt(1) % 3 === 1) ? '#e8c8a0' : '#a87a55';
+            const shirt = ['#4a6a9a', '#8a5a4a', '#5a8a6a', '#7a5a8a', '#a08040'][c.name.charCodeAt(0) % 5];
+            const hairCol = ['#2a2a2a', '#4a3520', '#6a5030', '#1a1a1a'][c.name.charCodeAt(2) % 4];
+            const headR = 7 * s;
+            const headY = topY + headR + 2;
+            const bodyTop = headY + headR - 1;
+            const bodyH = 18 * s, bodyW = 13 * s;
+
+            // legs (walk swing)
+            const swing = Math.sin(walkPhase) * 4 * s;
+            ctx.fillStyle = '#2f3340';
+            ctx.fillRect(cx - 5 * s, bodyTop + bodyH, 4 * s, 10 * s + swing);
+            ctx.fillRect(cx + 1 * s, bodyTop + bodyH, 4 * s, 10 * s - swing);
+
+            // body
+            ctx.fillStyle = shirt;
+            ctx.fillRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
+
+            // arms — raised/worried when distressed, down when relieved
+            ctx.fillStyle = skin;
+            if (distressed) {
+                const wob = Math.sin(Date.now() * 0.008 + cx) * 2 * s;
+                ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop - 4 * s + wob, 3 * s, 9 * s);
+                ctx.fillRect(cx + bodyW / 2, bodyTop - 4 * s - wob, 3 * s, 9 * s);
+            } else {
+                ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop + 3 * s, 3 * s, 9 * s);
+                ctx.fillRect(cx + bodyW / 2, bodyTop + 3 * s, 3 * s, 9 * s);
+            }
+
+            // head
+            ctx.fillStyle = skin;
+            ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI * 2); ctx.fill();
+            // hair
+            ctx.fillStyle = hairCol;
+            ctx.beginPath(); ctx.arc(cx, headY - 1 * s, headR + 0.5, Math.PI * 0.85, Math.PI * 2.15); ctx.fill();
+            // eyes
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(cx - 3 * s, headY - 1 * s, 1.6 * s, 2 * s);
+            ctx.fillRect(cx + 1.4 * s, headY - 1 * s, 1.6 * s, 2 * s);
+            // mouth: worried (open) vs relieved (small smile)
+            if (distressed) {
+                ctx.beginPath(); ctx.arc(cx, headY + 3.5 * s, 1.6 * s, 0, Math.PI * 2); ctx.fill();
+            } else {
+                ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.arc(cx, headY + 2 * s, 2 * s, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+            }
             ctx.restore();
         }
 
@@ -2153,69 +2505,38 @@
                 ctx.restore();
             }
 
-            // ---- civilians to rescue (named human NPCs) ----
+            // ---- civilians to rescue (named human NPCs, now larger & roaming) ----
             for (const c of civilians) {
                 if (c.rescued || c.carried) continue;   // carried ones are drawn on the hero
-                ctx.save();
-                const ccx = c.x, ccy = c.y - 24;
+                const walkPhase = (c.roamPhase || 0) * 0.2;
+                drawCivilianFigure(c, c.x + c.w / 2, c.y, 1, walkPhase, true);
 
-                // body - casual clothes (stable color per civilian, not flickering)
-                ctx.fillStyle = (c.name.charCodeAt(0) % 2) ? '#4a6a9a' : '#8a6a4a';
-                ctx.fillRect(ccx - 6, ccy + 4, 12, 14);
-
-                // head
-                ctx.fillStyle = '#e8c8a0';
-                ctx.beginPath(); ctx.arc(ccx, ccy, 6, 0, Math.PI * 2); ctx.fill();
-
-                // hair
-                ctx.fillStyle = '#3a3a3a';
-                ctx.beginPath();
-                ctx.arc(ccx, ccy - 2, 7, Math.PI * 0.8, Math.PI * 2.2);
-                ctx.fill();
-
-                // eyes (distressed)
-                ctx.fillStyle = '#1a1a1a';
-                ctx.fillRect(ccx - 2.5, ccy - 1, 1.5, 2);
-                ctx.fillRect(ccx + 1, ccy - 1, 1.5, 2);
-
-                // help indicator
+                // help indicator + name/prompt when the hero is near
+                const ccx = c.x + c.w / 2;
                 const bob = Math.sin(Date.now() * 0.005 + ccx) * 4;
+                ctx.save();
                 ctx.fillStyle = 'rgba(255,160,80,0.95)';
-                ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('!', ccx, ccy - 16 + bob);
-
-                // name + context prompt appears when the hero is near
-                const distHero = Math.hypot(hero.x - ccx, hero.y - ccy);
-                if (distHero < 160) {
+                ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('!', ccx, c.y - 16 + bob);
+                const distHero = Math.hypot(hero.x - ccx, hero.y - (c.y + c.h / 2));
+                if (distHero < 170) {
                     ctx.fillStyle = '#ffd24d';
-                    ctx.font = 'bold 11px Arial';
-                    ctx.fillText(c.name, ccx, ccy - 30);
-                    ctx.font = '9px Arial';
-                    if (hero.persona !== 'civilian') {
-                        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                        ctx.fillText('swap to civilian to carry', ccx, ccy - 44);
-                    } else if (!carriedCivilian) {
+                    ctx.font = 'bold 12px Arial';
+                    ctx.fillText(c.name, ccx, c.y - 32);
+                    if (!carriedCivilian) {
                         ctx.fillStyle = 'rgba(150,255,150,0.9)';
-                        ctx.fillText('approach to pick up', ccx, ccy - 44);
+                        ctx.font = '10px Arial';
+                        ctx.fillText('approach to carry', ccx, c.y - 46);
                     }
                 }
                 ctx.restore();
             }
 
-            // ---- carried civilian (rides on the hero) ----
+            // ---- carried civilian (held in the hero's arms) ----
             if (carriedCivilian && !cutscene.active) {
                 const c = carriedCivilian;
-                ctx.save();
-                // small bundled figure tucked against the hero
-                ctx.fillStyle = (c.name.charCodeAt(0) % 2) ? '#4a6a9a' : '#8a6a4a';
-                ctx.fillRect(c.x - 5, c.y - 6, 10, 12);
-                ctx.fillStyle = '#e8c8a0';
-                ctx.beginPath(); ctx.arc(c.x, c.y - 8, 5, 0, Math.PI * 2); ctx.fill();
-                // little relieved face
-                ctx.fillStyle = '#1a1a1a';
-                ctx.fillRect(c.x - 2, c.y - 9, 1.3, 1.3);
-                ctx.fillRect(c.x + 1, c.y - 9, 1.3, 1.3);
-                ctx.restore();
+                // drawn slightly smaller & cradled, relieved (not distressed)
+                drawCivilianFigure(c, c.x + c.w / 2, c.y, 0.85, 0, false);
             }
 
             // enemies
@@ -2398,32 +2719,9 @@
         }
 
         function updateWorldState() {
-            // ---- building entry cut-scene ----
-            if (cutscene.active) {
-                cutscene.timer++;
-                // at the midpoint, the civilian is dropped off & marked safe
-                if (cutscene.phase === 'in' && cutscene.timer >= cutscene.max * 0.5) {
-                    cutscene.phase = 'safe';
-                    const c = cutscene.civ;
-                    if (c && !c.rescued) {
-                        c.rescued = true;
-                        c.carried = false;
-                        carriedCivilian = null;
-                        spawnRescueFX(cutscene.building.x + cutscene.building.w / 2, GROUND_Y - 120);
-                    }
-                }
-                if (cutscene.timer >= cutscene.max) {
-                    const done = civilians.filter(cc => cc.rescued).length;
-                    titleCard = {
-                        text: (cutscene.civ ? cutscene.civ.name : 'They') + ' is safe!',
-                        sub: 'Civilians rescued: ' + done + '/' + civilians.length,
-                        timer: 110
-                    };
-                    cutscene = { active: false, timer: 0, max: 150, building: null, civ: null, phase: 'in' };
-                }
-                // freeze the rest of the world while the cut-scene plays
-                return;
-            }
+            // (The old door cut-scene rescue was removed: civilians are now rescued
+            // INSIDE the building at the safe zone via dropOffCivilian(). The cutscene
+            // object is retained as inactive for backward compatibility.)
 
             // current district + title card on crossing a boundary
             const d = districtAt(hero.x + hero.w / 2);
@@ -2588,6 +2886,8 @@
             row(colR, 'H', 'Hide / show controls', y2); y2 += lh;
             row(colR, 'T', 'Toggle dog: AI / Player 2', y2); y2 += lh;
             row(colR, 'R', 'Tell the dog to land', y2); y2 += lh;
+            row(colR, 'Enter', 'Enter / exit The Weekly Planet', y2); y2 += lh;
+            row(colR, 'F', 'Drop off civilian (safe zone)', y2); y2 += lh;
 
             // objective hint box
             const boxY = Math.max(y, y2) + 18;
@@ -2600,8 +2900,8 @@
             ctx.fillText('GOAL', W * 0.10 + 16, boxY + 26);
             ctx.fillStyle = '#dfe6f5';
             ctx.font = '15px Arial';
-            ctx.fillText('Swap to CIVILIAN (Q) to carry people to THE WEEKLY PLANET, smash emitters,', W * 0.10 + 16, boxY + 46);
-            ctx.fillText('and clear each district to unlock Uptown, then defeat the Warlord.', W * 0.10 + 16, boxY + 64);
+            ctx.fillText('Carry civilians to THE WEEKLY PLANET, press ENTER to go inside, then F at the', W * 0.10 + 16, boxY + 46);
+            ctx.fillText('safe zone to rescue them. Smash emitters & clear districts to reach the Warlord.', W * 0.10 + 16, boxY + 64);
 
             // prompt
             ctx.textAlign = 'center';
@@ -2612,6 +2912,314 @@
             ctx.font = 'bold 22px Arial';
             ctx.fillText('Press ENTER or Click to Play', W / 2, H - 28);
             ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
+        // ---------- INTERIOR: update, AI, draw ----------
+        // Keep the hero/hound inside the room. Flight still works, but the room has
+        // its own floor/ceiling/walls. We override city collision by re-clamping here.
+        function clampToRoom(e) {
+            // walls
+            if (e.x < 20) { e.x = 20; if (e.vx < 0) e.vx = 0; }
+            if (e.x + e.w > interior.w - 20) { e.x = interior.w - 20 - e.w; if (e.vx > 0) e.vx = 0; }
+            // ceiling
+            if (e.y < 20) { e.y = 20; if (e.vy < 0) e.vy = 0; }
+            // floor (auto-land like the city)
+            if (e.y + e.h >= interior.floorY) {
+                e.y = interior.floorY - e.h;
+                if (e.vy > 0) e.vy = 0;
+                e.onGround = true;
+                if (e.flightActive && e.vy >= -0.05) { e.flightActive = false; e.landing = false; e.takeoffPhase = 0; }
+            } else {
+                e.onGround = false;
+            }
+        }
+
+        function updateInterior() {
+            clampToRoom(hero);
+            clampToRoom(hound);
+
+            const heroMid = hero.x + hero.w / 2;
+
+            // Working NPCs: sitters occasionally get up and walk; walkers wander the
+            // room. ALL of them notice the hero when he's close and turn/greet.
+            for (const n of interior.npcs) {
+                n.phase += 0.05;
+                // proximity: does the hero stand near this NPC?
+                const nearHero = Math.abs(n.x - heroMid) < 70;
+                n.greeting = nearHero ? Math.min((n.greeting || 0) + 1, 40) : Math.max((n.greeting || 0) - 1, 0);
+                if (nearHero) n.faceDir = heroMid < n.x ? -1 : 1;   // turn toward hero
+
+                if (n.type === 'walk') {
+                    // wander; pause briefly to "greet" when the hero is near
+                    if (n.greeting > 20) {
+                        n.vx = 0;   // stop and acknowledge the hero
+                    } else {
+                        const sp = n.speed || 0.6;
+                        n.x += n.dir * sp;
+                        if (n.x > n.baseX + n.range) n.dir = -1;
+                        if (n.x < n.baseX - n.range) n.dir = 1;
+                        n.faceDir = n.dir;
+                    }
+                } else {
+                    // sitter: small chance each second to stand and stretch (life!)
+                    n.standTimer = (n.standTimer || 0) - 1;
+                    if (n.standTimer <= 0 && Math.random() < 0.004) n.standTimer = 90 + Math.random() * 90;
+                    n.standing = n.standTimer > 0;
+                }
+            }
+
+            // Rescued residents mill about happily and also react to the hero.
+            for (const r of interior.residents) {
+                r.phase += 0.04;
+                const nearHero = Math.abs(r.x - heroMid) < 60;
+                r.greeting = nearHero ? Math.min((r.greeting || 0) + 1, 40) : Math.max((r.greeting || 0) - 1, 0);
+                if (nearHero) {
+                    r.faceDir = heroMid < r.x ? -1 : 1;
+                    r.vx = 0;   // turn and wave at their rescuer
+                } else {
+                    r.x += r.dir * 0.3;
+                    if (r.x > r.baseX + r.range) r.dir = -1;
+                    if (r.x < r.baseX - r.range) r.dir = 1;
+                    r.faceDir = r.dir;
+                }
+            }
+        }
+
+        // Interior hound AI: just follow the hero around the room (no combat inside).
+        function computeAIInputInterior() {
+            const input = { left: false, right: false, jumpHeld: false, moveDown: false, dash: false, punch: false, laser: false, freeze: false };
+            const gap = hero.x - hound.x;
+            if (Math.abs(gap) > 90) { if (gap > 0) input.right = true; else input.left = true; }
+            return input;
+        }
+
+        function drawInterior() {
+            const cam = interior.camX || 0;
+            // center camera on hero within room bounds
+            let tx = hero.x + hero.w / 2 - W / 2;
+            tx = Math.max(0, Math.min(interior.w - W, tx));
+            interior.camX = tx;
+
+            ctx.save();
+            // backdrop wall (warm newsroom tone)
+            const wall = ctx.createLinearGradient(0, 0, 0, H);
+            wall.addColorStop(0, '#2a2438');
+            wall.addColorStop(1, '#1c1828');
+            ctx.fillStyle = wall;
+            ctx.fillRect(0, 0, W, H);
+
+            ctx.translate(-tx, 0);
+
+            // back wall paneling + big windows showing city night
+            for (let x = 40; x < interior.w - 40; x += 220) {
+                ctx.fillStyle = 'rgba(60,80,130,0.25)';
+                ctx.fillRect(x, 80, 160, 180);
+                ctx.strokeStyle = '#3a4060'; ctx.lineWidth = 3;
+                ctx.strokeRect(x, 80, 160, 180);
+                // distant city lights through the window
+                ctx.fillStyle = 'rgba(255,224,140,0.5)';
+                for (let i = 0; i < 6; i++) {
+                    ctx.fillRect(x + 14 + (i % 3) * 50, 120 + Math.floor(i / 3) * 60, 8, 8);
+                }
+            }
+
+            // big wall logo
+            ctx.fillStyle = '#ffd84d';
+            ctx.font = 'bold 38px Arial Black, Arial';
+            ctx.textAlign = 'center';
+            ctx.globalAlpha = 0.85;
+            ctx.fillText('THE WEEKLY PLANET', interior.w / 2, 60);
+            ctx.globalAlpha = 1;
+
+            // floor
+            ctx.fillStyle = '#3a3550';
+            ctx.fillRect(0, interior.floorY, interior.w, interior.h - interior.floorY);
+            ctx.fillStyle = '#454060';
+            ctx.fillRect(0, interior.floorY, interior.w, 6);
+            // floor tiling
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+            for (let x = 0; x < interior.w; x += 60) {
+                ctx.beginPath(); ctx.moveTo(x, interior.floorY); ctx.lineTo(x, interior.h); ctx.stroke();
+            }
+
+            // exit door (back to the city)
+            const dr = interior.exitDoor;
+            ctx.fillStyle = '#151a26';
+            ctx.fillRect(dr.x, interior.floorY - 90, dr.w, 90);
+            ctx.fillStyle = '#0e1320';
+            ctx.fillRect(dr.x + 6, interior.floorY - 84, dr.w - 12, 84);
+            // EXIT sign
+            ctx.fillStyle = '#7fff9f';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('EXIT', dr.x + dr.w / 2, interior.floorY - 98);
+            // prompt when hero is near
+            if (Math.abs((hero.x + hero.w / 2) - (dr.x + dr.w / 2)) < 70) {
+                const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial';
+                ctx.fillText('Press ENTER to leave', dr.x + dr.w / 2, interior.floorY - 118);
+                ctx.globalAlpha = 1;
+            }
+
+            // ---- SAFE ZONE (right side): where carried civilians are dropped off ----
+            const sz = interior.safeZone;
+            // a warm welcoming rug/area
+            ctx.fillStyle = 'rgba(120,200,140,0.12)';
+            ctx.fillRect(sz.x, interior.floorY - 150, sz.w, 150);
+            ctx.strokeStyle = 'rgba(150,255,170,0.4)'; ctx.lineWidth = 2;
+            ctx.strokeRect(sz.x, interior.floorY - 150, sz.w, 150);
+            // sign
+            ctx.fillStyle = '#9fffa0';
+            ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('SAFE ZONE', sz.x + sz.w / 2, interior.floorY - 156);
+            // little couch/bench
+            ctx.fillStyle = '#4a5a6a';
+            ctx.fillRect(sz.x + 30, interior.floorY - 30, 100, 16);
+            ctx.fillStyle = '#3a4a5a';
+            ctx.fillRect(sz.x + 30, interior.floorY - 44, 100, 14);
+            // drop-off prompt when carrying a civilian and standing in the zone
+            if (carriedCivilian) {
+                const heroMid = hero.x + hero.w / 2;
+                const inZone = heroMid > sz.x && heroMid < sz.x + sz.w;
+                const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = inZone ? '#9fffa0' : '#ffe072';
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText(inZone ? 'Press F to drop off ' + carriedCivilian.name : 'Bring them to the SAFE ZONE →',
+                    inZone ? sz.x + sz.w / 2 : hero.x + hero.w / 2, interior.floorY - 180);
+                ctx.globalAlpha = 1;
+            }
+
+            // desks with working NPCs
+            for (const d of interior.desks) {
+                // desk
+                ctx.fillStyle = '#5a4a3a';
+                ctx.fillRect(d.x - 30, d.y, 60, 14);
+                ctx.fillStyle = '#6a5a48';
+                ctx.fillRect(d.x - 30, d.y, 60, 4);
+                // monitor
+                ctx.fillStyle = '#2a3550';
+                ctx.fillRect(d.x - 12, d.y - 22, 24, 18);
+                ctx.fillStyle = 'rgba(140,200,255,0.7)';
+                ctx.fillRect(d.x - 9, d.y - 19, 18, 12);
+                // legs
+                ctx.fillStyle = '#4a3c2e';
+                ctx.fillRect(d.x - 28, d.y + 14, 4, 16);
+                ctx.fillRect(d.x + 24, d.y + 14, 4, 16);
+            }
+
+            // working NPCs (drawn as simple seated/standing figures)
+            for (const n of interior.npcs) {
+                drawWorkerNPC(n);
+            }
+            // rescued residents (relieved, milling around)
+            for (const r of interior.residents) {
+                drawResident(r);
+            }
+
+            // hero + hound
+            drawEntity(hound);
+            drawEntity(hero);
+
+            drawHitFX();
+            ctx.restore();
+
+            // screen-space overlays
+            drawTitleCard();
+        }
+
+        function drawWorkerNPC(n) {
+            const x = n.x, y = interior.floorY;
+            const standing = n.type === 'walk' || n.standing;
+            const bob = Math.sin(n.phase) * (standing ? 0 : 1.5);
+            ctx.save();
+            // body
+            ctx.fillStyle = ['#5a6a8a', '#7a5a6a', '#5a7a6a', '#8a7a5a'][n.name.charCodeAt(0) % 4];
+            const topY = standing ? y - 46 : y - 38;
+            ctx.fillRect(x - 8, topY + 14 + bob, 16, standing ? 24 : 18);
+            // head
+            ctx.fillStyle = '#e8c8a0';
+            ctx.beginPath(); ctx.arc(x, topY + 8 + bob, 7, 0, Math.PI * 2); ctx.fill();
+            // hair
+            ctx.fillStyle = ['#2a2a2a', '#4a3520', '#1a1a1a'][n.name.charCodeAt(1) % 3];
+            ctx.beginPath(); ctx.arc(x, topY + 6 + bob, 7.5, Math.PI * 0.8, Math.PI * 2.2); ctx.fill();
+            // eyes look toward the hero when greeting
+            ctx.fillStyle = '#1a1a1a';
+            const ed = (n.faceDir || 1) * 2;
+            ctx.fillRect(x - 3 + ed, topY + 7 + bob, 1.6, 2);
+            ctx.fillRect(x + 1 + ed, topY + 7 + bob, 1.6, 2);
+            // legs (standing/walking)
+            if (standing) {
+                ctx.fillStyle = '#2f3340';
+                const moving = n.type === 'walk' && n.greeting <= 20;
+                const sw = moving ? Math.sin(n.phase * 3) * 3 : 0;
+                ctx.fillRect(x - 6, y - 14, 5, 14 + sw);
+                ctx.fillRect(x + 1, y - 14, 5, 14 - sw);
+            }
+            // "working" indicator over seated workers
+            if (!standing && Math.sin(n.phase * 0.5) > 0.7) {
+                ctx.fillStyle = 'rgba(255,224,140,0.8)';
+                ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('✎', x, topY - 4 + bob);
+            }
+            // GREETING speech bubble when the hero is near
+            if (n.greeting > 20) {
+                const lines = npcGreeting(n.name);
+                ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                const bw = 96, bh = 22, bx = x - bw / 2, by = topY - 34;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.beginPath(); ctx.moveTo(x - 4, by + bh); ctx.lineTo(x + 4, by + bh); ctx.lineTo(x, by + bh + 6); ctx.fill();
+                ctx.fillStyle = '#1a2030'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(lines, x, by + 14);
+            } else {
+                // faint name label otherwise
+                ctx.fillStyle = 'rgba(200,210,230,0.4)';
+                ctx.font = '8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(n.name, x, topY - 14);
+            }
+            ctx.restore();
+        }
+
+        // a friendly line per worker (stable by name)
+        function npcGreeting(name) {
+            const lines = [
+                'Great work out there!', 'The city thanks you.', 'Front page material!',
+                'Stay safe, hero.', 'Any scoop for us?', 'We\'re on deadline!',
+                'Glad you\'re here.', 'Keep it up!'
+            ];
+            return lines[name.charCodeAt(0) % lines.length];
+        }
+
+        function drawResident(r) {
+            const x = r.x, y = interior.floorY;
+            ctx.save();
+            ctx.fillStyle = '#6a8a6a';
+            ctx.fillRect(x - 7, y - 30, 14, 18);
+            ctx.fillStyle = '#e8c8a0';
+            ctx.beginPath(); ctx.arc(x, y - 34, 6, 0, Math.PI * 2); ctx.fill();
+            // happy bob + small smile
+            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(x, y - 33, 2, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+            // legs
+            ctx.fillStyle = '#2f3340';
+            const sw = Math.sin(r.phase * 3) * 2;
+            ctx.fillRect(x - 5, y - 12, 4, 12 + sw);
+            ctx.fillRect(x + 1, y - 12, 4, 12 - sw);
+            // safe heart, or a "thank you" wave when the hero is near
+            if (r.greeting > 20) {
+                ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                const bw = 80, bh = 20, bx = x - bw / 2, by = y - 60;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.beginPath(); ctx.moveTo(x - 4, by + bh); ctx.lineTo(x + 4, by + bh); ctx.lineTo(x, by + bh + 5); ctx.fill();
+                ctx.fillStyle = '#1a4020'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('Thank you!', x, by + 13);
+            } else {
+                ctx.fillStyle = 'rgba(150,255,150,0.5)';
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('♥', x, y - 42);
+            }
             ctx.restore();
         }
 
@@ -2657,11 +3265,28 @@
                 return;
             }
 
+            if (enterCooldown > 0) enterCooldown--;
+
+            // ---- INTERIOR SCENE: the Weekly Planet (its own update/draw path) ----
+            if (scene === 'interior') {
+                const pin = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInputInterior() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                updateInterior();
+                updateHitFX();
+                drawInterior();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             const p1 = computeP1Input();
             const p2 = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
             updateEntity(hero, p1);
             updateEntity(hound, p2);
             updateEnemies();
+            updateCivilians();
             updateWorldState();
             updateHitFX();
             updateCamera();
