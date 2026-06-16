@@ -138,7 +138,7 @@
             <div class="grp">Hound (P2 / AI)</div>
             &larr;/&rarr; move &nbsp; &uarr; fly (then &uarr;/&darr;) &nbsp; ; land &nbsp; / dash<br>
             . Punch &nbsp; , Laser &nbsp; ' Freeze &nbsp; R: land Hound
-            <div class="grp">M: map &nbsp; T: P1/P2 &nbsp; H: hide panel &nbsp; F1: help</div>
+            <div class="grp">M: map &nbsp; N: case file &nbsp; T: P1/P2 &nbsp; H: hide panel &nbsp; F1: help</div>
         </div>
         <div id="ctrlHint" style="display:none;">H: show controls</div>
     </div>
@@ -207,7 +207,7 @@
             },
             {
                 id: 'uptown', name: 'UPTOWN HEIGHTS', x0: 10300, x1: 20000, color: '#5a3a6e',
-                intro: 'Towering spires. The Warlord rules from the summit.', unlocked: false
+                intro: 'Towering spires. The Warlord rules from the summit.', unlocked: true
             },
         ];
 
@@ -215,10 +215,9 @@
         // and shows a title card. (No loading wall — the world is continuous.)
         const gateways = [
             { x: 5200, name: 'THE DOCKS', to: 'docks' },
-            {
-                x: 10300, name: 'UPTOWN HEIGHTS', to: 'uptown', locked: true,
-                requires: 'Clear Downtown & Docks objectives'
-            },
+            // Uptown is open from the start — the case-file clues are scattered
+            // across the entire map and shouldn't be gated behind district progress.
+            { x: 10300, name: 'UPTOWN HEIGHTS', to: 'uptown', locked: false },
         ];
 
         // Gaps in the ground (bay water in the Docks, chasms elsewhere).
@@ -499,33 +498,42 @@
 
         // Clues build toward the escaped inmate's identity (the LexCorp "genius"
         // archetype) without naming him — and without placing him on this level.
+        // Each clue also leaves behind a "trap": a civilian in danger guarded by a
+        // wave of enemies the convict left in his wake. Difficulty escalates with
+        // each clue. Clues reveal one at a time (see activeClueIndex) and span the
+        // whole map — nothing here is gated behind district progress.
         const clues = [
             {
-                x: 900, district: 'downtown', found: false, lines: [
+                x: 900, district: 'downtown', found: false, civName: 'Frightened Intern',
+                trapTypes: ['brute'], lines: [
                     "CASE FILE — CLUE 1 OF 5",
                     "Witnesses near the breach say the escapee never raised his voice, never raised a fist — he didn't need to. \"Smartest man I ever met,\" one guard muttered, \"and he never once let you forget it.\""
                 ]
             },
             {
-                x: 3150, district: 'downtown', found: false, lines: [
+                x: 3150, district: 'downtown', found: false, civName: 'Records Clerk',
+                trapTypes: ['brute', 'brute'], lines: [
                     "CASE FILE — CLUE 2 OF 5",
                     "Prison intake records are sealed, but an old newspaper clipping found in his cell shows a boardroom photo — pinstripe suit, corner office, a company logo torn away before anyone could read it."
                 ]
             },
             {
-                x: 4865, district: 'downtown', found: false, lines: [
+                x: 4865, district: 'downtown', found: false, civName: 'Prison Guard',
+                trapTypes: ['brute', 'brute', 'genius'], lines: [
                     "CASE FILE — CLUE 3 OF 5",
                     "At the breach itself: a guard's report. \"Bald. Calm. Looked at the warden like he pitied him.\" One line is underlined twice — \"Said something about settling a score with the man who can fly.\""
                 ]
             },
             {
-                x: 6700, district: 'docks', found: false, lines: [
+                x: 6700, district: 'docks', found: false, civName: 'Dockworker',
+                trapTypes: ['genius', 'genius', 'energy'], lines: [
                     "CASE FILE — CLUE 4 OF 5",
                     "A dockworker found a shipping crate forced open from the inside. Stamped on the side, half scratched off: a stylized letter 'L'. The metal inside was still warm — like it had powered something, recently."
                 ]
             },
             {
-                x: 12600, district: 'uptown', found: false, lines: [
+                x: 12600, district: 'uptown', found: false, civName: 'Tower Security Guard',
+                trapTypes: ['genius', 'energy', 'energy', 'energy'], lines: [
                     "CASE FILE — CLUE 5 OF 5",
                     "Uptown security caught a thermal signature in an abandoned tower basement — humming servers, fresh welding marks, the unmistakable green glow of unlicensed reactor tech. He's already rebuilding.",
                     "All five threads point to one boardroom shadow. CK has more than enough leads now to start tracking him through the city."
@@ -533,7 +541,49 @@
             },
         ];
         let cluesFound = 0;
+        let activeClueIndex = 0;   // only this clue is present in the world right now
+
+        // Build a fully-initialized enemy left behind as part of a clue's "trap".
+        function makeTrapEnemy(type, x, district) {
+            const base = {
+                x, alive: true, frozen: 0, dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
+                district, vx: (Math.random() < 0.5 ? -1 : 1) * 1.2, maxHp: 3, hp: 3
+            };
+            if (type === 'energy') {
+                const y = 480 + Math.random() * 200;
+                return Object.assign(base, {
+                    y, w: 44, h: 44, minX: x - 120, maxX: x + 120,
+                    vy: (Math.random() < 0.5 ? -0.5 : 0.5), minY: y - 100, maxY: y + 100, type: 'energy'
+                });
+            }
+            if (type === 'genius') {
+                return Object.assign(base, { y: GROUND_Y - 50, w: 38, h: 50, minX: x - 120, maxX: x + 120, type: 'genius' });
+            }
+            return Object.assign(base, { y: GROUND_Y - 52, w: 40, h: 52, minX: x - 120, maxX: x + 120, type: 'brute' });
+        }
+
+        // Spring the trap left behind at a clue's location: a civilian in danger,
+        // surrounded by a wave of enemies (existing "guard nearest civilian" AI
+        // picks them up automatically — no extra logic needed there).
+        function spawnClueTrap(cl) {
+            if (!cl.trapTypes || cl.trapTypes.length === 0) return;
+            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Civilian');
+            civ.trapVictim = true;
+            civilians.push(civ);
+            let side = -1;
+            cl.trapTypes.forEach((type, i) => {
+                const ex = cl.x + side * (90 + i * 30);
+                side *= -1;
+                enemies.push(makeTrapEnemy(type, ex, cl.district));
+            });
+            titleCard = {
+                text: '⚠ TRAP SPRUNG ⚠',
+                sub: civ.name + ' is in danger nearby — clear the enemies and rescue them!',
+                timer: 200
+            };
+        }
         let mapOpen = false;
+        let caseFileOpen = false;   // N: review all case-file clues found so far
         let grabbedEnemy = null;   // enemy currently held by the hero
         // ── BANK ROBBERY MISSION ──────────────────────────────────────────
         let bankRobbery = {
@@ -814,17 +864,40 @@
             if (e.code === 'KeyT') p2Mode = (p2Mode === 'ai') ? 'coop' : 'ai';
             if (e.code === 'KeyR') { hound.forceLand = true; hound.flightActive = false; }
             if (e.code === 'KeyM') mapOpen = !mapOpen;
+            if (e.code === 'KeyN' && interior.note.read) caseFileOpen = !caseFileOpen;
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
             // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
             if (e.code === 'Enter' && enterCooldown <= 0) {
                 if (scene === 'city') {
+                    let handled = false;
                     for (const b of rescueBuildings) {
                         // No district gate — single central building, accessible anywhere
                         const heroMid = hero.x + hero.w / 2;
                         const doorMid = b.x + b.w / 2;
                         const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
                         if (Math.abs(heroMid - doorMid) < b.w / 2 + 16 && nearGround) {
-                            enterInterior(b); e.preventDefault(); break;
+                            enterInterior(b); e.preventDefault(); handled = true; break;
+                        }
+                    }
+                    // Grab a quick bite at a diner or shop — small flavor interaction
+                    // with a brief speed boost as a "fed and ready" reward.
+                    if (!handled) {
+                        for (const b of buildings) {
+                            if (b.type !== 'diner' && b.type !== 'shop') continue;
+                            const heroMid = hero.x + hero.w / 2;
+                            const doorMid = b.x + b.w / 2;
+                            const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                            if (Math.abs(heroMid - doorMid) < b.w / 2 + 16 && nearGround) {
+                                if ((b.eatCooldown || 0) > 0) {
+                                    titleCard = { text: b.name, sub: "CK already ate here recently — give it a bit.", timer: 90 };
+                                } else {
+                                    b.eatCooldown = 600;  // ~10s before he can eat again here
+                                    hero.orbBoost = 240;  // brief speed boost, "fed and ready"
+                                    const food = b.type === 'diner' ? 'grabs a quick bite' : 'picks up a snack';
+                                    titleCard = { text: b.name, sub: 'CK ' + food + "... refueled! (brief speed boost)", timer: 160 };
+                                }
+                                e.preventDefault(); handled = true; break;
+                            }
                         }
                     }
                 } else if (scene === 'interior') {
@@ -847,18 +920,19 @@
                     e.preventDefault();
                 }
             }
-            // F: read a case-file clue found out in the city
+            // F: read the currently-active case-file clue found out in the city
             if (e.code === 'KeyF' && scene === 'city' && interior.note.read) {
                 const heroMid = hero.x + hero.w / 2;
-                for (const cl of clues) {
-                    if (cl.found) continue;
+                const cl = clues[activeClueIndex];
+                if (cl && !cl.found) {
                     const cy = GROUND_Y - 90;
                     if (Math.abs(heroMid - cl.x) < 60 && Math.abs(hero.y - cy) < 120) {
                         cl.found = true;
                         cluesFound++;
                         showStory(cl.lines);
+                        spawnClueTrap(cl);
+                        activeClueIndex++;   // reveal the next clue, if any
                         e.preventDefault();
-                        break;
                     }
                 }
             }
@@ -1675,6 +1749,11 @@
                     en.chaseTimer--;
                     if (en.chaseTimer <= 0 || carriedCivilians.length === 0) {
                         en.chaseMode = false;   // give up — go back to patrol
+                        // Make sure aerial enemies resume inside their patrol band
+                        // immediately, instead of slowly drifting back over time.
+                        if (en.vy !== undefined && en.minY !== undefined && en.maxY !== undefined) {
+                            en.y = Math.max(en.minY, Math.min(en.maxY, en.y));
+                        }
                     } else {
                         if ((en.chaseAlert || 0) > 0) en.chaseAlert--;
                         const heroMid = hero.x + hero.w / 2;
@@ -1683,11 +1762,17 @@
                         const CSPD = en.type === 'energy' ? 2.9 : 2.3;
 
                         if (en.vy !== undefined) {
-                            // Aerial enemy: close on hero in X and Y
+                            // Aerial enemy: close on hero in X and Y, but stay within its
+                            // own patrol band (+/- a little give) — chasing all the way
+                            // down to ground level left them stranded near the sidewalk
+                            // for a long time after the chase ended, since the patrol
+                            // logic only nudges them back slowly.
                             en.x += Math.sign(dx) * Math.min(CSPD, Math.abs(dx));
                             const dy = (hero.y + hero.h / 2) - (en.y + en.h / 2);
                             en.y += Math.sign(dy) * Math.min(2.2, Math.abs(dy));
-                            en.y = Math.max(80, Math.min(GROUND_Y - en.h - 4, en.y));
+                            const loY = (en.minY !== undefined ? en.minY : 80) - 60;
+                            const hiY = (en.maxY !== undefined ? en.maxY : GROUND_Y - en.h - 4) + 60;
+                            en.y = Math.max(loY, Math.min(hiY, en.y));
                         } else {
                             // Ground enemy: gap-aware horizontal chase
                             const nextX = en.x + Math.sign(dx) * CSPD;
@@ -3538,6 +3623,21 @@
                 ctx.restore();
             }
 
+            // Shared: "grab a bite" prompt for diners/shops when the hero is near
+            if (type === 'diner' || type === 'shop') {
+                const heroMid = hero.x + hero.w / 2;
+                const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                if (Math.abs(heroMid - (x + w / 2)) < w / 2 + 16 && nearGround) {
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = (b.eatCooldown || 0) > 0 ? '#ff9a6a' : '#9fffa0';
+                    ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText((b.eatCooldown || 0) > 0 ? 'Already ate here recently' : 'Press ENTER to grab a bite',
+                        x + w / 2, top - 14);
+                    ctx.globalAlpha = 1;
+                }
+            }
+
             // Shared: curb shadow line
             ctx.fillStyle = 'rgba(0,0,0,0.18)';
             ctx.fillRect(x, GROUND_Y - 2, w, 2);
@@ -4257,10 +4357,10 @@
                 ctx.restore();
             }
 
-            // ---- STORY CLUES: case-file pickups revealing the escapee's identity ----
+            // ---- STORY CLUES: only the currently-active clue is in the world ----
             if (interior.note.read) {
-                for (const cl of clues) {
-                    if (cl.found) continue;
+                const cl = clues[activeClueIndex];
+                if (cl && !cl.found) {
                     const bob = Math.sin(Date.now() * 0.004 + cl.x) * 5;
                     const cy = GROUND_Y - 90 + bob;
                     ctx.save();
@@ -4499,6 +4599,17 @@
                 ctx.globalAlpha = 1;
             });
 
+            // ── Case-file clues: markers for clues revealed so far (one at a time) ──
+            if (interior.note.read) {
+                for (const cl of clues.slice(0, activeClueIndex + 1)) {
+                    const clx = mx + cl.x * sx, cly = my + mh * 0.62;
+                    ctx.fillStyle = cl.found ? '#5fd97a' : '#ffd84d';
+                    ctx.shadowColor = cl.found ? '#5fd97a' : '#ffd84d'; ctx.shadowBlur = 5;
+                    ctx.beginPath(); ctx.arc(clx, cly, 3, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+
             // ── Weekly Planet: golden globe icon ──
             for (const b of rescueBuildings) {
                 const bx2 = mx + (b.x + b.w / 2) * sx;
@@ -4635,6 +4746,25 @@
                 ctx.fillText('✓ all civilians safe', mx + 6, my + mh * 0.95);
             }
 
+            // ── Case-file clues: magnifying-glass markers, gold = unfound, green = found ──
+            // Only clues revealed so far appear — they unlock one at a time.
+            if (interior.note.read) {
+                clues.slice(0, activeClueIndex + 1).forEach((cl, ci) => {
+                    const clx = mx + cl.x * sx, cly = my + mh * 0.58;
+                    const col = cl.found ? '#5fd97a' : '#ffd84d';
+                    if (!cl.found) {
+                        const cp = 0.5 + Math.sin(now2 * 0.012 + ci * 1.3) * 0.5;
+                        ctx.globalAlpha = 0.4 + cp * 0.5;
+                    }
+                    ctx.shadowColor = col; ctx.shadowBlur = 8;
+                    ctx.fillStyle = col;
+                    ctx.beginPath(); ctx.arc(clx, cly, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+                    ctx.fillStyle = '#1a1808'; ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(cl.found ? '✓' : '?', clx, cly + 2.5);
+                });
+            }
+
             // ── Weekly Planet: large prominent globe + label ──
             for (const b of rescueBuildings) {
                 const bpx = mx + (b.x + b.w / 2) * sx;
@@ -4702,6 +4832,7 @@
                 { col: '#7fd3ff', label: 'you (▲)' },
                 { col: 'rgba(255,255,255,0.3)', label: 'your view' },
             ];
+            if (interior.note.read) legItems.push({ col: '#ffd84d', label: 'clue (N: review)' });
             let legX = mx;
             const legSpacing = mw / legItems.length;
             for (const li of legItems) {
@@ -4785,6 +4916,9 @@
 
             // emitter animation phase
             for (const em of emitters) em.phase = (em.phase || 0) + 0.08;
+
+            // diner/shop "grab a bite" cooldowns
+            for (const b of buildings) if (b.eatCooldown > 0) b.eatCooldown--;
 
             // boss defeated?
             const boss = enemies.find(e => e.boss);
@@ -5419,6 +5553,58 @@
             ctx.restore();
         }
 
+        // ---------- CASE FILE: review every clue found so far (N to toggle) ----------
+        function drawCaseFile() {
+            ctx.save();
+            ctx.fillStyle = 'rgba(4,6,12,0.85)';
+            ctx.fillRect(0, 0, W, H);
+
+            const boxW = W - 100, boxH = H - 70, bx = 50, by = 35;
+            ctx.fillStyle = 'rgba(12,16,28,0.95)';
+            ctx.strokeStyle = '#ffd84d'; ctx.lineWidth = 2;
+            ctx.fillRect(bx, by, boxW, boxH);
+            ctx.strokeRect(bx, by, boxW, boxH);
+
+            ctx.textAlign = 'center'; ctx.font = 'bold 18px Arial'; ctx.fillStyle = '#ffd84d';
+            ctx.fillText('CASE FILE — ESCAPED INMATE', bx + boxW / 2, by + 30);
+            ctx.font = '12px Arial'; ctx.fillStyle = '#9fb6ff';
+            ctx.fillText('Leads gathered: ' + cluesFound + '/' + clues.length, bx + boxW / 2, by + 50);
+
+            // Two-column layout so all 5 entries fit without scrolling.
+            const colW = (boxW - 60) / 2;
+            const col1X = bx + 24, col2X = bx + 36 + colW;
+            const colTop = by + 74, colBottom = by + boxH - 30;
+            let cx = col1X, cy = colTop;
+            ctx.textAlign = 'left';
+            clues.forEach((cl, i) => {
+                if (cy > colBottom - 40 && cx === col1X) { cx = col2X; cy = colTop; }
+                ctx.font = 'bold 13px Arial';
+                ctx.fillStyle = cl.found ? '#ffd84d' : '#5a5f72';
+                ctx.fillText((cl.found ? '🔎 ' : '🔒 ') + 'CLUE ' + (i + 1) + ' OF ' + clues.length, cx, cy);
+                cy += 18;
+                ctx.font = '12px Arial';
+                if (cl.found) {
+                    ctx.fillStyle = '#d8d4e8';
+                    // skip the redundant "CLUE X OF 5" header line already shown above
+                    for (const line of cl.lines.slice(1)) {
+                        for (const wl of wrapText(line, colW)) { ctx.fillText(wl, cx, cy); cy += 16; }
+                    }
+                } else {
+                    ctx.fillStyle = '#4a4f60';
+                    ctx.fillText('Not yet discovered — keep exploring the city.', cx, cy);
+                    cy += 16;
+                }
+                cy += 16;
+            });
+
+            const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Press N to close', bx + boxW / 2, by + boxH - 14);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
         function loop() {
             updateAtmosphere();   // always runs — clouds/planes animate on title screen too
             // ---- front-end screens: render and wait for the player ----
@@ -5484,6 +5670,7 @@
                 updateInterior();
                 updateHitFX();
                 drawInterior();
+                if (caseFileOpen) drawCaseFile();
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
@@ -5501,6 +5688,7 @@
             updateHitFX();
             updateCamera();
             draw();
+            if (caseFileOpen) drawCaseFile();
             updateHUD();
             requestAnimationFrame(loop);
         }
