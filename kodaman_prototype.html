@@ -121,6 +121,7 @@
             <div>District: <b id="districtLabel">DOWNTOWN</b></div>
             <div>Objectives: <b id="objCount">0/7</b> | Orbs: <b id="orbCount">0</b> | Enemies: <b
                     id="enemyCount">24</b></div>
+            <div>Case Clues: <b id="clueCount">0/5</b></div>
             <div style="margin-top:5px;"><b>Hound</b>: <b id="p2Mode">AI Companion</b> &nbsp;|&nbsp; Persona: <b
                     id="personaLabel">Super</b></div>
         </div>
@@ -489,6 +490,49 @@
         let currentDistrict = 'downtown';
         let titleCard = { text: '', sub: '', timer: 0 };
         let bossDefeated = false;
+
+        // ---------- STORY MODE: case-file clues about the escaped inmate ----------
+        // A modal dialog used for the intro note and each clue pickup. Freezes
+        // gameplay (like the building cutscene) until the player dismisses it.
+        let storyModal = null;   // { lines: [...] }
+        function showStory(lines) { storyModal = { lines }; }
+
+        // Clues build toward the escaped inmate's identity (the LexCorp "genius"
+        // archetype) without naming him — and without placing him on this level.
+        const clues = [
+            {
+                x: 900, district: 'downtown', found: false, lines: [
+                    "CASE FILE — CLUE 1 OF 5",
+                    "Witnesses near the breach say the escapee never raised his voice, never raised a fist — he didn't need to. \"Smartest man I ever met,\" one guard muttered, \"and he never once let you forget it.\""
+                ]
+            },
+            {
+                x: 3150, district: 'downtown', found: false, lines: [
+                    "CASE FILE — CLUE 2 OF 5",
+                    "Prison intake records are sealed, but an old newspaper clipping found in his cell shows a boardroom photo — pinstripe suit, corner office, a company logo torn away before anyone could read it."
+                ]
+            },
+            {
+                x: 4865, district: 'downtown', found: false, lines: [
+                    "CASE FILE — CLUE 3 OF 5",
+                    "At the breach itself: a guard's report. \"Bald. Calm. Looked at the warden like he pitied him.\" One line is underlined twice — \"Said something about settling a score with the man who can fly.\""
+                ]
+            },
+            {
+                x: 6700, district: 'docks', found: false, lines: [
+                    "CASE FILE — CLUE 4 OF 5",
+                    "A dockworker found a shipping crate forced open from the inside. Stamped on the side, half scratched off: a stylized letter 'L'. The metal inside was still warm — like it had powered something, recently."
+                ]
+            },
+            {
+                x: 12600, district: 'uptown', found: false, lines: [
+                    "CASE FILE — CLUE 5 OF 5",
+                    "Uptown security caught a thermal signature in an abandoned tower basement — humming servers, fresh welding marks, the unmistakable green glow of unlicensed reactor tech. He's already rebuilding.",
+                    "All five threads point to one boardroom shadow. CK has more than enough leads now to start tracking him through the city."
+                ]
+            },
+        ];
+        let cluesFound = 0;
         let mapOpen = false;
         let grabbedEnemy = null;   // enemy currently held by the hero
         // ── BANK ROBBERY MISSION ──────────────────────────────────────────
@@ -511,6 +555,7 @@
             { x: 2580, w: 130, h: 160, type: 'shop', district: 'downtown', name: 'CORNER STORE' },
             { x: 3720, w: 168, h: 205, type: 'police', district: 'downtown', name: 'POLICE DEPT.' },
             { x: 4520, w: 118, h: 150, type: 'pharmacy', district: 'downtown', name: 'PHARMACY' },
+            { x: 4750, w: 230, h: 250, type: 'prison', district: 'downtown', name: 'STONEGATE PENITENTIARY' },
             // DOCKS
             { x: 5560, w: 148, h: 170, type: 'shop', district: 'docks', name: 'HARBOR MARKET' },
             { x: 8860, w: 142, h: 165, type: 'diner', district: 'docks', name: 'DOCKSIDE DINER' },
@@ -594,7 +639,10 @@
             ],
             // rescued civilians who now live here safely (filled as you rescue them)
             residents: [],
-            nextDeskX: 1640   // x pos for next rescued-civilian desk; grows as room expands
+            nextDeskX: 1640,   // x pos for next rescued-civilian desk; grows as room expands
+            // case-file note waiting on the hero's desk — sits on the papers stack
+            // drawn in drawInterior() at offX+26, floorY-38 (offX = 1605)
+            note: { x: 1631, y: 432, w: 36, h: 20, read: false }
         };
 
 
@@ -743,6 +791,14 @@
         // ---------- INPUT ----------
         const keys = {};
         window.addEventListener('keydown', e => {
+            // ---- story modal (case-file note/clue) intercepts all input ----
+            if (storyModal) {
+                if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF') {
+                    storyModal = null;
+                    e.preventDefault();
+                }
+                return;
+            }
             // ---- front-end screens intercept input ----
             if (gameScreen === 'title') {
                 if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
@@ -775,6 +831,35 @@
                     const heroMid = hero.x + hero.w / 2;
                     const doorMid = interior.exitDoor.x + interior.exitDoor.w / 2;
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
+                }
+            }
+            // F: read the case-file note on the hero's desk (kicks off the story)
+            if (e.code === 'KeyF' && scene === 'interior' && !interior.note.read) {
+                const heroMid = hero.x + hero.w / 2;
+                const nb = interior.note;
+                if (Math.abs(heroMid - (nb.x + nb.w / 2)) < 60) {
+                    interior.note.read = true;
+                    showStory([
+                        "CASE FILE",
+                        "CK is ready to start work today, but there's an emergency he must help solve. There has been an outbreak at the town prison and a local inmate has escaped.",
+                        "Clues are scattered around the city — find them to track down the escapee."
+                    ]);
+                    e.preventDefault();
+                }
+            }
+            // F: read a case-file clue found out in the city
+            if (e.code === 'KeyF' && scene === 'city' && interior.note.read) {
+                const heroMid = hero.x + hero.w / 2;
+                for (const cl of clues) {
+                    if (cl.found) continue;
+                    const cy = GROUND_Y - 90;
+                    if (Math.abs(heroMid - cl.x) < 60 && Math.abs(hero.y - cy) < 120) {
+                        cl.found = true;
+                        cluesFound++;
+                        showStory(cl.lines);
+                        e.preventDefault();
+                        break;
+                    }
                 }
             }
             // F: drop off all carried civilians at the interior safe zone (completes rescue)
@@ -1026,7 +1111,12 @@
             en.hp -= dmg;
             en.lastDmg = dmg; en.lastHitKind = kind;   // track for pain display
             flashEnemy(en);
-            en.knockback = (en.knockback || 0) + knock * (attacker ? attacker.facing : 1);
+            // Cap accumulated knockback — while frozen, dodge is disabled so every hit
+            // lands; without a cap, repeated hits stack into runaway twitching since
+            // the frozen enemy can't actually move away to bleed off the shove.
+            const KNOCKBACK_CAP = 16;
+            en.knockback = Math.max(-KNOCKBACK_CAP, Math.min(KNOCKBACK_CAP,
+                (en.knockback || 0) + knock * (attacker ? attacker.facing : 1)));
             en.hitReact = 14;
             const killed = en.hp <= 0;
             spawnImpact(en.x + en.w / 2, en.y + en.h / 2, kind, killed);
@@ -3367,6 +3457,86 @@
                 // Door
                 ctx.fillStyle = '#181818'; ctx.fillRect(x + w / 2 - 14, GROUND_Y - 50, 28, 50);
             }
+            else if (type === 'prison') {
+                // ── STONEGATE PENITENTIARY: grim stone block, breached perimeter ──
+                const pg2 = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                pg2.addColorStop(0, '#3a3a40'); pg2.addColorStop(1, '#1c1c22');
+                ctx.fillStyle = pg2; ctx.fillRect(x, top, w, h);
+                ctx.fillStyle = '#26262c'; ctx.fillRect(x, top, w, 10); // coping
+
+                // Barred windows — grim little slots
+                const rows = 3, cols = Math.max(2, Math.floor((w - 20) / 34));
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const wx = x + 14 + c * 34, wy = top + 30 + r * 60;
+                        ctx.fillStyle = '#0a0a0c'; ctx.fillRect(wx, wy, 22, 30);
+                        ctx.strokeStyle = '#55555c'; ctx.lineWidth = 1.5;
+                        for (let bi = 1; bi < 4; bi++) {
+                            ctx.beginPath(); ctx.moveTo(wx + bi * 5.5, wy); ctx.lineTo(wx + bi * 5.5, wy + 30); ctx.stroke();
+                        }
+                    }
+                }
+
+                // Watchtower (left side, taller than the main block)
+                const twX = x - 10, twW = 46, twH = 70;
+                ctx.fillStyle = '#2a2a30'; ctx.fillRect(twX, top - twH, twW, twH + 12);
+                ctx.fillStyle = '#0a0a0c'; ctx.fillRect(twX + 8, top - twH + 14, twW - 16, 18);
+
+                // Spotlight sweep — suggests an active manhunt
+                const sweep = Math.sin(Date.now() * 0.0006) * 0.6;
+                ctx.save();
+                ctx.globalAlpha = 0.16;
+                ctx.fillStyle = '#fff8c0';
+                ctx.beginPath();
+                ctx.moveTo(twX + twW / 2, top - twH + 8);
+                ctx.lineTo(twX + twW / 2 + Math.sin(sweep + 1) * 220, top - twH + 268);
+                ctx.lineTo(twX + twW / 2 + Math.sin(sweep - 0.4) * 220, top - twH + 268);
+                ctx.closePath(); ctx.fill();
+                ctx.restore();
+
+                // Flashing alarm beacon atop the tower
+                const blink2 = Math.sin(Date.now() * 0.02) > 0;
+                ctx.shadowColor = '#ff2020'; ctx.shadowBlur = blink2 ? 16 : 4;
+                ctx.fillStyle = blink2 ? '#ff4040' : '#881010';
+                ctx.beginPath(); ctx.arc(twX + twW / 2, top - twH - 4, 6, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Sign
+                ctx.fillStyle = '#0a0a0c'; ctx.fillRect(x + w / 2 - 86, top + h * 0.46, 172, 22);
+                ctx.fillStyle = '#d8d8de'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + h * 0.46 + 14);
+
+                // Main gate (heavy bars)
+                ctx.fillStyle = '#15151a'; ctx.fillRect(x + w / 2 - 26, GROUND_Y - 64, 52, 64);
+                ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
+                for (let gi = 0; gi < 5; gi++) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + w / 2 - 26 + gi * 13, GROUND_Y - 64);
+                    ctx.lineTo(x + w / 2 - 26 + gi * 13, GROUND_Y);
+                    ctx.stroke();
+                }
+
+                // Breached chain-link fence — torn open at the escape point
+                const fenceY = GROUND_Y - 36;
+                ctx.strokeStyle = 'rgba(180,185,195,0.55)'; ctx.lineWidth = 1.5;
+                for (let fx = x - 30; fx < x + w + 30; fx += 14) {
+                    if (fx > x + w * 0.35 && fx < x + w * 0.62) continue;  // the gap
+                    ctx.beginPath(); ctx.moveTo(fx, fenceY); ctx.lineTo(fx, GROUND_Y); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(fx, GROUND_Y); ctx.lineTo(fx + 14, fenceY); ctx.stroke();
+                }
+                // Bent post at the breach
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(x + w * 0.35, fenceY); ctx.lineTo(x + w * 0.40, fenceY + 14); ctx.stroke();
+                // Caution tape across the gap
+                ctx.save();
+                ctx.translate(x + w * 0.48, fenceY + 6);
+                ctx.rotate(-0.18);
+                for (let ti = -60; ti < 60; ti += 16) {
+                    ctx.fillStyle = ti % 32 === 0 ? '#ffd84d' : '#1a1a1a';
+                    ctx.fillRect(ti, -3, 16, 6);
+                }
+                ctx.restore();
+            }
 
             // Shared: curb shadow line
             ctx.fillStyle = 'rgba(0,0,0,0.18)';
@@ -4087,6 +4257,31 @@
                 ctx.restore();
             }
 
+            // ---- STORY CLUES: case-file pickups revealing the escapee's identity ----
+            if (interior.note.read) {
+                for (const cl of clues) {
+                    if (cl.found) continue;
+                    const bob = Math.sin(Date.now() * 0.004 + cl.x) * 5;
+                    const cy = GROUND_Y - 90 + bob;
+                    ctx.save();
+                    ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 16;
+                    ctx.fillStyle = '#3a2f1a'; ctx.fillRect(cl.x - 14, cy - 10, 28, 20);
+                    ctx.fillStyle = '#ffe9b0'; ctx.fillRect(cl.x - 11, cy - 7, 22, 14);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#c0392b'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('?', cl.x, cy + 4);
+                    ctx.restore();
+                    const heroMid = hero.x + hero.w / 2;
+                    if (Math.abs(heroMid - cl.x) < 60 && Math.abs(hero.y - cy) < 120) {
+                        const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                        ctx.globalAlpha = pulse;
+                        ctx.fillStyle = '#ffe072'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                        ctx.fillText('Press F to read the clue', cl.x, cy - 24);
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+
             // ---- rescue civilians — threat level drives pose + indicator urgency ----
             const civS = 1.3;
             const civFigH = 42 * civS + 1;
@@ -4613,6 +4808,7 @@
             const emiDone = emitters.filter(e => e.destroyed).length;
             document.getElementById('objCount').textContent =
                 (civDone + emiDone) + '/' + (civilians.length + emitters.length);
+            document.getElementById('clueCount').textContent = cluesFound + '/' + clues.length;
         }
 
         // ---------- LOOP ----------
@@ -5001,6 +5197,27 @@
             ctx.fillStyle = '#9090a0'; ctx.font = '4px Arial';
             for (let pi = 0; pi < 5; pi++) ctx.fillRect(offX + 33, interior.floorY - 40 + pi * 3, 20, 1);
 
+            // ---- STORY: the case-file note waiting on the hero's desk ----
+            if (!interior.note.read) {
+                const nb = interior.note;
+                const pulse = 0.55 + Math.sin(Date.now() * 0.006) * 0.45;
+                ctx.save();
+                ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 14 * pulse;
+                ctx.strokeStyle = `rgba(255,216,77,${0.5 + pulse * 0.5})`; ctx.lineWidth = 2;
+                ctx.strokeRect(nb.x - 4, nb.y - 4, nb.w + 8, nb.h + 8);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ff3030'; ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('!', nb.x + nb.w / 2, nb.y - 8);
+                ctx.restore();
+                const heroMid = hero.x + hero.w / 2;
+                if (Math.abs(heroMid - (nb.x + nb.w / 2)) < 60) {
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#ffe072'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Press F to read the note', nb.x + nb.w / 2, nb.y - 28);
+                    ctx.globalAlpha = 1;
+                }
+            }
+
             // Cape on coat rack (right side)
             const rkX = offX + 170;
             ctx.fillStyle = '#5a3820';
@@ -5152,6 +5369,56 @@
             ctx.restore();
         }
 
+        // ---------- STORY MODAL: case-file note / clue dialog ----------
+        function wrapText(text, maxWidth) {
+            const words = text.split(' ');
+            const lines = [];
+            let cur = '';
+            for (const word of words) {
+                const test = cur ? cur + ' ' + word : word;
+                if (ctx.measureText(test).width > maxWidth && cur) { lines.push(cur); cur = word; }
+                else cur = test;
+            }
+            if (cur) lines.push(cur);
+            return lines;
+        }
+        function drawStoryModal() {
+            if (!storyModal) return;
+            ctx.save();
+            ctx.fillStyle = 'rgba(5,8,16,0.78)';
+            ctx.fillRect(0, 0, W, H);
+
+            const boxW = 660, boxH = 280;
+            const bx = W / 2 - boxW / 2, by = H / 2 - boxH / 2;
+            const bg = ctx.createLinearGradient(0, by, 0, by + boxH);
+            bg.addColorStop(0, '#2a2438'); bg.addColorStop(1, '#181420');
+            ctx.fillStyle = bg; ctx.fillRect(bx, by, boxW, boxH);
+            ctx.strokeStyle = '#ffd84d'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, boxW, boxH);
+
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#ffd84d'; ctx.font = 'bold 16px Arial';
+            ctx.fillText('CASE FILE', bx + 24, by + 36);
+            ctx.strokeStyle = 'rgba(255,216,77,0.4)';
+            ctx.beginPath(); ctx.moveTo(bx + 24, by + 46); ctx.lineTo(bx + boxW - 24, by + 46); ctx.stroke();
+
+            ctx.font = '14px Arial'; ctx.fillStyle = '#e8e4f0';
+            let ly = by + 76;
+            for (const line of storyModal.lines) {
+                for (const wl of wrapText(line, boxW - 48)) {
+                    ctx.fillText(wl, bx + 24, ly);
+                    ly += 22;
+                }
+                ly += 8;
+            }
+
+            const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Press ENTER to continue', bx + boxW / 2, by + boxH - 20);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
         function loop() {
             updateAtmosphere();   // always runs — clouds/planes animate on title screen too
             // ---- front-end screens: render and wait for the player ----
@@ -5191,6 +5458,16 @@
                 updateHitFX();
                 updateCamera();
                 draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // story modal: case-file note/clue dialog — freeze gameplay but keep the
+            // current scene rendered behind it
+            if (storyModal) {
+                if (scene === 'interior') drawInterior(); else draw();
+                drawStoryModal();
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
