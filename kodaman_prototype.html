@@ -128,7 +128,12 @@
             <div class="grp">Hero (P1)</div>
             Walk: A / D &nbsp; Fly: W (toggle), then W=up S=down<br>
             Strafe while flying: A / D &nbsp; Land: G &nbsp; Dash: hold Shift<br>
-            Q: Persona &nbsp; J: Punch &nbsp; K: Laser &nbsp; L: Freeze
+            Q: Persona &nbsp; J: Punch &nbsp; K: Laser &nbsp; L: Freeze<br>
+            <b style="color:#9ad8ff">Z: Block</b> (deflects enemy grab) &nbsp;
+            <b style="color:#9affca">C: Dodge</b> (roll, invincible)<br>
+            <b style="color:#ffd98a">V: Grab enemy / V again: Throw</b>
+            &nbsp;(+W/S = throw up/down)<br>
+            <b style="color:#ff9a9a">E: Drop civilians</b> (fight enemies, then re-pick up)
             <div class="grp">Hound (P2 / AI)</div>
             &larr;/&rarr; move &nbsp; &uarr; fly (then &uarr;/&darr;) &nbsp; ; land &nbsp; / dash<br>
             . Punch &nbsp; , Laser &nbsp; ' Freeze &nbsp; R: land Hound
@@ -141,7 +146,7 @@
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         const W = canvas.width, H = canvas.height;
-        const WORLD_WIDTH = 15500;   // full 3-district city width
+        const WORLD_WIDTH = 20000;   // extended city — 3 districts + deeper uptown
 
         // ---------- TUNING ----------
         const GRAVITY = 0.55;
@@ -187,7 +192,7 @@
                 intro: 'Low and open over the bay. Energy raiders swarm the cranes.', unlocked: true
             },
             {
-                id: 'uptown', name: 'UPTOWN HEIGHTS', x0: 10300, x1: 15500, color: '#5a3a6e',
+                id: 'uptown', name: 'UPTOWN HEIGHTS', x0: 10300, x1: 20000, color: '#5a3a6e',
                 intro: 'Towering spires. The Warlord rules from the summit.', unlocked: false
             },
         ];
@@ -215,6 +220,7 @@
         const platforms = [
             // Downtown
             { x: 760, y: 820, w: 150, h: 22, district: 'downtown' },
+            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },    // Weekly Planet roof (central)
             { x: 1150, y: 720, w: 170, h: 22, district: 'downtown' },
             { x: 1850, y: 640, w: 160, h: 22, district: 'downtown' },
             { x: 2300, y: 560, w: 180, h: 22, district: 'downtown' },
@@ -240,7 +246,15 @@
             { x: 12800, y: 380, w: 160, h: 22, district: 'uptown' },
             { x: 13400, y: 520, w: 170, h: 22, district: 'uptown' },
             { x: 14000, y: 340, w: 180, h: 22, district: 'uptown' },
-            { x: 14700, y: 260, w: 220, h: 22, district: 'uptown' },  // boss arena ledge
+            { x: 14700, y: 260, w: 220, h: 22, district: 'uptown' },  // old mid-section ledge
+            // ---- Extended uptown climb (15500-20000) ----
+            { x: 15600, y: 700, w: 170, h: 22, district: 'uptown' },
+            { x: 16100, y: 540, w: 160, h: 22, district: 'uptown' },
+            { x: 16700, y: 380, w: 170, h: 22, district: 'uptown' },
+            { x: 17300, y: 500, w: 180, h: 22, district: 'uptown' },
+            { x: 17900, y: 320, w: 160, h: 22, district: 'uptown' },
+            { x: 18500, y: 440, w: 175, h: 22, district: 'uptown' },
+            { x: 19100, y: 220, w: 240, h: 22, district: 'uptown' },  // final boss arena
         ];
 
         // Power orbs.
@@ -275,6 +289,13 @@
             { x: 13100, y: 280, r: 12, taken: false, district: 'uptown' },
             { x: 13700, y: 420, r: 12, taken: false, district: 'uptown' },
             { x: 14300, y: 240, r: 12, taken: false, district: 'uptown' },
+            // Extended uptown orbs
+            { x: 15700, y: 640, r: 12, taken: false, district: 'uptown' },
+            { x: 16300, y: 480, r: 12, taken: false, district: 'uptown' },
+            { x: 17000, y: 320, r: 12, taken: false, district: 'uptown' },
+            { x: 17800, y: 260, r: 12, taken: false, district: 'uptown' },
+            { x: 18600, y: 380, r: 12, taken: false, district: 'uptown' },
+            { x: 19300, y: 160, r: 12, taken: false, district: 'uptown' },
         ];
         let orbsCollected = 0;
 
@@ -308,6 +329,11 @@
             { x: 2600, y: 680, w: 44, h: 44, vx: -1.6, minX: 2400, maxX: 2800, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.4, minY: 600, maxY: 780, district: 'downtown' },
             { x: 3700, y: 500, w: 44, h: 44, vx: 1.5, minX: 3550, maxX: 3850, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.6, minY: 420, maxY: 620, district: 'downtown' },
             { x: 4600, y: 620, w: 38, h: 50, vx: -1.0, minX: 4450, maxX: 4750, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
+
+            // ---- BANK ROBBERS (3) — guard the bank at x≈1200, type='robber' ----
+            { x: 1240, y: 948, w: 38, h: 52, vx: 1.1, minX: 1190, maxX: 1390, alive: true, hp: 3, frozen: 0, type: 'robber', district: 'downtown', robber: true },
+            { x: 1300, y: 948, w: 38, h: 52, vx: -0.9, minX: 1190, maxX: 1390, alive: true, hp: 3, frozen: 0, type: 'robber', district: 'downtown', robber: true },
+            { x: 1365, y: 948, w: 38, h: 52, vx: 0.8, minX: 1190, maxX: 1390, alive: true, hp: 3, frozen: 0, type: 'robber', district: 'downtown', robber: true },
 
             // ---- DOCKS (8 → 16 enemies) ---- (energy-heavy aerial combat over water)
             { x: 5700, y: 700, w: 44, h: 44, vx: 1.4, minX: 5560, maxX: 5840, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 620, maxY: 820, district: 'docks' },
@@ -346,7 +372,17 @@
             { x: 14400, y: 560, w: 44, h: 44, vx: -1.45, minX: 14250, maxX: 14550, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.55, minY: 480, maxY: 680, district: 'uptown' },
 
             // BOSS at the summit
-            { x: 14780, y: 480, w: 76, h: 92, vx: 0.6, minX: 14660, maxX: 14900, alive: true, hp: 6, frozen: 0, type: 'warlord', vy: 0, district: 'uptown', boss: true },
+            // ---- Extended uptown gauntlet (15500-19000) ----
+            { x: 15700, y: 700, w: 40, h: 52, vx: 1.1, minX: 15620, maxX: 15820, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
+            { x: 16200, y: 540, w: 44, h: 44, vx: -1.3, minX: 16060, maxX: 16360, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 460, maxY: 660, district: 'uptown' },
+            { x: 16800, y: 380, w: 38, h: 50, vx: 0.9, minX: 16720, maxX: 16900, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
+            { x: 17400, y: 500, w: 44, h: 44, vx: 1.4, minX: 17260, maxX: 17560, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 420, maxY: 620, district: 'uptown' },
+            { x: 17800, y: 700, w: 40, h: 52, vx: -1.0, minX: 17720, maxX: 17900, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
+            { x: 18200, y: 440, w: 44, h: 44, vx: 1.3, minX: 18060, maxX: 18360, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 360, maxY: 560, district: 'uptown' },
+            { x: 18700, y: 700, w: 38, h: 50, vx: -1.2, minX: 18620, maxX: 18800, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
+            { x: 19000, y: 320, w: 44, h: 44, vx: 1.5, minX: 18860, maxX: 19160, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.6, minY: 240, maxY: 440, district: 'uptown' },
+            // BOSS — deep in the final arena
+            { x: 19380, y: 380, w: 76, h: 92, vx: 0.6, minX: 19240, maxX: 19520, alive: true, hp: 6, frozen: 0, type: 'warlord', vy: 0, district: 'uptown', boss: true },
         ];
 
         // Give every enemy a small health pool, a dodge ability, and timers.
@@ -391,7 +427,7 @@
                 x, y: GROUND_Y - 38, w: 22, h: 38, rescued: false, carried: false,
                 district, name,
                 homeX: x, roamDir: Math.random() < 0.5 ? -1 : 1, roamPhase: Math.random() * 100,
-                vx: 0
+                vx: 0, stopTimer: 0, dropCooldown: 0
             };
         }
         const civilians = [
@@ -413,17 +449,21 @@
             mkCiv(13540, 'uptown', 'Ava'),
             mkCiv(11440, 'uptown', 'Leo'),
             mkCiv(14140, 'uptown', 'Zoe'),
+            // Extended uptown civilians
+            mkCiv(15720, 'uptown', 'Kai'),
+            mkCiv(17360, 'uptown', 'Mia'),
+            mkCiv(18880, 'uptown', 'Rex'),
         ];
         // Now that civilians exist, pull enemies in to surround them.
         clusterEnemiesAroundCivilians();
         // Rescue buildings — carry a civilian here and drop them off to safety.
         // One per district so you never have to cross a locked gateway to rescue.
+        // Single central rescue building — accessible from any district when near it.
         const rescueBuildings = [
-            { x: 900, w: 220, h: 300, district: 'downtown', name: 'THE WEEKLY PLANET' },
-            { x: 7200, w: 220, h: 300, district: 'docks', name: 'THE WEEKLY PLANET' },
+            { x: 7600, w: 320, h: 430, district: 'docks', name: 'THE WEEKLY PLANET' },
         ];
-        // Who the hero is currently carrying (null = nobody).
-        let carriedCivilian = null;
+        // Civilians currently carried by the hero (max 3).
+        let carriedCivilians = [];
         // Building entry cut-scene state.
         let cutscene = { active: false, timer: 0, max: 150, building: null, civ: null, phase: 'in' };
 
@@ -437,15 +477,78 @@
         let titleCard = { text: '', sub: '', timer: 0 };
         let bossDefeated = false;
         let mapOpen = false;
+        let grabbedEnemy = null;   // enemy currently held by the hero
+        // ── BANK ROBBERY MISSION ──────────────────────────────────────────
+        let bankRobbery = {
+            triggered: false,   // hero has entered trigger radius
+            complete: false,   // all robbers defeated (this wave)
+            bankX: 1200,    // matches buildings array
+            alertPhase: 0,
+            wave: 0,       // 0 = first robbery, increments after each clear
+            cooldown: 0,       // frames until next wave spawns
+        };
+
+        // ── STOREFRONTS & CIVIC BUILDINGS ────────────────────────────────
+        // Placed so they never overlap gaps or the Weekly Planet (x 900-1120).
+        const buildings = [
+            // DOWNTOWN
+            { x: 150, w: 190, h: 155, type: 'gasstation', district: 'downtown', name: 'GAS N GO' },
+            { x: 680, w: 135, h: 175, type: 'diner', district: 'downtown', name: "JOE'S DINER" },
+            { x: 1200, w: 175, h: 220, type: 'bank', district: 'downtown', name: 'FIRST NATIONAL BANK' },
+            { x: 2580, w: 130, h: 160, type: 'shop', district: 'downtown', name: 'CORNER STORE' },
+            { x: 3720, w: 168, h: 205, type: 'police', district: 'downtown', name: 'POLICE DEPT.' },
+            { x: 4520, w: 118, h: 150, type: 'pharmacy', district: 'downtown', name: 'PHARMACY' },
+            // DOCKS
+            { x: 5560, w: 148, h: 170, type: 'shop', district: 'docks', name: 'HARBOR MARKET' },
+            { x: 8860, w: 142, h: 165, type: 'diner', district: 'docks', name: 'DOCKSIDE DINER' },
+            // UPTOWN
+            { x: 10880, w: 178, h: 230, type: 'bank', district: 'uptown', name: 'UPTOWN TRUST' },
+            { x: 12380, w: 128, h: 162, type: 'shop', district: 'uptown', name: 'HEIGHTS BOUTIQUE' },
+            { x: 13840, w: 138, h: 170, type: 'pharmacy', district: 'uptown', name: 'APEX PHARMACY' },
+        ];
+
+        // ── AMBIENT (NON-RESCUE) CIVILIANS ────────────────────────────────
+        // These roam parks, shops, and dockyards — they add city life but
+        // don't trigger the rescue mechanic.
+        const ambientNPCs = [
+            // DOWNTOWN — near gas station / diner
+            { x: 185, district: 'downtown', type: 'walker', name: 'Roy', homeX: 185, range: 110, speed: 0.32, roamDir: 1, roamPhase: 0, stopTimer: 0 },
+            { x: 730, district: 'downtown', type: 'shopper', name: 'Nina', homeX: 730, range: 90, speed: 0.38, roamDir: -1, roamPhase: 30, stopTimer: 0 },
+            // near City Park
+            { x: 1740, district: 'downtown', type: 'walker', name: 'Emma', homeX: 1740, range: 180, speed: 0.30, roamDir: 1, roamPhase: 60, stopTimer: 0 },
+            { x: 1820, district: 'downtown', type: 'sitter', name: 'Hank', homeX: 1820, range: 0, speed: 0.00, roamDir: 1, roamPhase: 0, stopTimer: 0 },
+            // playground area (kids are smaller + bouncier)
+            { x: 2195, district: 'downtown', type: 'kid', name: 'Timmy', homeX: 2195, range: 100, speed: 0.62, roamDir: -1, roamPhase: 10, stopTimer: 0 },
+            { x: 2265, district: 'downtown', type: 'kid', name: 'Sofia', homeX: 2265, range: 80, speed: 0.70, roamDir: 1, roamPhase: 40, stopTimer: 0 },
+            // Corner Store area
+            { x: 2640, district: 'downtown', type: 'shopper', name: 'Alice', homeX: 2640, range: 100, speed: 0.35, roamDir: 1, roamPhase: 75, stopTimer: 0 },
+            // late district
+            { x: 4000, district: 'downtown', type: 'walker', name: 'Pedro', homeX: 4000, range: 140, speed: 0.28, roamDir: -1, roamPhase: 20, stopTimer: 0 },
+            // DOCKS
+            { x: 5600, district: 'docks', type: 'worker', name: 'Brutus', homeX: 5600, range: 150, speed: 0.44, roamDir: 1, roamPhase: 5, stopTimer: 0 },
+            { x: 6880, district: 'docks', type: 'walker', name: 'Rose', homeX: 6880, range: 120, speed: 0.32, roamDir: -1, roamPhase: 50, stopTimer: 0 },
+            { x: 8880, district: 'docks', type: 'shopper', name: 'Gus', homeX: 8880, range: 90, speed: 0.36, roamDir: 1, roamPhase: 80, stopTimer: 0 },
+            // UPTOWN
+            { x: 10940, district: 'uptown', type: 'shopper', name: 'Claire', homeX: 10940, range: 120, speed: 0.38, roamDir: 1, roamPhase: 15, stopTimer: 0 },
+            { x: 12420, district: 'uptown', type: 'walker', name: 'Victor', homeX: 12420, range: 100, speed: 0.32, roamDir: -1, roamPhase: 35, stopTimer: 0 },
+            { x: 13900, district: 'uptown', type: 'walker', name: 'Ivy', homeX: 13900, range: 130, speed: 0.30, roamDir: 1, roamPhase: 55, stopTimer: 0 },
+        ];
+
+        let worldTime = 0;  // day/night cycle counter
+        let dayPhase = 0;  // 0=night, 1=noon — computed by updateAtmosphere
         // Front-end screen flow: 'title' -> 'howto' -> 'playing'
         let gameScreen = 'title';
         let levelComplete = false;
 
         // ---------- SCENE SYSTEM: city <-> Weekly Planet interior ----------
-        // scene is 'city' (the open districts) or 'interior' (inside the building).
-        let scene = 'city';
-        // Saved city position so we can restore the hero/hound on exit.
-        let savedCityState = null;
+        // Game starts INSIDE the Weekly Planet — hero exits to the city when ready.
+        let scene = 'interior';
+        // Pre-set the city spawn so exitInterior() drops the hero just outside the WP door.
+        let savedCityState = {
+            hx: 7768, hy: GROUND_Y - 74, hvx: 0, hvy: 0, hf: 1, hfly: false,
+            dx: 7720, dy: GROUND_Y - 44, dvx: 0, dvy: 0, df: 1,
+            district: 'docks'
+        };
         let enterCooldown = 0;   // frames after a transition before another can trigger
 
         // The interior is a self-contained room with its own coordinate space.
@@ -453,13 +556,13 @@
         // with the camera following the hero. Width is wider than the screen so you
         // can walk/fly around a real newsroom.
         const interior = {
-            w: 1800, h: 540,           // room: full height fits the viewport
+            w: 1800, h: 540,           // room: full height fits the viewport; expands as civilians are rescued
             floorY: 470,               // floor surface, comfortably on-screen
             ceilingY: 20,
             exitDoor: { x: 60, w: 70 },// door back out to the city (left side)
             // SAFE ZONE: carry a rescued civilian here (right side) and press F to drop
             // them off. This is where the rescue actually completes.
-            safeZone: { x: 1620, w: 160 },
+            safeZone: { x: 860, w: 160 },
             // newsroom desks (decor + NPC workstations), sitting on the floor
             desks: [
                 { x: 360, y: 410 }, { x: 560, y: 410 }, { x: 760, y: 410 },
@@ -477,7 +580,8 @@
                 { x: 480, baseX: 480, type: 'walk', name: 'Copy Editor', phase: 0, dir: -1, range: 160, speed: 0.6 },
             ],
             // rescued civilians who now live here safely (filled as you rescue them)
-            residents: []
+            residents: [],
+            nextDeskX: 1640   // x pos for next rescued-civilian desk; grows as room expands
         };
 
 
@@ -496,6 +600,7 @@
                 punchCD: 0, laserCD: 0, freezeCD: 0,
                 punchTimer: 0, laserTimer: 0, freezeTimer: 0,
                 capePhase: 0,        // animates the cape
+                hitTimer: 0,         // invincibility frames after taking a hit
                 character,
                 persona: 'super'
             };
@@ -503,20 +608,17 @@
 
         const hero = createEntity(60, GROUND_Y - 74, 'hero');
         const hound = createEntity(160, GROUND_Y - 44, 'dog');
+
+        // Place hero & hound in their office (interior positions — declared after createEntity)
+        hero.x = 1648; hero.y = interior.floorY - hero.h;
+        hero.vx = 0; hero.vy = 0; hero.flightActive = false;
+        hero.onGround = true; hero.facing = -1;   // facing the main newsroom
+        hero.persona = 'civilian';
+        hound.x = 1530; hound.y = interior.floorY - hound.h;
+        hound.onGround = true; hound.facing = 1;
+        enterCooldown = 90;   // prevent accidental immediate exit on load
         let p2Mode = 'ai';
         let controlsVisible = true;
-
-        // Start inside the Weekly Planet as civilian form
-        scene = 'interior';
-        hero.persona = 'civilian';
-        hero.x = interior.exitDoor.x + 150; hero.y = interior.floorY - hero.h;
-        hound.x = interior.exitDoor.x + 80; hound.y = interior.floorY - hound.h;
-        // Pre-fill savedCityState so exiting the building works from the start
-        savedCityState = {
-            hx: 60, hy: GROUND_Y - 74, hvx: 0, hvy: 0, hf: 1, hfly: false,
-            dx: 160, dy: GROUND_Y - 44, dvx: 0, dvy: 0, df: 1,
-            district: 'downtown'
-        };
 
         // ---------- SCENE TRANSITIONS ----------
         // Enter the Weekly Planet interior: save city positions, drop the hero/hound
@@ -535,8 +637,9 @@
             hound.x = interior.exitDoor.x + 80; hound.y = interior.floorY - hound.h;
             hound.vx = 0; hound.vy = 0; hound.flightActive = false; hound.onGround = true; hound.facing = 1;
             enterCooldown = 30;
-            if (carriedCivilian) {
-                titleCard = { text: 'THE WEEKLY PLANET', sub: 'Take ' + carriedCivilian.name + ' to the safe zone (right side) →', timer: 200 };
+            if (carriedCivilians.length > 0) {
+                const names = carriedCivilians.map(c => c.name).join(' & ');
+                titleCard = { text: 'THE WEEKLY PLANET', sub: 'Bring ' + names + ' to the safe zone → press F', timer: 200 };
             } else {
                 titleCard = { text: 'THE WEEKLY PLANET', sub: 'A safe haven. Press ENTER at the door to leave.', timer: 160 };
             }
@@ -557,26 +660,71 @@
             titleCard = { text: 'BACK ON THE STREETS', sub: '', timer: 100 };
         }
 
-        // Complete the rescue: drop the carried civilian at the interior safe zone.
-        // THIS is where a civilian actually becomes "rescued" — only after you've
-        // carried them inside and set them down in the newsroom.
+        // When the hero picks up a civilian, enlist the 3 nearest enemies to pursue.
+        function triggerChase(pickupX) {
+            const alreadyChasing = enemies.filter(e => e.alive && e.chaseMode).length;
+            if (alreadyChasing >= 3) return;
+            const needed = 3 - alreadyChasing;
+            const candidates = enemies
+                .filter(e => e.alive && !e.boss && !e.chaseMode && e.frozen <= 0)
+                .map(e => ({ e, d: Math.abs((e.x + e.w / 2) - pickupX) }))
+                .sort((a, b) => a.d - b.d)
+                .slice(0, needed);
+            for (const { e } of candidates) {
+                e.chaseMode = true;
+                e.chaseTimer = 1200;  // ~20 sec at 60fps before giving up
+                e.chaseAlert = 36;
+            }
+            if (candidates.length > 0) {
+                titleCard = {
+                    text: '⚠ ENEMIES ALERTED ⚠',
+                    sub: candidates.length + ' enem' + (candidates.length > 1 ? 'ies are' : 'y is') + ' chasing you! Reach The Weekly Planet or fight them off. (E = drop civilians)',
+                    timer: 160
+                };
+            }
+        }
+
+        // Find the nearest uncrowded x position for a new rescued-civilian desk.
+        // Scans left-to-right in 60px steps, skipping the safe zone and existing desks.
+        function findRescueDeskX() {
+            const occupied = interior.desks.map(d => d.x);
+            const szA = interior.safeZone.x - 50;
+            const szB = interior.safeZone.x + interior.safeZone.w + 50;
+            for (let x = 260; x < 8000; x += 60) {
+                if (x > szA && x < szB) continue;                             // skip safe zone
+                if (occupied.some(ox => Math.abs(ox - x) < 65)) continue;     // skip conflicts
+                return x;
+            }
+            return 3000;
+        }
+
+        // Complete the rescue: drop ALL carried civilians at the interior safe zone.
+        // Each civilian gets their own desk — the newsroom expands to fit them.
         function dropOffCivilian() {
-            const c = carriedCivilian;
-            if (!c) return;
-            c.rescued = true;
-            c.carried = false;
-            carriedCivilian = null;
-            // they join the newsroom as a happy resident near the safe zone
-            const sz = interior.safeZone;
-            interior.residents.push({
-                name: c.name,
-                x: sz.x + 30 + interior.residents.length * 28,
-                baseX: sz.x + 30 + interior.residents.length * 28,
-                phase: Math.random() * 6, dir: 1, range: 40
-            });
+            if (carriedCivilians.length === 0) return;
+            const rescued = [...carriedCivilians];
+            carriedCivilians = [];
+            for (const c of rescued) {
+                c.rescued = true;
+                c.carried = false;
+                // Give the civilian their own desk, placed in the nearest free gap
+                const deskX = findRescueDeskX();
+                interior.desks.push({ x: deskX, y: 410, rescued: true });
+                interior.npcs.push({
+                    x: deskX, baseX: deskX, type: 'sit',
+                    name: c.name, phase: Math.random() * 6.28,
+                    rescued: true, greeting: 0, standTimer: 0
+                });
+                // Expand the room if the new desk is near the right wall
+                interior.w = Math.max(interior.w, deskX + 280);
+            }
             spawnRescueFX(hero.x + hero.w / 2, hero.y + hero.h * 0.4);
             const done = civilians.filter(cc => cc.rescued).length;
-            titleCard = { text: c.name + ' is safe!', sub: 'Civilians rescued: ' + done + '/' + civilians.length, timer: 150 };
+            const names = rescued.map(c => c.name).join(' & ');
+            titleCard = {
+                text: names + (rescued.length > 1 ? ' are' : ' is') + ' safe!',
+                sub: 'Civilians rescued: ' + done + '/' + civilians.length, timer: 180
+            };
         }
 
         // ---------- INPUT ----------
@@ -602,7 +750,7 @@
             if (e.code === 'Enter' && enterCooldown <= 0) {
                 if (scene === 'city') {
                     for (const b of rescueBuildings) {
-                        if (b.district !== currentDistrict) continue;
+                        // No district gate — single central building, accessible anywhere
                         const heroMid = hero.x + hero.w / 2;
                         const doorMid = b.x + b.w / 2;
                         const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
@@ -616,14 +764,42 @@
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
                 }
             }
-            // F: drop off the carried civilian at the interior safe zone (completes rescue)
-            if (e.code === 'KeyF' && scene === 'interior' && carriedCivilian) {
+            // F: drop off all carried civilians at the interior safe zone (completes rescue)
+            if (e.code === 'KeyF' && scene === 'interior' && carriedCivilians.length > 0) {
                 const heroMid = hero.x + hero.w / 2;
                 const sz = interior.safeZone;
                 if (heroMid > sz.x && heroMid < sz.x + sz.w) {
                     dropOffCivilian();
                     e.preventDefault();
                 }
+            }
+            // E: drop all carried civilians to fight enemies; they can be re-picked up
+            if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
+                for (const c of carriedCivilians) {
+                    c.carried = false;
+                    c.x = hero.x + hero.facing * 28;
+                    c.y = GROUND_Y - 38;
+                    c.roamDir = -hero.facing;
+                    c.stopTimer = 40;
+                    c.dropCooldown = 100;  // brief window before hero can re-pick up
+                }
+                carriedCivilians = [];
+                // Chasers stand down — they'll re-guard the dropped civilians instead
+                for (const en of enemies) en.chaseMode = false;
+                titleCard = { text: 'Civilians set down', sub: 'Defeat the enemies, then re-approach to carry them again', timer: 130 };
+                e.preventDefault();
+            }
+            // V = grab nearest enemy; V again = throw them
+            if (e.code === 'KeyV' && hero.persona === 'super') {
+                if (grabbedEnemy) {
+                    // Throw in chosen direction
+                    const upward = !!keys['KeyW'] || !!keys['Space'];
+                    const downward = !!keys['KeyS'];
+                    throwGrabbedEnemy(upward ? 'up' : downward ? 'slam' : 'forward');
+                } else {
+                    tryGrabEnemy();
+                }
+                e.preventDefault();
             }
             if (e.code === 'KeyH') {
                 controlsVisible = !controlsVisible;
@@ -835,12 +1011,13 @@
                 return false;                          // attack whiffed
             }
             en.hp -= dmg;
+            en.lastDmg = dmg; en.lastHitKind = kind;   // track for pain display
             flashEnemy(en);
             en.knockback = (en.knockback || 0) + knock * (attacker ? attacker.facing : 1);
-            en.hitReact = 8;
+            en.hitReact = 14;
             const killed = en.hp <= 0;
             spawnImpact(en.x + en.w / 2, en.y + en.h / 2, kind, killed);
-            if (killed) { en.alive = false; en.deathBurst = true; }
+            if (killed) { en.alive = false; en.deathTimer = 24; en._deathSpin = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.5); }
             return true;
         }
 
@@ -874,14 +1051,38 @@
         function doLaser(e) {
             e.laserTimer = LASER_EFFECT;
             e.lunge = -1.5 * e.facing;
-            // Taller beam band so the laser connects across the enemy's body height.
-            const box = e.facing === 1
-                ? { x: e.x + e.w * 0.5, y: e.y + e.h * 0.05, w: WORLD_WIDTH, h: e.h * 0.5 }
-                : { x: 0, y: e.y + e.h * 0.05, w: e.x + e.w * 0.5, h: e.h * 0.5 };
+            const dir = e.facing;
+            const srcX = e.x + e.w * 0.5;
+            const beamY = e.y + e.h * 0.05;
+            const beamH = e.h * 0.50;
+
+            // Find the CLOSEST enemy along the beam and stop there
+            let stopX = dir === 1 ? WORLD_WIDTH : 0;
+            let hitEn = null;
             for (const en of enemies) {
-                if (en.alive && aabb(box, en)) tryHitEnemy(en, LASER_DMG, 4, 'laser', e);
+                if (!en.alive) continue;
+                if (en.y + en.h <= beamY || en.y >= beamY + beamH) continue;  // vertical miss
+                const enEdge = dir === 1 ? en.x : en.x + en.w;             // near edge
+                const inFront = dir === 1 ? enEdge > srcX : enEdge < srcX;
+                if (!inFront) continue;
+                const closer = dir === 1 ? enEdge < stopX : enEdge > stopX;
+                if (closer) { stopX = enEdge; hitEn = en; }
             }
-            damageEmitters(box, LASER_DMG);
+            if (hitEn) {
+                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
+                // If the hit killed the enemy, don't visually stop the beam there —
+                // let it pierce through to full length
+                if (!hitEn.alive) { stopX = dir === 1 ? WORLD_WIDTH : 0; hitEn = null; }
+            }
+
+            // Emitters also block the beam
+            const emBox = dir === 1
+                ? { x: srcX, y: beamY, w: stopX - srcX, h: beamH }
+                : { x: stopX, y: beamY, w: srcX - stopX, h: beamH };
+            damageEmitters(emBox, LASER_DMG);
+
+            e._laserStopX = stopX;    // used by draw to terminate the beam visually
+            e._laserHit = !!hitEn;  // flag: beam hit something real (not a kill)
         }
         function doFreeze(e) {
             e.freezeTimer = FREEZE_EFFECT;
@@ -947,34 +1148,26 @@
                 }
             }
 
-            // ---- CIVILIAN PICKUP & DROP-OFF (hero only) ----
-            // Flow: approach a civilian (in EITHER persona) -> pick them up (carry).
-            // Carry them to a rescue building (The Weekly Planet) -> drop off -> safe.
-            if (e === hero) {
-                // PICK UP: near an un-carried, un-rescued civilian (any persona now)
-                if (!carriedCivilian) {
-                    for (const c of civilians) {
-                        if (c.rescued || c.carried) continue;
-                        const ocx = e.x + e.w / 2, ocy = e.y + e.h / 2;
-                        const ccx = c.x + c.w / 2, ccy = c.y + c.h / 2;
-                        if (Math.hypot(ocx - ccx, ocy - ccy) < 60) {
-                            c.carried = true;
-                            carriedCivilian = c;
-                            spawnRescueFX(ccx, ccy - 10);   // gentle pickup sparkle
-                            titleCard = {
-                                text: 'Carrying ' + c.name,
-                                sub: 'Bring them to THE WEEKLY PLANET',
-                                timer: 100
-                            };
-                            break;
-                        }
+            // ---- CIVILIAN PICKUP (hero only, up to 3 at once) ----
+            if (e === hero && carriedCivilians.length < 3) {
+                for (const c of civilians) {
+                    if (c.rescued || c.carried || (c.dropCooldown || 0) > 0) continue;
+                    const ocx = e.x + e.w / 2, ocy = e.y + e.h / 2;
+                    const ccx = c.x + c.w / 2, ccy = c.y + c.h / 2;
+                    if (Math.hypot(ocx - ccx, ocy - ccy) < 60) {
+                        c.carried = true;
+                        carriedCivilians.push(c);
+                        spawnRescueFX(ccx, ccy - 10);
+                        triggerChase(ccx);
+                        const cnt = carriedCivilians.length;
+                        titleCard = {
+                            text: 'Carrying ' + carriedCivilians.map(cc => cc.name).join(', '),
+                            sub: cnt < 3 ? 'Pick up more (' + cnt + '/3) or bring them to THE WEEKLY PLANET' : 'Full! Bring them to THE WEEKLY PLANET',
+                            timer: 100
+                        };
+                        break;
                     }
                 }
-
-                // AT THE BUILDING while carrying: prompt to go inside (handled by the
-                // ENTER key, which carries the civilian in with you). The rescue now
-                // completes INSIDE at the safe zone, not at the door.
-                // (No automatic rescue here anymore.)
             }
 
             // fall through gap = respawn
@@ -989,6 +1182,7 @@
         function updateEntity(e, input) {
             // timers
             if (e.orbBoost > 0) e.orbBoost--;
+            if (e.hitTimer > 0) e.hitTimer--;
             if (e.zap > 0) e.zap--;
             const speedMax = MAX_SPEED * (e.orbBoost > 0 ? 1.6 : 1);
 
@@ -1081,6 +1275,56 @@
 
             if (e.onGround) { e.landing = false; }
 
+            // ── BLOCK – hold Z to raise a defensive stance ──────────────────
+            if (e === hero) {
+                const wantBlock = input.block;   // block works on ground and in flight
+                if (wantBlock && (e.blockCD || 0) <= 0) {
+                    e.blocking = true;
+                    e.blockTimer = Math.min((e.blockTimer || 0) + 1, 48);
+                    e.vx *= 0.35;                          // suppress horizontal drift
+                    if (e.flightActive) e.vy *= 0.55;     // hold altitude while blocking in flight
+                } else {
+                    if (e.blocking) e.blockCD = 22;  // cooldown after release
+                    e.blocking = false;
+                    e.blockTimer = Math.max(0, (e.blockTimer || 0) - 2);
+                }
+                if ((e.blockCD || 0) > 0) e.blockCD--;
+
+                // ── DODGE – tap C on ground ────────────────────────────────────
+                if (input.dodge && e.onGround && (e.dodgeCD || 0) <= 0 && (e.dodgeFrames || 0) === 0) {
+                    e.dodgeFrames = 14;
+                    e.dodgeDir = e.facing;
+                    e.dodgeCD = 52;
+                    e.dodging = true;
+                    if (!e.dodgeTrail) e.dodgeTrail = [];
+                }
+                if ((e.dodgeFrames || 0) > 0) {
+                    e.dodgeFrames--;
+                    e.dodging = true;
+                    e.vx = e.dodgeDir * 9;          // override with roll velocity
+                    e.vy = Math.min(e.vy, 2);       // keep feet near ground
+                    if (!e.dodgeTrail) e.dodgeTrail = [];
+                    e.dodgeTrail.push({ x: e.x, y: e.y });
+                    if (e.dodgeTrail.length > 7) e.dodgeTrail.shift();
+                } else {
+                    if (e.dodging) { e.dodging = false; }
+                    if ((e.dodgeCD || 0) > 0) e.dodgeCD--;
+                    // Fade trail out
+                    if (e.dodgeTrail && e.dodgeTrail.length > 0 && (e.dodgeFrames || 0) === 0) {
+                        e.dodgeTrail.shift();
+                    }
+                }
+
+                // Position grabbed enemy in front of hero
+                if (grabbedEnemy && grabbedEnemy.alive) {
+                    grabbedEnemy.x = e.x + e.facing * (e.w * 0.5 + grabbedEnemy.w * 0.2);
+                    grabbedEnemy.y = e.y + e.h * 0.08;
+                    grabbedEnemy.vx = 0; grabbedEnemy.vy = 0;
+                } else if (grabbedEnemy && !grabbedEnemy.alive) {
+                    grabbedEnemy.grabbed = false; grabbedEnemy = null;
+                }
+            }
+
             // apply + collide
             // attack lunge adds a quick positional surge that decays
             if (e.lunge) {
@@ -1131,13 +1375,14 @@
             if (input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
 
-            // carried civilian rides in the hero's arms (works in either persona now)
-            if (e === hero && carriedCivilian && !cutscene.active) {
-                const c = carriedCivilian;
-                // held against the chest, slightly in front, riding at arm height
-                c.x = e.x + e.w / 2 - c.w / 2 + e.facing * 10;
-                c.y = e.y + e.h * 0.32;
-                c.vx = 0;
+            // Position all carried civilians — stacked/spread in the hero's arms
+            if (e === hero && carriedCivilians.length > 0 && !cutscene.active) {
+                carriedCivilians.forEach((c, i) => {
+                    const spread = (i - (carriedCivilians.length - 1) / 2) * 16;
+                    c.x = e.x + e.w / 2 - c.w / 2 + e.facing * 12 + spread;
+                    c.y = e.y + e.h * 0.28 + i * 6;
+                    c.vx = 0;
+                });
             }
         }
 
@@ -1149,7 +1394,8 @@
                 moveDown: !!keys['KeyS'],
                 land: !!keys['KeyG'],
                 dash: (!!keys['ShiftLeft']) || (!!keys['ShiftRight']),
-                punch: !!keys['KeyJ'], laser: !!keys['KeyK'], freeze: !!keys['KeyL']
+                punch: !!keys['KeyJ'], laser: !!keys['KeyK'], freeze: !!keys['KeyL'],
+                block: !!keys['KeyZ'], dodge: !!keys['KeyC']
             };
         }
         function computeCoopInput() {
@@ -1221,6 +1467,44 @@
             return input;
         }
 
+        // ── Grab: latch onto nearest enemy within 70 px ─────────────────
+        function tryGrabEnemy() {
+            let best = null, bestD = 70;
+            const hcx = hero.x + hero.w / 2, hcy = hero.y + hero.h / 2;
+            for (const en of enemies) {
+                if (!en.alive || en.boss || en.grabbed) continue;
+                const d = Math.hypot((en.x + en.w / 2) - hcx, (en.y + en.h / 2) - hcy);
+                if (d < bestD) { bestD = d; best = en; }
+            }
+            if (best) {
+                grabbedEnemy = best;
+                best.grabbed = true;
+                best.frozen = Math.max(best.frozen, 60);  // briefly freeze them
+                best.chaseMode = false;
+                spawnImpact(best.x + best.w / 2, best.y + best.h / 2, 'punch', false);
+                screenShake = Math.max(screenShake, 5);
+                titleCard = { text: 'GRABBED!', sub: 'V = throw forward  ·  V+W = up  ·  V+S = slam', timer: 130 };
+            }
+        }
+
+        // ── Throw: fling the held enemy with physics ──────────────────────
+        function throwGrabbedEnemy(dir) {
+            if (!grabbedEnemy) return;
+            const en = grabbedEnemy;
+            en.grabbed = false;
+            en.thrown = true;
+            en.thrownTimer = 55;
+            en.frozen = 0;
+            switch (dir) {
+                case 'up': en.throwVX = hero.facing * 5; en.throwVY = -16; break;
+                case 'slam': en.throwVX = hero.facing * 3; en.throwVY = 10; break;
+                default: en.throwVX = hero.facing * 15; en.throwVY = -5; break;
+            }
+            spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'punch', false);
+            screenShake = Math.max(screenShake, 8);
+            grabbedEnemy = null;
+        }
+
         // ---------- ENEMY LOGIC ----------
         function updateEnemies() {
             for (const en of enemies) {
@@ -1228,6 +1512,34 @@
                 if (en.hitFlash > 0) en.hitFlash--;
                 if (en.hitReact > 0) en.hitReact--;
                 if (en.dodgeCD > 0) en.dodgeCD--;
+
+                // ── THROWN: fling physics until landing ────────────────────────
+                if (en.thrown) {
+                    en.thrownTimer = (en.thrownTimer || 0) - 1;
+                    en.x += en.throwVX;
+                    en.y += en.throwVY;
+                    en.throwVY += GRAVITY * 1.1;
+                    en.throwVX *= 0.93;
+                    // Chain damage to other enemies
+                    for (const other of enemies) {
+                        if (other === en || !other.alive || other.thrown) continue;
+                        if (aabb(en, other)) {
+                            tryHitEnemy(other, 4, 14, 'punch', { facing: en.throwVX > 0 ? 1 : -1 });
+                            en.throwVY = -(Math.abs(en.throwVY) * 0.55);
+                            en.throwVX *= -0.5;
+                        }
+                    }
+                    // Ground landing
+                    if (en.y + en.h >= GROUND_Y) {
+                        en.y = GROUND_Y - en.h;
+                        en.throwVY = 0; en.throwVX = 0;
+                        en.thrown = false;
+                        spawnImpact(en.x + en.w / 2, GROUND_Y - 4, 'punch', en.hp <= 0);
+                        screenShake = Math.max(screenShake, en.hp <= 0 ? 10 : 5);
+                    }
+                    if ((en.thrownTimer || 0) <= 0) en.thrown = false;
+                    continue;  // skip patrol while airborne
+                }
 
                 // active dodge: a quick sideways hop out of harm's way
                 if (en.dodgeTimer > 0) {
@@ -1254,6 +1566,72 @@
                 }
 
                 if (en.frozen > 0) { en.frozen--; continue; }
+
+                // ---- CHASE MODE: relentlessly pursue the hero while civilians are carried ----
+                if (en.chaseMode) {
+                    en.chaseTimer--;
+                    if (en.chaseTimer <= 0 || carriedCivilians.length === 0) {
+                        en.chaseMode = false;   // give up — go back to patrol
+                    } else {
+                        if ((en.chaseAlert || 0) > 0) en.chaseAlert--;
+                        const heroMid = hero.x + hero.w / 2;
+                        const enMid = en.x + en.w / 2;
+                        const dx = heroMid - enMid;
+                        const CSPD = en.type === 'energy' ? 2.9 : 2.3;
+
+                        if (en.vy !== undefined) {
+                            // Aerial enemy: close on hero in X and Y
+                            en.x += Math.sign(dx) * Math.min(CSPD, Math.abs(dx));
+                            const dy = (hero.y + hero.h / 2) - (en.y + en.h / 2);
+                            en.y += Math.sign(dy) * Math.min(2.2, Math.abs(dy));
+                            en.y = Math.max(80, Math.min(GROUND_Y - en.h - 4, en.y));
+                        } else {
+                            // Ground enemy: gap-aware horizontal chase
+                            const nextX = en.x + Math.sign(dx) * CSPD;
+                            let blocked = false;
+                            for (const g of gaps) {
+                                if (nextX + en.w > g.x && nextX < g.x + g.w) { blocked = true; break; }
+                            }
+                            if (!blocked) en.x += Math.sign(dx) * Math.min(CSPD, Math.abs(dx));
+                        }
+                        en.facing = Math.sign(dx) || en.facing;
+
+                        // Enemy contact: BLOCK deflects; DODGE evades; otherwise risk losing a civilian
+                        const heroBB = { x: hero.x, y: hero.y, w: hero.w, h: hero.h };
+                        if (aabb(en, heroBB) && hero.hitTimer <= 0 && carriedCivilians.length > 0) {
+                            if (hero.blocking) {
+                                // BLOCK! – enemy bounces back, no civilian theft
+                                en.knockback = (en.x > hero.x ? 1 : -1) * 14;
+                                en.grabCD = 100;
+                                en.chaseMode = false;
+                                spawnImpact(hero.x + hero.w / 2, hero.y + hero.h * 0.35, 'punch', false);
+                                screenShake = Math.max(screenShake, 6);
+                                titleCard = { text: '🛡 BLOCKED!', sub: 'Enemy deflected!', timer: 60 };
+                            } else if (hero.dodging) {
+                                // DODGE – ghost through the grab, no effect
+                            } else {
+                                hero.vx = Math.sign(hero.x - en.x) * 11;
+                                hero.vy = -5;
+                                hero.hitTimer = 55;
+                                screenShake = Math.max(screenShake, 7);
+                                spawnImpact(hero.x + hero.w / 2, hero.y + hero.h * 0.4, 'punch', false);
+                                if (Math.random() < 0.35) {
+                                    const freed = carriedCivilians.pop();
+                                    freed.carried = false;
+                                    freed.x = hero.x - hero.facing * 34;
+                                    freed.y = GROUND_Y - 38;
+                                    freed.dropCooldown = 80;
+                                    freed.stopTimer = 40;
+                                    spawnImpact(freed.x + freed.w / 2, freed.y, 'punch', false);
+                                    titleCard = { text: freed.name + ' knocked free!', sub: 'Re-approach to pick them back up', timer: 140 };
+                                }
+                            }
+                        }
+
+                        en.phase = (en.phase || 0) + 0.18;
+                        continue;   // skip normal patrol / guard this frame
+                    }
+                }
 
                 // ---- GUARD CIVILIANS: ground enemies sense a nearby un-rescued
                 // civilian and converge to flank it, making rescues harder. Flyers
@@ -1318,13 +1696,186 @@
             for (const c of civilians) {
                 if (c.rescued || c.carried) continue;
                 c.roamPhase = (c.roamPhase || 0) + 1;
-                // change direction occasionally or at the edge of their range
-                if (c.roamPhase % 90 === 0) c.roamDir *= (Math.random() < 0.5 ? -1 : 1);
-                const range = 55;
-                if (c.x < c.homeX - range) c.roamDir = 1;
-                if (c.x > c.homeX + range) c.roamDir = -1;
-                c.vx = c.roamDir * 0.45;
+
+                // Idle pause: stand still briefly (natural behaviour)
+                if ((c.dropCooldown || 0) > 0) c.dropCooldown--;
+                if ((c.stopTimer || 0) > 0) { c.stopTimer--; c.vx = 0; continue; }
+
+                // District bounds — civilians wander freely within their district
+                const dist = districts.find(d => d.id === c.district);
+                const minX = dist ? dist.x0 + 120 : 120;
+                const maxX = dist ? dist.x1 - 120 : WORLD_WIDTH - 120;
+
+                // Gap avoidance: peek 90 px ahead; reverse before falling in
+                const lookX = c.x + (c.roamDir || 1) * 90;
+                let nearGap = false;
+                for (const g of gaps) {
+                    if (lookX > g.x - 40 && lookX < g.x + g.w + 40) { nearGap = true; break; }
+                }
+
+                // Occasional direction change and random idle pauses
+                if (c.roamPhase % 300 === 0) {
+                    if (Math.random() < 0.28) {
+                        c.stopTimer = 60 + Math.floor(Math.random() * 210);  // 1–4 sec stop
+                        continue;
+                    }
+                    if (Math.random() < 0.45) c.roamDir = Math.random() < 0.5 ? 1 : -1;
+                }
+
+                // Hard boundaries
+                if (c.x <= minX) c.roamDir = 1;
+                if (c.x >= maxX) c.roamDir = -1;
+                if (nearGap) c.roamDir = -(c.roamDir || 1);
+
+                c.vx = (c.roamDir || 1) * 0.62;
                 c.x += c.vx;
+            }
+        }
+
+        // ── Ambient NPC movement ────────────────────────────────────────
+        function updateAmbientNPCs() {
+            for (const n of ambientNPCs) {
+                if (n.type === 'sitter') continue;
+                n.roamPhase = (n.roamPhase || 0) + 1;
+                if (n.velX === undefined) n.velX = 0;
+
+                // Flee from nearby living enemies (only react at close range)
+                let fleeDir = 0;
+                for (const en of enemies) {
+                    if (!en.alive || en.frozen > 0) continue;
+                    const d = Math.abs((en.x + en.w / 2) - n.x);
+                    if (d < 160) { fleeDir = n.x >= en.x + en.w / 2 ? 1 : -1; break; }
+                }
+                if (fleeDir) {
+                    // Smooth acceleration away — no instant teleport
+                    n.velX = n.velX * 0.65 + fleeDir * 3.0 * 0.35;
+                    n.x += n.velX;
+                    n.roamDir = fleeDir;
+                    continue;
+                }
+
+                if ((n.stopTimer || 0) > 0) { n.stopTimer--; n.velX *= 0.7; n.x += n.velX; continue; }
+
+                // Direction changes: slow (every ~8 s) and random
+                if (n.roamPhase % 480 === 0) {
+                    if (Math.random() < 0.22) {
+                        n.stopTimer = 90 + Math.floor(Math.random() * 180);
+                    } else if (Math.random() < 0.38) {
+                        n.roamDir = -n.roamDir;
+                    }
+                }
+
+                // Hard bounds: district range, not home range (they roam freely)
+                const minX = Math.max(0, n.homeX - (n.range || 100));
+                const maxX = Math.min(WORLD_WIDTH - 20, n.homeX + (n.range || 100));
+                if (n.x <= minX) { n.roamDir = 1; n.velX = Math.abs(n.velX); }
+                if (n.x >= maxX) { n.roamDir = -1; n.velX = -Math.abs(n.velX); }
+
+                // Gap avoidance: peek 80 px ahead
+                const lx = n.x + (n.roamDir || 1) * 80;
+                for (const g of gaps) {
+                    if (lx > g.x - 30 && lx < g.x + g.w + 30) { n.roamDir = -n.roamDir; break; }
+                }
+
+                // Velocity-based movement: smooth lerp toward target
+                const topSpeed = (n.speed || 0.35) * (n.type === 'kid' ? 1.25 : 1);
+                const targetVX = (n.roamDir || 1) * topSpeed;
+                n.velX = n.velX * 0.88 + targetVX * 0.12;  // gradual acc/decc
+                if (Math.abs(n.velX) < 0.02) n.velX = 0;
+                n.x += n.velX;
+            }
+        }
+
+        // ── Spawn a fresh wave of robbers (called after each clear) ─────────
+        function spawnRobberWave() {
+            const w = bankRobbery.wave;
+            const count = Math.min(3 + Math.floor(w / 2), 6);   // 3, 3, 4, 4, 5, 5, 6…
+            const hp = 3 + Math.floor(w / 3);                  // 3, 3, 3, 4, 4, 4, 5…
+            for (let i = 0; i < count; i++) {
+                enemies.push({
+                    x: bankRobbery.bankX + 28 + i * 52, y: 948,
+                    w: 38, h: 52,
+                    vx: (i % 2 === 0 ? 1 : -1) * (0.8 + Math.random() * 0.45),
+                    minX: bankRobbery.bankX - 20, maxX: bankRobbery.bankX + 220,
+                    alive: true, hp, maxHp: hp, frozen: 0,
+                    type: 'robber', district: 'downtown', robber: true,
+                    dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
+                    hitReact: 0, hitFlash: 0, knockback: 0, phase: Math.random() * 6,
+                });
+            }
+            bankRobbery.wave++;
+            bankRobbery.complete = false;
+            bankRobbery.alertPhase = 0;
+            bankRobbery.triggered = true;  // subsequent waves auto-trigger
+            titleCard = {
+                text: `🚨 ROBBERY WAVE ${bankRobbery.wave}!`,
+                sub: `${count} masked robbers hit the bank — tougher every time!`,
+                timer: 220,
+            };
+        }
+
+        // ── Bank robbery mission logic (looping) ──────────────────────────
+        function updateBankRobbery() {
+            bankRobbery.alertPhase++;
+
+            const allRobbers = enemies.filter(e => e.robber);
+            const robberAlive = allRobbers.some(e => e.alive);
+
+            // ── Wave-complete cooldown: count down then spawn next wave ──
+            if (bankRobbery.complete) {
+                bankRobbery.cooldown++;
+                // Wait ~40 s (2400 frames), and only spawn when in downtown
+                if (bankRobbery.cooldown >= 2400 && currentDistrict === 'downtown') {
+                    bankRobbery.cooldown = 0;
+                    spawnRobberWave();
+                }
+                return;
+            }
+
+            // ── First-time trigger: hero walks near the bank ──
+            if (!bankRobbery.triggered && currentDistrict === 'downtown') {
+                const heroMid = hero.x + hero.w / 2;
+                if (Math.abs(heroMid - (bankRobbery.bankX + 87)) < 380) {
+                    bankRobbery.triggered = true;
+                    titleCard = {
+                        text: '🚨 BANK ROBBERY IN PROGRESS!',
+                        sub: 'Stop the robbers before they escape with the money!', timer: 220
+                    };
+                }
+            }
+
+            // ── Wave cleared ──
+            if (bankRobbery.triggered && !robberAlive) {
+                bankRobbery.complete = true;
+                bankRobbery.cooldown = 0;
+                const isFirst = bankRobbery.wave === 0;
+                if (isFirst) {
+                    bankRobbery.wave = 1;   // mark first wave done
+                    orbs.push(
+                        { x: bankRobbery.bankX + 40, y: 820, r: 14, taken: false, district: 'downtown' },
+                        { x: bankRobbery.bankX + 87, y: 780, r: 14, taken: false, district: 'downtown' },
+                        { x: bankRobbery.bankX + 134, y: 820, r: 14, taken: false, district: 'downtown' }
+                    );
+                }
+                titleCard = {
+                    text: isFirst ? '✔ ROBBERY FOILED!' : `✔ WAVE ${bankRobbery.wave} STOPPED!`,
+                    sub: 'Stay alert — they may strike again! (~40 s)',
+                    timer: 280,
+                };
+            }
+        }
+
+        // Advance plane positions + day/night cycle every frame.
+        const DAY_CYCLE = 14400;  // ~4 min at 60fps; day lasts ~75% of the cycle
+        function updateAtmosphere() {
+            worldTime = (worldTime + 1) % DAY_CYCLE;
+            const _raw = (Math.sin(worldTime / DAY_CYCLE * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+            dayPhase = Math.pow(_raw, 0.62);  // bias toward longer days
+            for (const p of planes) {
+                p.wx += p.dir * p.speed;
+                p.blink++;
+                if (p.wx > WORLD_WIDTH + 900) p.wx = -600;
+                if (p.wx < -600) p.wx = WORLD_WIDTH + 900;
             }
         }
 
@@ -1391,6 +1942,19 @@
 
         function drawHero(e) {
             const { x, y, w, h, persona, facing } = e;
+
+            // ── Dodge trail (ghost copies at recent positions) ────────────────
+            if (e.dodgeTrail && e.dodgeTrail.length > 0) {
+                for (let ti = 0; ti < e.dodgeTrail.length; ti++) {
+                    const t = e.dodgeTrail[ti];
+                    const a = (ti / e.dodgeTrail.length) * 0.38;
+                    ctx.save();
+                    ctx.globalAlpha = a;
+                    ctx.fillStyle = '#7fd3ff';
+                    ctx.fillRect(t.x, t.y, w, h);
+                    ctx.restore();
+                }
+            }
 
             ctx.save();
             if (e.dashing) { ctx.shadowColor = '#7fd3ff'; ctx.shadowBlur = 18; }
@@ -1662,6 +2226,98 @@
 
             // attack FX in world space (horizontal forward beams from rotated origins)
             drawAttackFXWorld(e);
+
+            // ── SHIELD BUBBLE: rendered last so it appears ON TOP of the hero body ──
+            if (e.blocking) {
+                const bcx = x + w / 2, bcy = y + h / 2;
+                const brx = w / 2 + 32;   // 32 px padding → clearly envelops the hero
+                const bry = h / 2 + 28;
+                const t = Date.now() * 0.001;
+                const pulse = 0.78 + Math.sin(t * 7) * 0.22;
+                const str = Math.min(1, (e.blockTimer || 0) / 14);  // fast fade-in
+
+                ctx.save();
+                ctx.globalAlpha = str;
+
+                // 1. Outer soft aura halo
+                const halo = ctx.createRadialGradient(bcx, bcy, brx * 0.6, bcx, bcy, brx * 1.8);
+                halo.addColorStop(0, 'rgba(80,180,255,0.0)');
+                halo.addColorStop(0.55, 'rgba(40,130,255,0.08)');
+                halo.addColorStop(1, 'rgba(20,80,255,0.0)');
+                ctx.fillStyle = halo;
+                ctx.beginPath(); ctx.ellipse(bcx, bcy, brx * 1.8, bry * 1.8, 0, 0, Math.PI * 2); ctx.fill();
+
+                // 2. Bubble interior (Fresnel glass-dome gradient)
+                const dome = ctx.createRadialGradient(bcx - brx * 0.3, bcy - bry * 0.38, 3, bcx, bcy, Math.max(brx, bry));
+                dome.addColorStop(0, `rgba(215,242,255,${0.11 * pulse})`);
+                dome.addColorStop(0.65, `rgba(70,170,255,${0.13 * pulse})`);
+                dome.addColorStop(0.88, `rgba(40,120,255,${0.30 * pulse})`);
+                dome.addColorStop(1, 'rgba(20,80,255,0.0)');
+                ctx.fillStyle = dome;
+                ctx.beginPath(); ctx.ellipse(bcx, bcy, brx, bry, 0, 0, Math.PI * 2); ctx.fill();
+
+                // 3. Outer glowing rim (most visible element)
+                ctx.shadowColor = '#30c8ff'; ctx.shadowBlur = 22 * pulse;
+                ctx.strokeStyle = `rgba(130,225,255,${0.72 + Math.sin(t * 9) * 0.28})`;
+                ctx.lineWidth = 3.2;
+                ctx.beginPath(); ctx.ellipse(bcx, bcy, brx, bry, 0, 0, Math.PI * 2); ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // 4. Inner secondary ring (depth)
+                ctx.shadowColor = '#80e8ff'; ctx.shadowBlur = 6;
+                ctx.strokeStyle = `rgba(190,245,255,${0.32 * pulse})`;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath(); ctx.ellipse(bcx, bcy, brx * 0.76, bry * 0.76, 0, 0, Math.PI * 2); ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // 5. Rotating energy arc segments (6 evenly spaced, leave gaps)
+                ctx.save();
+                ctx.translate(bcx, bcy);
+                ctx.rotate(t * 1.4);
+                ctx.strokeStyle = `rgba(170,248,255,${0.55 + Math.sin(t * 5) * 0.28})`;
+                ctx.lineWidth = 2.6; ctx.shadowColor = '#80e8ff'; ctx.shadowBlur = 8;
+                for (let sg = 0; sg < 6; sg++) {
+                    const a1 = (sg / 6) * Math.PI * 2;
+                    const a2 = ((sg + 0.40) / 6) * Math.PI * 2;
+                    ctx.beginPath();
+                    for (let ai = 0; ai <= 8; ai++) {
+                        const ang = a1 + (a2 - a1) * ai / 8;
+                        const px = Math.cos(ang) * brx * 0.94;
+                        const py = Math.sin(ang) * bry * 0.94;
+                        ai === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                }
+                ctx.shadowBlur = 0;
+                ctx.restore();
+
+                // 6. Counter-rotating energy sparks on the rim
+                ctx.fillStyle = '#d8f4ff'; ctx.shadowColor = '#80e8ff'; ctx.shadowBlur = 12;
+                for (let si = 0; si < 6; si++) {
+                    const sa = t * -2.4 + si * (Math.PI / 3);
+                    const spx = bcx + Math.cos(sa) * brx * 0.97;
+                    const spy = bcy + Math.sin(sa) * bry * 0.97;
+                    const spR = 2.4 + Math.sin(t * 9 + si * 1.8) * 1.8;
+                    ctx.beginPath(); ctx.arc(spx, spy, spR, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.shadowBlur = 0;
+
+                // 7. Glass sheen (top-left specular highlight)
+                const sheen = ctx.createRadialGradient(bcx - brx * 0.45, bcy - bry * 0.48, 0, bcx - brx * 0.45, bcy - bry * 0.48, brx * 0.55);
+                sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
+                sheen.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = sheen;
+                ctx.beginPath(); ctx.ellipse(bcx, bcy, brx, bry, 0, 0, Math.PI * 2); ctx.fill();
+
+                // 8. "BLOCKING" badge above bubble
+                ctx.globalAlpha = str * (0.65 + Math.sin(t * 6) * 0.35);
+                ctx.fillStyle = '#a0ecff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.shadowColor = '#30c8ff'; ctx.shadowBlur = 8;
+                ctx.fillText('🛡 BLOCKING', bcx, y - bry - 4);
+                ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+
+                ctx.restore();
+            }
         }
 
         // Apply the entity's facing + pose rotation to a set of local points,
@@ -1716,10 +2372,14 @@
             const [mx, my] = e._fx.mouth;
             const [fx, fy] = e._fx.fist;
 
-            // LASER — twin horizontal beams forward from the eyes
+            // LASER — beams terminate at first enemy hit, with impact burst
             if (e.laserTimer > 0) {
-                const end = dir === 1 ? Math.max(exA, exB) + 2200 : Math.min(exA, exB) - 2200;
+                const defaultEnd = dir === 1 ? exA + 2200 : exA - 2200;
+                const end = (e._laserStopX !== undefined) ? e._laserStopX : defaultEnd;
+                const impY = (eyA + eyB) / 2;
+
                 ctx.save();
+                // Beam body
                 ctx.shadowColor = '#ff4030'; ctx.shadowBlur = 16;
                 ctx.strokeStyle = 'rgba(255,80,60,0.9)'; ctx.lineWidth = 5;
                 ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, eyA); ctx.stroke();
@@ -1728,8 +2388,34 @@
                 ctx.strokeStyle = 'rgba(255,235,210,0.95)'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, eyA); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, eyB); ctx.stroke();
+                // Eye glow origin
                 ctx.fillStyle = 'rgba(255,210,160,0.8)';
-                ctx.beginPath(); ctx.arc(exA + dir * 4, (eyA + eyB) / 2, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(exA + dir * 4, impY, 4, 0, Math.PI * 2); ctx.fill();
+
+                // Impact burst at the beam terminus (only when hitting an enemy)
+                if (e._laserHit) {
+                    const fr = 1 - e.laserTimer / LASER_EFFECT;  // 0→1 over effect duration
+                    const iR = 10 + Math.sin(Date.now() * 0.04) * 4;
+                    ctx.shadowColor = '#ff6040'; ctx.shadowBlur = 24;
+                    const ig = ctx.createRadialGradient(end, impY, 0, end, impY, iR * 2.8);
+                    ig.addColorStop(0, 'rgba(255,255,200,0.96)');
+                    ig.addColorStop(0.35, 'rgba(255,120,50,0.80)');
+                    ig.addColorStop(1, 'rgba(255,40,10,0)');
+                    ctx.fillStyle = ig;
+                    ctx.beginPath(); ctx.arc(end, impY, iR * 2.8, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                    ctx.beginPath(); ctx.arc(end, impY, iR * 0.55, 0, Math.PI * 2); ctx.fill();
+                    // Cross flare lines
+                    ctx.strokeStyle = 'rgba(255,220,180,0.70)'; ctx.lineWidth = 1.5;
+                    for (let fl = 0; fl < 4; fl++) {
+                        const fa = fl * Math.PI / 4;
+                        ctx.beginPath();
+                        ctx.moveTo(end + Math.cos(fa) * iR * 0.5, impY + Math.sin(fa) * iR * 0.5);
+                        ctx.lineTo(end + Math.cos(fa) * iR * 2.2, impY + Math.sin(fa) * iR * 2.2);
+                        ctx.stroke();
+                    }
+                    ctx.shadowBlur = 0;
+                }
                 ctx.restore();
             }
 
@@ -1942,6 +2628,17 @@
             const frozen = en.frozen > 0;
             ctx.save();
 
+            // chase alert: urgent red chevron when pursuing the hero
+            if (en.chaseMode && !frozen) {
+                const p2 = 0.5 + Math.sin(Date.now() * 0.022 + en.x) * 0.5;
+                ctx.save();
+                ctx.globalAlpha = 0.7 + p2 * 0.3;
+                ctx.fillStyle = '#ff2020';
+                ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 8;
+                ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('▼', en.x + en.w / 2, en.y - 8 + Math.sin(Date.now() * 0.018) * 3);
+                ctx.restore();
+            }
             // guard alert: a small pulsing marker shows this enemy is locked onto a
             // civilian (telegraphs the "they're being surrounded" threat to the player)
             if (en.guardingCiv && !frozen) {
@@ -1963,117 +2660,296 @@
             if (frozen) { ctx.globalAlpha = 0.85; }
 
             if (en.type === 'brute') {
-                // hulking gray monster with bony ridges
-                const g = ctx.createLinearGradient(en.x, en.y, en.x, en.y + en.h);
-                g.addColorStop(0, frozen ? '#9fd6ff' : '#8a9098');
-                g.addColorStop(1, frozen ? '#6fa6df' : '#565c66');
-                ctx.fillStyle = g;
-                ctx.fillRect(en.x, en.y, en.w, en.h);
-                // shoulders
-                ctx.fillStyle = frozen ? '#bfe2ff' : '#6b7280';
-                ctx.fillRect(en.x - 5, en.y + 4, en.w + 10, en.h * 0.25);
-                // bony spikes
-                ctx.fillStyle = frozen ? '#e8f5ff' : '#cdd2d8';
-                for (let i = 0; i < 4; i++) {
-                    const sx = en.x + 6 + i * (en.w - 12) / 3;
-                    ctx.beginPath();
-                    ctx.moveTo(sx, en.y + 4); ctx.lineTo(sx + 5, en.y - 8); ctx.lineTo(sx + 10, en.y + 4);
-                    ctx.closePath(); ctx.fill();
+                // ── BANE ENFORCER: massive armored bruiser, venom tubes, tactical mask ──
+                const X = en.x, Y = en.y, W = en.w, H = en.h;
+                // Legs
+                ctx.fillStyle = frozen ? '#7fa8df' : '#141818';
+                ctx.fillRect(X + W * 0.08, Y + H * 0.62, W * 0.38, H * 0.38);
+                ctx.fillRect(X + W * 0.54, Y + H * 0.62, W * 0.38, H * 0.38);
+                // Knee pads
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#2a3028';
+                ctx.fillRect(X + W * 0.08, Y + H * 0.70, W * 0.38, H * 0.10);
+                ctx.fillRect(X + W * 0.54, Y + H * 0.70, W * 0.38, H * 0.10);
+                // Torso (barrel chest)
+                const bg = ctx.createLinearGradient(0, Y, 0, Y + H * 0.64);
+                bg.addColorStop(0, frozen ? '#9fd6ff' : '#1e2820');
+                bg.addColorStop(1, frozen ? '#6fa6df' : '#0e1810');
+                ctx.fillStyle = bg;
+                ctx.fillRect(X, Y + H * 0.28, W, H * 0.36);
+                // Oversized shoulders (iconic Bane look)
+                ctx.fillStyle = frozen ? '#bfe2ff' : '#28342a';
+                ctx.fillRect(X - 9, Y + H * 0.26, W + 18, H * 0.16);
+                // Shoulder rivets
+                ctx.fillStyle = frozen ? '#dff' : '#4a5a4c';
+                for (let ri = 0; ri < 3; ri++) {
+                    ctx.beginPath(); ctx.arc(X - 4 + ri * (W + 12) * 0.38, Y + H * 0.34, 3, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(X + W + 4 - ri * (W + 12) * 0.38, Y + H * 0.34, 3, 0, Math.PI * 2); ctx.fill();
                 }
-                // eyes
-                ctx.fillStyle = '#ff3b3b';
-                ctx.fillRect(en.x + en.w * 0.22, en.y + en.h * 0.3, 6, 5);
-                ctx.fillRect(en.x + en.w * 0.6, en.y + en.h * 0.3, 6, 5);
+                // Arms (thick)
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#1e2820';
+                ctx.fillRect(X - 8, Y + H * 0.28, 13, H * 0.36);
+                ctx.fillRect(X + W - 5, Y + H * 0.28, 13, H * 0.36);
+                // Fists
+                ctx.fillStyle = frozen ? '#bfe2ff' : '#2e3c30';
+                ctx.fillRect(X - 10, Y + H * 0.60, 16, 11);
+                ctx.fillRect(X + W - 6, Y + H * 0.60, 16, 11);
+                // Head: tactical Bane mask
+                const hcx = X + W / 2, hcy = Y + H * 0.16;
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#181c18';
+                ctx.beginPath(); ctx.ellipse(hcx, hcy, W * 0.26, H * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+                // Mask lenses (glowing red)
+                if (!frozen) { ctx.shadowColor = '#ff2800'; ctx.shadowBlur = 10; }
+                ctx.fillStyle = frozen ? '#cff' : '#ff3010';
+                ctx.beginPath(); ctx.arc(hcx - W * 0.10, hcy + H * 0.01, W * 0.07, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(hcx + W * 0.10, hcy + H * 0.01, W * 0.07, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                // Venom tubes (mask → canister on back)
+                ctx.strokeStyle = frozen ? '#cff' : '#10d030';
+                if (!frozen) { ctx.shadowColor = '#10d030'; ctx.shadowBlur = 5; }
+                ctx.lineWidth = 2; ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(hcx, hcy + H * 0.08);
+                ctx.bezierCurveTo(hcx + W * 0.3, hcy + H * 0.18, X + W * 0.90, Y + H * 0.32, X + W * 0.95, Y + H * 0.42);
+                ctx.stroke();
+                ctx.fillStyle = frozen ? '#cff' : '#10d030';
+                ctx.shadowColor = frozen ? 'transparent' : '#10d030'; ctx.shadowBlur = 8;
+                ctx.beginPath(); ctx.arc(X + W * 0.95, Y + H * 0.42, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
             }
             else if (en.type === 'genius') {
-                // sleek powered battlesuit
-                const g = ctx.createLinearGradient(en.x, en.y, en.x, en.y + en.h);
-                g.addColorStop(0, frozen ? '#9fd6ff' : '#3c8a6e');
-                g.addColorStop(1, frozen ? '#6fa6df' : '#1f4d3c');
-                ctx.fillStyle = g;
-                ctx.fillRect(en.x, en.y, en.w, en.h);
-                // chest reactor
-                ctx.fillStyle = frozen ? '#dff' : '#7ef0c0';
-                ctx.shadowColor = '#7ef0c0'; ctx.shadowBlur = frozen ? 0 : 10;
-                ctx.beginPath(); ctx.arc(en.x + en.w / 2, en.y + en.h * 0.42, 6, 0, Math.PI * 2); ctx.fill();
+                // ── LEXCORP WARSUIT: sleek battlesuit, glowing reactor, T-visor ──
+                const X = en.x, Y = en.y, W = en.w, H = en.h;
+                // Legs (articulated plates)
+                const lg = ctx.createLinearGradient(0, Y + H * 0.6, 0, Y + H);
+                lg.addColorStop(0, frozen ? '#9fd6ff' : '#2a4048'); lg.addColorStop(1, frozen ? '#6fa6df' : '#182830');
+                ctx.fillStyle = lg;
+                ctx.fillRect(X + W * 0.08, Y + H * 0.60, W * 0.37, H * 0.40);
+                ctx.fillRect(X + W * 0.55, Y + H * 0.60, W * 0.37, H * 0.40);
+                // Suit body
+                const sg = ctx.createLinearGradient(X, Y, X + W, Y + H);
+                sg.addColorStop(0, frozen ? '#9fd6ff' : '#3a5060'); sg.addColorStop(1, frozen ? '#6fa6df' : '#1a3040');
+                ctx.fillStyle = sg;
+                ctx.fillRect(X, Y + H * 0.24, W, H * 0.38);
+                // Edge highlight (metallic sheen)
+                ctx.fillStyle = frozen ? '#dff' : '#506a7a';
+                ctx.fillRect(X, Y + H * 0.24, 3, H * 0.38);
+                // Shoulder pads (angular)
+                ctx.fillStyle = frozen ? '#bfe2ff' : '#486080';
+                ctx.fillRect(X - 6, Y + H * 0.24, W + 12, H * 0.14);
+                ctx.fillRect(X - 6, Y + H * 0.24, 10, H * 0.22);   // left pad
+                ctx.fillRect(X + W - 4, Y + H * 0.24, 10, H * 0.22);  // right pad
+                // Chest REACTOR (pulsing glow)
+                const rp = 0.7 + Math.sin((en.phase || 0) * 1.8) * 0.3;
+                ctx.fillStyle = frozen ? '#dff' : `rgba(20,240,140,${rp})`;
+                if (!frozen) { ctx.shadowColor = '#20ff90'; ctx.shadowBlur = 14 * rp; }
+                ctx.beginPath(); ctx.arc(X + W / 2, Y + H * 0.42, 7, 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
-                // helmet visor
-                ctx.fillStyle = '#14241f';
-                ctx.fillRect(en.x + en.w * 0.2, en.y + en.h * 0.08, en.w * 0.6, en.h * 0.16);
-                ctx.fillStyle = '#ff6b3b';
-                ctx.fillRect(en.x + en.w * 0.28, en.y + en.h * 0.13, en.w * 0.44, 3);
-                // shoulder pads
-                ctx.fillStyle = frozen ? '#bfe2ff' : '#2a6650';
-                ctx.fillRect(en.x - 4, en.y + en.h * 0.24, en.w + 8, en.h * 0.12);
+                // Reactor ring
+                ctx.strokeStyle = frozen ? '#cff' : '#40ffa0'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(X + W / 2, Y + H * 0.42, 11, 0, Math.PI * 2); ctx.stroke();
+                // Arms
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#2e4858';
+                ctx.fillRect(X - 5, Y + H * 0.26, 9, H * 0.32);
+                ctx.fillRect(X + W - 4, Y + H * 0.26, 9, H * 0.32);
+                // Helmet (full-face angular)
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#1a2c38';
+                ctx.beginPath();
+                ctx.moveTo(X + W * 0.18, Y + H * 0.22); ctx.lineTo(X + W * 0.82, Y + H * 0.22);
+                ctx.lineTo(X + W * 0.88, Y + H * 0.09); ctx.lineTo(X + W / 2, Y + H * 0.03);
+                ctx.lineTo(X + W * 0.12, Y + H * 0.09); ctx.closePath(); ctx.fill();
+                // T-visor (iconic armored look)
+                ctx.fillStyle = frozen ? '#ddf' : '#f0c830';
+                if (!frozen) { ctx.shadowColor = '#f0c830'; ctx.shadowBlur = 8; }
+                ctx.fillRect(X + W * 0.20, Y + H * 0.11, W * 0.60, 5);  // horizontal bar
+                ctx.fillRect(X + W * 0.42, Y + H * 0.06, W * 0.16, H * 0.18);  // vertical slit
+                ctx.shadowBlur = 0;
             }
             else if (en.type === 'energy') {
-                // unstable energy being - pulsing orb with tendrils
-                const pulse = 1 + Math.sin((en.phase || 0)) * 0.12;
-                const r = en.w / 2 * pulse;
-                const cx = en.x + en.w / 2, cy = en.y + en.h / 2;
-                const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
-                if (frozen) { g.addColorStop(0, '#dff'); g.addColorStop(1, '#6fa6df'); }
-                else { g.addColorStop(0, '#e0b3ff'); g.addColorStop(0.6, '#9b3bd6'); g.addColorStop(1, 'rgba(120,30,200,0.1)'); }
-                ctx.fillStyle = g;
-                ctx.shadowColor = frozen ? '#9fd6ff' : '#b15bff'; ctx.shadowBlur = 18;
-                ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+                // ── PLASMA WRAITH: humanoid energy criminal with crackling corona ──
+                const X = en.x, Y = en.y, W = en.w, H = en.h;
+                const ph = en.phase || 0;
+                const cx = X + W / 2, cy = Y + H / 2;
+                const pulse = 1 + Math.sin(ph * 1.6) * 0.10;
+                // Outer corona (diffuse energy field)
+                if (!frozen) { ctx.shadowColor = '#a020f0'; ctx.shadowBlur = 22; }
+                const corona = ctx.createRadialGradient(cx, cy, 4, cx, cy, W * 0.72 * pulse);
+                if (frozen) { corona.addColorStop(0, '#dff'); corona.addColorStop(1, 'rgba(100,180,255,0)'); }
+                else { corona.addColorStop(0, 'rgba(220,140,255,0.85)'); corona.addColorStop(0.6, 'rgba(140,20,200,0.5)'); corona.addColorStop(1, 'rgba(80,0,160,0)'); }
+                ctx.fillStyle = corona;
+                ctx.beginPath(); ctx.arc(cx, cy, W * 0.72 * pulse, 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
-                // arcing tendrils
-                ctx.strokeStyle = frozen ? '#cfe' : '#d9a3ff'; ctx.lineWidth = 2;
-                for (let i = 0; i < 5; i++) {
-                    const a = (en.phase || 0) + i * 1.25;
-                    ctx.beginPath();
-                    ctx.moveTo(cx, cy);
-                    ctx.lineTo(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4);
-                    ctx.stroke();
+                // Dark humanoid CORE (body shape)
+                ctx.fillStyle = frozen ? '#6090c8' : '#200830';
+                ctx.beginPath();
+                ctx.ellipse(cx, Y + H * 0.34, W * 0.28, H * 0.32, 0, 0, Math.PI * 2);  // torso
+                ctx.fill();
+                ctx.beginPath(); ctx.ellipse(cx, Y + H * 0.15, W * 0.20, H * 0.16, 0, 0, Math.PI * 2);  // head
+                ctx.fill();
+                // Energy arms reaching out
+                ctx.strokeStyle = frozen ? '#b0d8ff' : '#c060ff';
+                if (!frozen) { ctx.shadowColor = '#c060ff'; ctx.shadowBlur = 8; }
+                ctx.lineWidth = 3; ctx.lineCap = 'round';
+                const armAng = Math.sin(ph * 0.8) * 0.35;
+                ctx.beginPath();
+                ctx.moveTo(cx - W * 0.28, Y + H * 0.30);
+                ctx.quadraticCurveTo(cx - W * 0.55, Y + H * 0.38 + Math.sin(ph) * 8, cx - W * 0.70, Y + H * 0.50 + Math.cos(ph) * 6);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(cx + W * 0.28, Y + H * 0.30);
+                ctx.quadraticCurveTo(cx + W * 0.55, Y + H * 0.38 + Math.cos(ph) * 8, cx + W * 0.70, Y + H * 0.50 + Math.sin(ph) * 6);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                // Crackling sparks
+                ctx.fillStyle = frozen ? '#dff' : '#e8a0ff';
+                for (let si = 0; si < 4; si++) {
+                    const sa = ph + si * 1.57;
+                    const sr = W * (0.5 + Math.sin(ph * 2 + si) * 0.18);
+                    ctx.fillRect(cx + Math.cos(sa) * sr - 1.5, cy + H * -0.1 + Math.sin(sa) * sr * 0.6 - 1.5, 3, 3);
                 }
-                // core eyes
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(cx - 7, cy - 2, 4, 4);
-                ctx.fillRect(cx + 3, cy - 2, 4, 4);
+                // Menacing eyes
+                ctx.fillStyle = frozen ? '#cff' : '#ffffff';
+                if (!frozen) { ctx.shadowColor = '#e0a0ff'; ctx.shadowBlur = 10; }
+                ctx.beginPath(); ctx.arc(cx - W * 0.09, Y + H * 0.14, W * 0.07, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx + W * 0.09, Y + H * 0.14, W * 0.07, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+            else if (en.type === 'robber') {
+                // Ski-mask dark suit with money bag
+                const rc = frozen ? '#9fd6ff' : '#18181e';
+                ctx.fillStyle = rc;
+                ctx.fillRect(en.x, en.y + en.h * 0.30, en.w, en.h * 0.70);  // body
+                ctx.fillStyle = frozen ? '#bfe2ff' : '#101018';
+                ctx.fillRect(en.x - 6, en.y + en.h * 0.30, 10, en.h * 0.38);   // left arm
+                ctx.fillRect(en.x + en.w - 4, en.y + en.h * 0.30, 10, en.h * 0.38); // right arm
+                // Ski mask head
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#252528';
+                ctx.beginPath(); ctx.ellipse(en.x + en.w / 2, en.y + en.h * 0.17, en.w * 0.27, en.h * 0.20, 0, 0, Math.PI * 2); ctx.fill();
+                // Glowing eyes
+                ctx.fillStyle = frozen ? '#dff' : '#ffe030';
+                if (!frozen) { ctx.shadowColor = '#ffe030'; ctx.shadowBlur = 8; }
+                ctx.fillRect(en.x + en.w * 0.28, en.y + en.h * 0.11, 5, 4);
+                ctx.fillRect(en.x + en.w * 0.56, en.y + en.h * 0.11, 5, 4);
+                ctx.shadowBlur = 0;
+                // Money bag (carried on the opposite side from facing)
+                const bagSide = en.facing === 1 ? 1 : -1;
+                const bagX = en.x + en.w / 2 + bagSide * (en.w * 0.6);
+                const bagY = en.y + en.h * 0.50;
+                ctx.fillStyle = '#8b6020';
+                ctx.beginPath(); ctx.arc(bagX, bagY + 6, 9, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#6a4010'; ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#6a4010'; ctx.strokeRect(bagX - 8, bagY, 16, 14);
+                ctx.fillStyle = '#ffd84d'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('$', bagX, bagY + 10);
+                // HP bar
+                if (en.maxHp > 1) {
+                    const bw = en.w + 8, bx = en.x - 4, by = en.y - 14;
+                    ctx.fillStyle = '#2a2f3a'; ctx.fillRect(bx, by, bw, 5);
+                    ctx.fillStyle = Math.max(0, en.hp) / en.maxHp > 0.4 ? '#5fd97a' : '#ff5a4d';
+                    ctx.fillRect(bx, by, bw * Math.max(0, en.hp) / en.maxHp, 5);
+                }
             }
             else if (en.type === 'warlord') {
-                // armored alien tyrant - the boss
-                const g = ctx.createLinearGradient(en.x, en.y, en.x, en.y + en.h);
-                g.addColorStop(0, frozen ? '#9fd6ff' : '#6b6f7a');
-                g.addColorStop(1, frozen ? '#6fa6df' : '#3a3d47');
-                ctx.fillStyle = g;
-                // body
-                ctx.fillRect(en.x, en.y, en.w, en.h);
-                // heavy shoulders
-                ctx.fillStyle = frozen ? '#bfe2ff' : '#52555f';
-                ctx.fillRect(en.x - 8, en.y + en.h * 0.12, en.w + 16, en.h * 0.2);
-                // armored skull-helm
-                ctx.fillStyle = frozen ? '#cfe' : '#878b94';
-                ctx.beginPath();
-                ctx.ellipse(en.x + en.w / 2, en.y + en.h * 0.16, en.w * 0.32, en.h * 0.16, 0, 0, Math.PI * 2);
-                ctx.fill();
-                // burning eyes
-                ctx.fillStyle = '#ff2a2a';
-                ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = frozen ? 0 : 12;
-                ctx.fillRect(en.x + en.w * 0.3, en.y + en.h * 0.14, 9, 6);
-                ctx.fillRect(en.x + en.w * 0.58, en.y + en.h * 0.14, 9, 6);
-                ctx.shadowBlur = 0;
-                // chest crest
-                ctx.fillStyle = frozen ? '#dff' : '#c0392b';
-                ctx.beginPath();
-                ctx.moveTo(en.x + en.w / 2, en.y + en.h * 0.38);
-                ctx.lineTo(en.x + en.w * 0.66, en.y + en.h * 0.5);
-                ctx.lineTo(en.x + en.w / 2, en.y + en.h * 0.62);
-                ctx.lineTo(en.x + en.w * 0.34, en.y + en.h * 0.5);
-                ctx.closePath(); ctx.fill();
-                // health pips
-                ctx.fillStyle = '#ffdf3a';
-                const pipW = en.w / 6;
-                for (let i = 0; i < en.hp; i++) {
-                    ctx.fillRect(en.x + i * pipW, en.y - 12, pipW - 3, 5);
+                // ── THE SUBJUGATOR: Darkseid-class colossus, Omega-Beams, stone-god armor ──
+                const X = en.x, Y = en.y, W = en.w, H = en.h;
+                // Legs (massive armored pillars)
+                ctx.fillStyle = frozen ? '#6fa6df' : '#2a2e38';
+                ctx.fillRect(X + W * 0.08, Y + H * 0.60, W * 0.38, H * 0.40);
+                ctx.fillRect(X + W * 0.54, Y + H * 0.60, W * 0.38, H * 0.40);
+                // Knee armor plates
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#42464f';
+                ctx.fillRect(X + W * 0.06, Y + H * 0.68, W * 0.40, H * 0.10);
+                ctx.fillRect(X + W * 0.54, Y + H * 0.68, W * 0.40, H * 0.10);
+                // Body (stone-gray, geometric)
+                const wg = ctx.createLinearGradient(X, Y + H * 0.24, X + W, Y + H * 0.62);
+                wg.addColorStop(0, frozen ? '#9fd6ff' : '#52585a'); wg.addColorStop(1, frozen ? '#6fa6df' : '#2a2e30');
+                ctx.fillStyle = wg;
+                ctx.fillRect(X, Y + H * 0.24, W, H * 0.38);
+                // Chest armor panels (segmented, intimidating)
+                ctx.fillStyle = frozen ? '#bfe2ff' : '#3e4248';
+                ctx.fillRect(X + W * 0.12, Y + H * 0.28, W * 0.34, H * 0.28);
+                ctx.fillRect(X + W * 0.54, Y + H * 0.28, W * 0.34, H * 0.28);
+                ctx.fillStyle = frozen ? '#cff' : '#2a2e34';
+                ctx.fillRect(X + W * 0.46, Y + H * 0.28, W * 0.08, H * 0.28);  // center seam
+                // Armor shoulder pauldrons (massive)
+                ctx.fillStyle = frozen ? '#bfe2ff' : '#484c55';
+                ctx.fillRect(X - 12, Y + H * 0.22, W * 0.30, H * 0.20);
+                ctx.fillRect(X + W - W * 0.18 + 12, Y + H * 0.22, W * 0.30, H * 0.20);
+                // Serrated shoulder edges
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#606470';
+                for (let si = 0; si < 3; si++) {
+                    const sx = X - 12 + si * 12;
+                    ctx.beginPath(); ctx.moveTo(sx, Y + H * 0.22); ctx.lineTo(sx + 6, Y + H * 0.14); ctx.lineTo(sx + 12, Y + H * 0.22); ctx.fill();
+                    const sx2 = X + W - W * 0.18 + 12 + si * 12;
+                    ctx.beginPath(); ctx.moveTo(sx2, Y + H * 0.22); ctx.lineTo(sx2 + 6, Y + H * 0.14); ctx.lineTo(sx2 + 12, Y + H * 0.22); ctx.fill();
                 }
+                // Arms (thick stone columns)
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#3a3e46';
+                ctx.fillRect(X - 10, Y + H * 0.24, 16, H * 0.38);
+                ctx.fillRect(X + W - 6, Y + H * 0.24, 16, H * 0.38);
+                // Head (craggy, Darkseid-like)
+                ctx.fillStyle = frozen ? '#9fd6ff' : '#484c54';
+                ctx.beginPath();
+                ctx.moveTo(X + W * 0.18, Y + H * 0.22); ctx.lineTo(X + W * 0.82, Y + H * 0.22);
+                ctx.lineTo(X + W * 0.86, Y + H * 0.06); ctx.lineTo(X + W * 0.78, Y);
+                ctx.lineTo(X + W * 0.22, Y); ctx.lineTo(X + W * 0.14, Y + H * 0.06);
+                ctx.closePath(); ctx.fill();
+                // Face stone texture lines
+                ctx.strokeStyle = frozen ? '#7aacdf' : '#5a5e68'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(X + W * 0.38, Y + H * 0.04); ctx.lineTo(X + W * 0.38, Y + H * 0.20); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(X + W * 0.62, Y + H * 0.04); ctx.lineTo(X + W * 0.62, Y + H * 0.20); ctx.stroke();
+                // OMEGA BEAM EYES (deep red, with beam trail)
+                ctx.fillStyle = '#ff1818';
+                ctx.shadowColor = '#ff1818'; ctx.shadowBlur = frozen ? 0 : 18;
+                ctx.fillRect(X + W * 0.27, Y + H * 0.10, 11, 7);
+                ctx.fillRect(X + W * 0.57, Y + H * 0.10, 11, 7);
+                ctx.shadowBlur = 0;
+                if (!frozen) {
+                    ctx.strokeStyle = 'rgba(255,30,0,0.5)'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(X + W * 0.32, Y + H * 0.14); ctx.lineTo(X + W * 0.32 + en.facing * 22, Y + H * 0.14); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(X + W * 0.62, Y + H * 0.14); ctx.lineTo(X + W * 0.62 + en.facing * 22, Y + H * 0.14); ctx.stroke();
+                }
+                // Omega symbol on chest
+                ctx.strokeStyle = frozen ? '#cff' : '#c03020'; ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(X + W / 2, Y + H * 0.46, 10, 0.5, Math.PI - 0.5); ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(X + W / 2, Y + H * 0.48, 10, Math.PI + 0.5, Math.PI * 2 - 0.5); ctx.stroke();
+                // HP pips (row of doom)
+                ctx.fillStyle = '#ff8020';
+                const pipW2 = W / 7;
+                for (let i = 0; i < en.hp; i++) {
+                    ctx.shadowColor = '#ff4000'; ctx.shadowBlur = 4;
+                    ctx.fillRect(X + i * pipW2 + 1, Y - 14, pipW2 - 3, 6);
+                }
+                ctx.shadowBlur = 0;
             }
 
             if (frozen) {
-                // ice overlay
                 ctx.strokeStyle = 'rgba(220,245,255,0.9)'; ctx.lineWidth = 1;
                 ctx.strokeRect(en.x - 2, en.y - 2, en.w + 4, en.h + 4);
+            }
+
+            // ── PAIN REACTION: floating text when hit ──
+            if (en.hitReact > 0) {
+                const rt = en.hitReact / 14;
+                const floatUp = (14 - en.hitReact) * 2.2;
+                const k = en.lastHitKind || 'punch';
+                const painWord = k === 'freeze' ? 'FROZEN!'
+                    : k === 'laser' ? 'ZAPPED!'
+                        : en.type === 'brute' ? 'ARGH!'
+                            : en.type === 'genius' ? 'ERROR!'
+                                : en.type === 'energy' ? 'SCATTER!'
+                                    : en.type === 'robber' ? 'OOF!'
+                                        : 'IMPACT!';
+                ctx.save();
+                ctx.globalAlpha = rt;
+                ctx.font = 'bold 13px Arial Black, Arial';
+                ctx.textAlign = 'center';
+                ctx.lineWidth = 3.5; ctx.strokeStyle = '#18100c';
+                ctx.strokeText(painWord, en.x + en.w / 2, en.y - 8 - floatUp);
+                ctx.fillStyle = k === 'freeze' ? '#80e8ff' : k === 'laser' ? '#ffe0a0' : '#ffffff';
+                ctx.fillText(painWord, en.x + en.w / 2, en.y - 8 - floatUp);
+                ctx.restore();
             }
 
             // white hit-flash when recently struck
@@ -2101,11 +2977,473 @@
             ctx.restore();
         }
 
+
+        // ══════ STREET-LEVEL DECOR: parks, playgrounds, plazas, dockyards ══════
+        // Placed on solid ground, between buildings and gaps.
+        const streetDecor = [
+            // ---- DOWNTOWN ----
+            { x: 1680, w: 280, type: 'park', district: 'downtown' },
+            { x: 2150, w: 200, type: 'playground', district: 'downtown' },
+            { x: 3620, w: 240, type: 'park', district: 'downtown' },
+            { x: 4400, w: 180, type: 'park', district: 'downtown' },
+            // ---- DOCKS ----
+            { x: 5260, w: 160, type: 'dockyard', district: 'docks' },
+            { x: 9720, w: 180, type: 'dockyard', district: 'docks' },
+            // ---- UPTOWN ----
+            { x: 10440, w: 320, type: 'plaza', district: 'uptown' },
+            { x: 11780, w: 180, type: 'park', district: 'uptown' },
+            { x: 12360, w: 180, type: 'playground', district: 'uptown' },
+            { x: 13920, w: 240, type: 'park', district: 'uptown' },
+        ];
+
+        // ---- lamp post (used by park + plaza) ----
+        function drawLampPost(lx, by) {
+            ctx.fillStyle = '#4a5060';
+            ctx.fillRect(lx - 2, by - 72, 4, 72);
+            ctx.strokeStyle = '#4a5060'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(lx, by - 70);
+            ctx.quadraticCurveTo(lx + 14, by - 70, lx + 14, by - 58); ctx.stroke();
+            const lampA = Math.max(0.12, 1 - dayPhase * 1.2);
+            ctx.save();
+            ctx.globalAlpha = lampA;
+            ctx.shadowColor = '#ffe08080'; ctx.shadowBlur = 14;
+            ctx.fillStyle = '#ffe080';
+            ctx.beginPath(); ctx.arc(lx + 14, by - 58, 5, 0, Math.PI * 2); ctx.fill();
+            if (lampA > 0.25) {
+                const cg = ctx.createRadialGradient(lx + 14, by - 58, 2, lx + 14, by - 58, 38);
+                cg.addColorStop(0, 'rgba(255,220,80,0.28)');
+                cg.addColorStop(1, 'rgba(255,220,80,0)');
+                ctx.fillStyle = cg;
+                ctx.beginPath();
+                ctx.moveTo(lx + 14, by - 58); ctx.lineTo(lx - 14, by - 4); ctx.lineTo(lx + 42, by - 4);
+                ctx.closePath(); ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // ---- tree ----
+        function drawTree(tx, by) {
+            const th = 52 + ((tx * 7) % 16);
+            ctx.fillStyle = '#523218';
+            ctx.fillRect(tx - 4, by - th - 6, 8, th);
+            const gc = dayPhase > 0.35 ? '#2e7828' : '#1c401c';
+            const gh = dayPhase > 0.35 ? '#42a838' : '#22521e';
+            ctx.fillStyle = gc;
+            ctx.beginPath(); ctx.arc(tx, by - th - 18, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(tx - 14, by - th - 6, 17, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(tx + 13, by - th - 5, 16, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = gh;
+            ctx.beginPath(); ctx.arc(tx - 6, by - th - 24, 11, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // ---- bench ----
+        function drawBench(bx, by) {
+            ctx.fillStyle = '#6a4820';
+            ctx.fillRect(bx + 4, by - 18, 5, 18);
+            ctx.fillRect(bx + 31, by - 18, 5, 18);
+            ctx.fillStyle = '#8b6030';
+            ctx.fillRect(bx, by - 22, 40, 6);
+            ctx.fillRect(bx, by - 31, 40, 5);
+            ctx.fillRect(bx + 3, by - 31, 4, 13);
+            ctx.fillRect(bx + 33, by - 31, 4, 13);
+        }
+
+        function drawPark(dec, by) {
+            const { x, w } = dec;
+            ctx.fillStyle = dayPhase > 0.3 ? '#28682a' : '#172617';
+            ctx.fillRect(x, by - 15, w, 15);
+            ctx.fillStyle = dayPhase > 0.3 ? '#389838' : '#1e3a1e';
+            ctx.fillRect(x, by - 17, w, 3);
+            // dirt path through centre
+            ctx.fillStyle = 'rgba(55,42,24,0.4)';
+            ctx.fillRect(x + w * 0.32, by - 14, w * 0.36, 14);
+            drawLampPost(x + 20, by);
+            if (w > 180) drawLampPost(x + w - 20, by);
+            const tc = Math.max(2, Math.floor(w / 90));
+            for (let i = 0; i < tc; i++) drawTree(x + (i + 0.5) * w / tc, by);
+            if (w > 110) drawBench(x + w * 0.5 - 22, by);
+        }
+
+        function drawPlayground(dec, by) {
+            const { x, w } = dec;
+            ctx.fillStyle = '#362218';
+            ctx.fillRect(x, by - 13, w, 13);
+            ctx.fillStyle = '#422a20';
+            ctx.fillRect(x, by - 14, w, 2);
+            // Slide
+            const sX = x + w * 0.18, sH = 70;
+            ctx.fillStyle = '#3a3a58';
+            ctx.fillRect(sX - 2, by - sH - 2, 22, 10);
+            ctx.fillStyle = '#c03222';
+            ctx.beginPath();
+            ctx.moveTo(sX + 18, by - sH + 8); ctx.lineTo(sX + 46, by - 10);
+            ctx.lineTo(sX + 54, by - 10); ctx.lineTo(sX + 26, by - sH + 8);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#8090a0'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(sX, by - sH); ctx.lineTo(sX, by - 12); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(sX + 10, by - sH); ctx.lineTo(sX + 10, by - 12); ctx.stroke();
+            for (let ry = by - sH + 10; ry < by - 14; ry += 11) {
+                ctx.beginPath(); ctx.moveTo(sX, ry); ctx.lineTo(sX + 10, ry); ctx.stroke();
+            }
+            // Swings
+            const swX = x + w * 0.65, fH = 68;
+            ctx.strokeStyle = '#586070'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(swX, by - 12); ctx.lineTo(swX, by - fH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(swX + 46, by - 12); ctx.lineTo(swX + 46, by - fH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(swX, by - fH); ctx.lineTo(swX + 46, by - fH); ctx.stroke();
+            const sph = Math.sin(Date.now() * 0.0019);
+            for (let si = 0; si < 2; si++) {
+                const ssx = swX + 10 + si * 24;
+                const ang = sph * 0.3 + si * Math.PI;
+                const ex = Math.sin(ang) * 14;
+                ctx.strokeStyle = '#909898'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(ssx, by - fH + 3); ctx.lineTo(ssx + ex, by - 30); ctx.stroke();
+                ctx.fillStyle = '#5a3c1c';
+                ctx.fillRect(ssx + ex - 7, by - 32, 14, 5);
+            }
+        }
+
+        function drawPlaza(dec, by) {
+            const { x, w } = dec;
+            ctx.fillStyle = '#38344a';
+            ctx.fillRect(x, by - 14, w, 14);
+            ctx.strokeStyle = 'rgba(72,66,84,0.55)'; ctx.lineWidth = 1;
+            for (let px = x; px < x + w; px += 36) {
+                ctx.beginPath(); ctx.moveTo(px, by - 14); ctx.lineTo(px, by); ctx.stroke();
+            }
+            for (let py = by - 14; py <= by; py += 7) {
+                ctx.beginPath(); ctx.moveTo(x, py); ctx.lineTo(x + w, py); ctx.stroke();
+            }
+            // Fountain
+            const fx = x + w / 2, ft = Date.now() * 0.003;
+            ctx.fillStyle = '#242e44';
+            ctx.beginPath(); ctx.arc(fx, by - 18, 28, Math.PI, 0); ctx.fill();
+            ctx.fillStyle = '#1a2238';
+            ctx.beginPath(); ctx.arc(fx, by - 18, 22, Math.PI, 0); ctx.fill();
+            ctx.fillStyle = 'rgba(68,168,212,0.75)';
+            ctx.beginPath(); ctx.arc(fx, by - 17, 20, Math.PI, 0); ctx.fill();
+            ctx.strokeStyle = 'rgba(130,215,255,0.85)'; ctx.lineWidth = 1.5;
+            for (let fi = 0; fi < 5; fi++) {
+                const fa = -Math.PI / 2 + (fi - 2) * 0.36 + Math.sin(ft + fi) * 0.09;
+                const fl = 18 + Math.sin(ft * 1.2 + fi * 0.6) * 5;
+                ctx.beginPath(); ctx.moveTo(fx, by - 20);
+                ctx.lineTo(fx + Math.cos(fa) * fl, by - 20 + Math.sin(fa) * fl); ctx.stroke();
+            }
+            drawLampPost(x + 26, by);
+            drawLampPost(x + w - 26, by);
+            drawTree(x + 74, by);
+            drawTree(x + w - 74, by);
+        }
+
+        function drawDockyard(dec, by) {
+            const { x, w } = dec;
+            ctx.fillStyle = '#322418';
+            ctx.fillRect(x, by - 11, w, 11);
+            ctx.strokeStyle = '#221808'; ctx.lineWidth = 1;
+            for (let px = x; px < x + w; px += 18) {
+                ctx.beginPath(); ctx.moveTo(px, by - 11); ctx.lineTo(px, by); ctx.stroke();
+            }
+            // Barrels
+            const bX = x + w * 0.14;
+            for (let row = 0; row < 2; row++) {
+                const cnt = row === 0 ? 3 : 2;
+                for (let col = 0; col < cnt; col++) {
+                    const bx = bX + col * 22 + row * 11;
+                    const bry = by - 22 - row * 22;
+                    ctx.fillStyle = row === 0 ? '#7a3610' : '#8a4618';
+                    ctx.beginPath(); ctx.ellipse(bx + 10, bry + 22, 10, 5, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillRect(bx, bry, 20, 22);
+                    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+                    ctx.fillRect(bx, bry + 6, 20, 2);
+                    ctx.fillRect(bx, bry + 14, 20, 2);
+                }
+            }
+            // Crate
+            const cX = x + w * 0.56;
+            ctx.fillStyle = '#8b6418';
+            ctx.fillRect(cX, by - 32, 34, 32);
+            ctx.strokeStyle = '#5a3e10'; ctx.lineWidth = 1.5;
+            ctx.strokeRect(cX, by - 32, 34, 32);
+            ctx.beginPath(); ctx.moveTo(cX, by - 32); ctx.lineTo(cX + 34, by); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cX + 34, by - 32); ctx.lineTo(cX, by); ctx.stroke();
+            // Rope coil
+            const rX = x + w * 0.82;
+            ctx.strokeStyle = '#a08050'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+            ctx.beginPath();
+            for (let a = 0; a < Math.PI * 3.8; a += 0.28) {
+                const r = 6 + a * 0.9;
+                const rx = rX + Math.cos(a) * r * 0.55;
+                const ry = by - 5 + Math.sin(a) * r * 0.3;
+                a < 0.01 ? ctx.moveTo(rx, ry) : ctx.lineTo(rx, ry);
+            }
+            ctx.stroke();
+        }
+
+
+        // ── Shared helper: a row of windows ─────────────────────────────────
+        function drawWindowRow(sx, sy, totalW, count, ww, wh, col) {
+            ctx.fillStyle = col || '#b8d4e8';
+            const gap = (totalW - count * ww) / (count + 1);
+            for (let i = 0; i < count; i++) {
+                ctx.fillRect(sx + gap + i * (ww + gap), sy, ww, wh);
+            }
+        }
+
+        // ── Individual building type renderers ────────────────────────────
+        function drawBuilding(b) {
+            const { x, w, h, type, name } = b;
+            const top = GROUND_Y - h;
+            ctx.save();
+
+            if (type === 'gasstation') {
+                // Canopy
+                ctx.fillStyle = '#d8d0b8'; ctx.fillRect(x - 24, GROUND_Y - 88, w + 48, 10);
+                ctx.fillStyle = '#b0a880'; ctx.fillRect(x - 24, GROUND_Y - 90, w + 48, 4);
+                ctx.fillStyle = '#706050'; // support pillars
+                ctx.fillRect(x + 10, GROUND_Y - 88, 8, 88);
+                ctx.fillRect(x + w - 18, GROUND_Y - 88, 8, 88);
+                // Office block (right side)
+                const og = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                og.addColorStop(0, '#e0d8c8'); og.addColorStop(1, '#c8c0a8');
+                ctx.fillStyle = og; ctx.fillRect(x + w - 80, top, 80, h);
+                ctx.fillStyle = '#18a030'; // sign box
+                ctx.fillRect(x + w - 70, top + 12, 60, 18);
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w - 40, top + 24);
+                // Pumps
+                for (let pi = 0; pi < 2; pi++) {
+                    const px = x + 28 + pi * 80;
+                    ctx.fillStyle = '#e82020'; ctx.fillRect(px, GROUND_Y - 55, 22, 55);
+                    ctx.fillStyle = '#ff5050'; ctx.fillRect(px + 2, GROUND_Y - 53, 18, 28);
+                    ctx.fillStyle = '#111'; ctx.fillRect(px + 7, GROUND_Y - 28, 8, 3);
+                    ctx.fillStyle = '#888'; ctx.fillRect(px + 10, GROUND_Y - 28, 2, 20); // hose
+                }
+            }
+            else if (type === 'diner') {
+                // Body: warm off-white with checkerboard stripe
+                const dg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                dg.addColorStop(0, '#f0e8d0'); dg.addColorStop(1, '#d8c8a0');
+                ctx.fillStyle = dg; ctx.fillRect(x, top, w, h);
+                // Checkerboard stripe
+                const stripeY = top + h * 0.55;
+                for (let ci = 0; ci < Math.ceil(w / 12); ci++) {
+                    ctx.fillStyle = ci % 2 === 0 ? '#c02020' : '#e8e8e8';
+                    ctx.fillRect(x + ci * 12, stripeY, 12, 12);
+                }
+                // Big windows (retro)
+                ctx.fillStyle = '#d0e8f8'; ctx.fillRect(x + 10, top + 28, w - 20, h * 0.32);
+                ctx.strokeStyle = '#8a6020'; ctx.lineWidth = 3;
+                ctx.strokeRect(x + 10, top + 28, w - 20, h * 0.32);
+                // Neon sign
+                ctx.fillStyle = '#ff3060'; ctx.shadowColor = '#ff3060'; ctx.shadowBlur = 10;
+                ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + 22); ctx.shadowBlur = 0;
+                // Awning
+                ctx.fillStyle = '#b02020';
+                ctx.beginPath(); ctx.moveTo(x - 6, top + 28); ctx.lineTo(x - 6, top + 44); ctx.lineTo(x + w + 6, top + 44); ctx.lineTo(x + w + 6, top + 28); ctx.closePath(); ctx.fill();
+                // Door
+                ctx.fillStyle = '#1a1a0a'; ctx.fillRect(x + w / 2 - 14, GROUND_Y - 50, 28, 50);
+            }
+            else if (type === 'bank') {
+                // Grand stone facade
+                const bg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                bg.addColorStop(0, '#ddd4b8'); bg.addColorStop(1, '#c0b090');
+                ctx.fillStyle = bg; ctx.fillRect(x, top, w, h);
+                // Pediment
+                ctx.fillStyle = '#b8a878';
+                ctx.beginPath(); ctx.moveTo(x + w / 2, top); ctx.lineTo(x + 8, top + 32); ctx.lineTo(x + w - 8, top + 32); ctx.closePath(); ctx.fill();
+                // Columns (4)
+                const colSpacing = (w - 32) / 3;
+                for (let ci = 0; ci < 4; ci++) {
+                    const cx2 = x + 16 + ci * colSpacing;
+                    ctx.fillStyle = '#e8e0c8'; ctx.fillRect(cx2, top + 30, 14, h - 60);
+                    ctx.fillStyle = '#c8b898'; ctx.fillRect(cx2, top + 30, 3, h - 60); // shadow
+                    ctx.fillRect(cx2, top + 26, 18, 8); // capital
+                }
+                // Name plate
+                ctx.fillStyle = '#1a2a5a'; ctx.fillRect(x + 14, top + 36, w - 28, 14);
+                ctx.fillStyle = '#ffd84d'; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + 46);
+                // Windows
+                drawWindowRow(x + 16, top + 58, w - 32, 3, 24, 30, '#b8d0e8');
+                drawWindowRow(x + 16, top + 100, w - 32, 3, 24, 30, '#b8d0e8');
+                // Door
+                ctx.fillStyle = '#2a1a08'; ctx.fillRect(x + w / 2 - 20, GROUND_Y - 60, 40, 60);
+                ctx.fillStyle = '#6a8ab0'; ctx.fillRect(x + w / 2 - 17, GROUND_Y - 57, 34, 40); // glass
+                // Bank robbery alarm overlay
+                if (bankRobbery.triggered && !bankRobbery.complete) {
+                    const blink = Math.sin(bankRobbery.alertPhase * 0.25) > 0;
+                    if (blink) {
+                        ctx.globalAlpha = 0.30;
+                        ctx.fillStyle = '#ff2020';
+                        ctx.fillRect(x, top, w, h);
+                        ctx.globalAlpha = 1;
+                    }
+                    // Alarm light on roof
+                    ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 20 * (blink ? 1 : 0.3);
+                    ctx.fillStyle = blink ? '#ff4040' : '#881010';
+                    ctx.beginPath(); ctx.arc(x + w / 2, top - 6, 7, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+            else if (type === 'shop') {
+                // Body
+                const sg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                sg.addColorStop(0, '#e8e0d0'); sg.addColorStop(1, '#c8c0b0');
+                ctx.fillStyle = sg; ctx.fillRect(x, top, w, h);
+                // Striped awning
+                for (let ai = 0; ai < Math.ceil((w + 12) / 10); ai++) {
+                    ctx.fillStyle = ai % 2 === 0 ? '#187a18' : '#f0f0f0';
+                    ctx.fillRect(x - 6 + ai * 10, top + h * 0.55, 10, 16);
+                }
+                ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(x - 6, top + h * 0.55 + 14, w + 12, 3);
+                // Display window
+                ctx.fillStyle = '#d0eaf8'; ctx.fillRect(x + 10, top + 28, w - 20, h * 0.30);
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.strokeRect(x + 10, top + 28, w - 20, h * 0.30);
+                // Goods in window (dots)
+                ctx.fillStyle = '#e84020'; ctx.beginPath(); ctx.arc(x + 26, top + 44, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#20a020'; ctx.beginPath(); ctx.arc(x + 44, top + 44, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#2020e8'; ctx.beginPath(); ctx.arc(x + 62, top + 44, 5, 0, Math.PI * 2); ctx.fill();
+                // Sign
+                ctx.fillStyle = '#1a3a1a'; ctx.fillRect(x, top, w, 24);
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + 15);
+                // Door
+                ctx.fillStyle = '#1a1a0a'; ctx.fillRect(x + w / 2 - 14, GROUND_Y - 48, 28, 48);
+            }
+            else if (type === 'police') {
+                // Body: blue/white
+                const pg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                pg.addColorStop(0, '#d8e4f4'); pg.addColorStop(1, '#b0c8e8');
+                ctx.fillStyle = pg; ctx.fillRect(x, top, w, h);
+                // Blue stripe
+                ctx.fillStyle = '#1a3a7a'; ctx.fillRect(x, top + h * 0.42, w, 18);
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('POLICE', x + w / 2, top + h * 0.42 + 13);
+                // Badge above
+                ctx.fillStyle = '#ffd84d'; ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 6;
+                ctx.beginPath(); ctx.arc(x + w / 2, top + h * 0.25, 16, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#1a3a7a'; ctx.shadowBlur = 0;
+                ctx.font = 'bold 10px Arial'; ctx.fillText('★', x + w / 2, top + h * 0.25 + 4);
+                // Flagpole
+                ctx.fillStyle = '#888'; ctx.fillRect(x + w - 12, top - 28, 3, 28);
+                ctx.fillStyle = '#d02020'; ctx.fillRect(x + w - 9, top - 26, 22, 10);
+                ctx.fillStyle = '#fff'; ctx.fillRect(x + w - 9, top - 16, 22, 8);
+                ctx.fillStyle = '#2020d0'; ctx.fillRect(x + w - 9, top - 26, 8, 18);
+                // Windows
+                drawWindowRow(x + 10, top + 14, w - 20, 3, 22, 26, '#c0d8f4');
+                // Door
+                ctx.fillStyle = '#1a1a2a'; ctx.fillRect(x + w / 2 - 16, GROUND_Y - 52, 32, 52);
+                ctx.fillStyle = '#3a5a8a'; ctx.fillRect(x + w / 2 - 13, GROUND_Y - 49, 26, 36);
+            }
+            else if (type === 'pharmacy') {
+                // Body: white/clinical
+                ctx.fillStyle = '#f0f0ec'; ctx.fillRect(x, top, w, h);
+                ctx.fillStyle = '#e0e0d8'; ctx.fillRect(x, top, w, 4);
+                // Green cross
+                ctx.fillStyle = '#18a030'; ctx.shadowColor = '#18a030'; ctx.shadowBlur = 8;
+                ctx.fillRect(x + w / 2 - 6, top + 14, 12, 30);
+                ctx.fillRect(x + w / 2 - 16, top + 24, 32, 10);
+                ctx.shadowBlur = 0;
+                // Sign
+                ctx.fillStyle = '#187028'; ctx.fillRect(x + 4, top + 50, w - 8, 16);
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + 61);
+                // Windows
+                drawWindowRow(x + 10, top + 74, w - 20, 2, 28, 30, '#d0f4d0');
+                // Door
+                ctx.fillStyle = '#181818'; ctx.fillRect(x + w / 2 - 14, GROUND_Y - 50, 28, 50);
+            }
+
+            // Shared: curb shadow line
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.fillRect(x, GROUND_Y - 2, w, 2);
+
+            ctx.restore();
+        }
+
+        function drawBuildings() {
+            for (const b of buildings) {
+                // Cull: only draw if near the viewport
+                const screenX = b.x - camera.x;
+                if (screenX > W + 50 || screenX + b.w < -50) continue;
+                drawBuilding(b);
+            }
+        }
+
+        // ── Ambient NPC drawing ───────────────────────────────────────────
+        function drawAmbientNPCs() {
+            // Match rescue-civilian scale: s=1.3 adults, s=1.0 kids
+            const ADULT_S = 1.3, KID_S = 1.0;
+            for (const n of ambientNPCs) {
+                const screenX = n.x - camera.x;
+                if (screenX < -100 || screenX > W + 100) continue;
+
+                const s = n.type === 'kid' ? KID_S : ADULT_S;
+                const figH = 42 * s + 1;
+                const topY = GROUND_Y - figH;
+                // Slow walk cycle so legs move naturally (not frantically)
+                const actualSpeed = Math.abs(n.velX || 0);
+                const walkPhase = n.type === 'sitter' ? 0 : (n.roamPhase || 0) * 0.10 * (actualSpeed + 0.2);
+                // distressed=false → arms always hang at sides; no panic wobble
+                drawCivilianFigure(n, n.x, topY, s, walkPhase, false);
+
+                // Subtle speech-bubble "Hi!" when hero is close (no emoji, no flicker)
+                const dh = Math.hypot(hero.x + hero.w / 2 - n.x, hero.y + hero.h / 2 - (topY + figH / 2));
+                if (dh < 110) {
+                    ctx.save();
+                    const bw = 34, bh = 14, bx = n.x - bw / 2, by = topY - 22;
+                    ctx.fillStyle = 'rgba(255,255,255,0.90)';
+                    ctx.fillRect(bx, by, bw, bh);
+                    ctx.fillStyle = '#2a3040'; ctx.font = '8px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(n.type === 'kid' ? 'Yay!' : 'Hi!', n.x, by + 10);
+                    ctx.restore();
+                }
+            }
+        }
+
+        function drawGroundDecor() {
+            for (const dec of streetDecor) {
+                if (dec.type === 'park') drawPark(dec, GROUND_Y);
+                else if (dec.type === 'playground') drawPlayground(dec, GROUND_Y);
+                else if (dec.type === 'plaza') drawPlaza(dec, GROUND_Y);
+                else if (dec.type === 'dockyard') drawDockyard(dec, GROUND_Y);
+            }
+        }
+
         // ===========================================================
         //                BACKGROUND: Manhattan-style skyline
         // ===========================================================
         // Deterministic per-building data so it doesn't flicker frame to frame.
         const skyline = buildSkyline();
+
+        // ---- ATMOSPHERE: deterministic clouds (60) + drifting airplanes ----
+        const clouds = (function () {
+            function rng(seed) { let s = seed; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; }
+            const r = rng(42), arr = [];
+            for (let i = 0; i < 65; i++) {
+                arr.push({
+                    x: r() * (WORLD_WIDTH + 2000) - 400,
+                    y: 18 + r() * 210,
+                    lumps: 2 + Math.floor(r() * 5),
+                    w: 120 + r() * 280,
+                    h: 38 + r() * 72,
+                    depth: 0.05 + r() * 0.24,
+                    alpha: 0.08 + r() * 0.32,
+                });
+            }
+            return arr;
+        })();
+
+        // Each plane tracks a world-x position and scrolls across the whole map.
+        // Sizes scaled up ~1.6× from previous values for visibility.
+        const planes = [
+            { wx: 1200, wy: 68, dir: 1, speed: 1.05, len: 82, wing: 30, blink: 0, depth: 0.30 },
+            { wx: 7800, wy: 125, dir: -1, speed: 0.80, len: 68, wing: 24, blink: 50, depth: 0.38 },
+            { wx: 3500, wy: 48, dir: 1, speed: 1.35, len: 90, wing: 32, blink: 28, depth: 0.22 },
+            { wx: 11000, wy: 92, dir: -1, speed: 0.65, len: 62, wing: 22, blink: 14, depth: 0.42 },
+            { wx: 5500, wy: 160, dir: 1, speed: 0.55, len: 74, wing: 26, blink: 70, depth: 0.45 },
+        ];
         function buildSkyline() {
             function rng(seed) { let s = seed; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; }
             function layer(spacing, depth, opts) {
@@ -2127,7 +3465,16 @@
         }
 
         function drawManhattan() {
-            // sky gradient (dusk over the city), tinted by the current district
+            // ---- DAY/NIGHT CYCLE ----
+            // dayPhase: 0 = midnight, 1 = full noon, back to 0 at next midnight
+            // dayPhase is global — computed by updateAtmosphere each frame
+            // goldenP: peaks at dawn (dayPhase~0.25) and dusk (dayPhase~0.75)
+            const sunRiseT = Math.max(0, Math.min(1, (dayPhase - 0.05) / 0.20));
+            const sunSetT = Math.max(0, Math.min(1, (0.95 - dayPhase) / 0.20));
+            const isDay = dayPhase > 0.25 && dayPhase < 0.75;
+            const goldenP = Math.max(0, 1 - Math.abs(dayPhase - 0.5) * 8) * 0.85;
+
+            // ---- Base night sky (district-tinted) ----
             const d = districts.find(dd => dd.id === currentDistrict) || districts[0];
             const sky = ctx.createLinearGradient(0, 0, 0, H);
             if (d.id === 'docks') {
@@ -2143,22 +3490,160 @@
             ctx.fillStyle = sky;
             ctx.fillRect(0, 0, W, H);
 
-            // moon glow
-            const moonX = 760 - camera.x * 0.05, moonY = 90 - camera.y * 0.05;
-            const moon = ctx.createRadialGradient(moonX, moonY, 8, moonX, moonY, 60);
-            moon.addColorStop(0, 'rgba(255,250,230,0.9)');
-            moon.addColorStop(1, 'rgba(255,250,230,0)');
-            ctx.fillStyle = moon;
-            ctx.beginPath(); ctx.arc(moonX, moonY, 60, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#f7f3e2';
-            ctx.beginPath(); ctx.arc(moonX, moonY, 26, 0, Math.PI * 2); ctx.fill();
+            // ---- Golden-hour overlay (dawn & dusk warm glow) ----
+            if (goldenP > 0) {
+                const gh = ctx.createLinearGradient(0, 0, 0, H);
+                gh.addColorStop(0, `rgba(40,10,20,${goldenP * 0.7})`);
+                gh.addColorStop(0.35, `rgba(180,70,20,${goldenP * 0.65})`);
+                gh.addColorStop(0.7, `rgba(230,130,30,${goldenP * 0.55})`);
+                gh.addColorStop(1, `rgba(255,160,40,${goldenP * 0.45})`);
+                ctx.fillStyle = gh;
+                ctx.fillRect(0, 0, W, H);
+            }
 
-            // stars
-            ctx.fillStyle = 'rgba(255,255,255,0.5)';
-            for (let i = 0; i < 60; i++) {
-                const sx = (i * 173 - camera.x * 0.05) % W;
-                const sy = (i * 97) % (H * 0.45);
-                ctx.fillRect((sx + W) % W, sy, 1.5, 1.5);
+            // ---- Daytime blue-sky overlay ----
+            const dayAlpha = Math.max(0, (dayPhase - 0.25) / 0.20) * Math.max(0, (0.75 - dayPhase) / 0.20);
+            if (dayAlpha > 0) {
+                const ds = ctx.createLinearGradient(0, 0, 0, H);
+                ds.addColorStop(0, '#1a62b0'); ds.addColorStop(0.4, '#2a8ed0');
+                ds.addColorStop(0.75, '#68b8e8'); ds.addColorStop(1, '#a8d8f0');
+                ctx.globalAlpha = Math.min(1, dayAlpha * 2);
+                ctx.fillStyle = ds; ctx.fillRect(0, 0, W, H);
+                ctx.globalAlpha = 1;
+            }
+
+            // ---- Moon (visible at night) ----
+            const moonAlpha = Math.max(0, 1 - dayPhase * 5, (dayPhase - 0.8) * 5);
+            if (moonAlpha > 0) {
+                const moonX = 760 - camera.x * 0.05, moonY = 90 - camera.y * 0.05;
+                ctx.globalAlpha = moonAlpha;
+                const moon = ctx.createRadialGradient(moonX, moonY, 8, moonX, moonY, 60);
+                moon.addColorStop(0, 'rgba(255,250,230,0.9)');
+                moon.addColorStop(1, 'rgba(255,250,230,0)');
+                ctx.fillStyle = moon;
+                ctx.beginPath(); ctx.arc(moonX, moonY, 60, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#f7f3e2';
+                ctx.beginPath(); ctx.arc(moonX, moonY, 26, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // ---- Sun (visible from dawn to dusk) ----
+            if (dayPhase > 0.08 && dayPhase < 0.92) {
+                const sunT = (dayPhase - 0.08) / 0.84;           // 0=sunrise, 1=sunset
+                const sunX = W * 0.08 + W * 0.84 * sunT - camera.x * 0.015;
+                const sunY = H * 0.65 - Math.sin(sunT * Math.PI) * H * 0.60;
+                const sunA = Math.min(1, Math.min(sunT * 8, (1 - sunT) * 8));  // fade at horizon
+                ctx.globalAlpha = sunA;
+                // halo
+                const haloCols = isDay
+                    ? ['rgba(255,255,200,0.55)', 'rgba(255,220,100,0.25)', 'rgba(255,180,50,0)']
+                    : ['rgba(255,180,80,0.65)', 'rgba(255,120,30,0.35)', 'rgba(220,80,10,0)'];
+                const haloR = isDay ? 90 : 65;
+                const hg = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, haloR);
+                hg.addColorStop(0, haloCols[0]);
+                hg.addColorStop(0.55, haloCols[1]);
+                hg.addColorStop(1, haloCols[2]);
+                ctx.fillStyle = hg;
+                ctx.beginPath(); ctx.arc(sunX, sunY, haloR, 0, Math.PI * 2); ctx.fill();
+                // disc
+                ctx.fillStyle = isDay ? '#fff8e0' : '#ffb840';
+                ctx.shadowColor = isDay ? '#fff8e0' : '#ff8020'; ctx.shadowBlur = 30;
+                ctx.beginPath(); ctx.arc(sunX, sunY, isDay ? 26 : 20, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            }
+
+            // ---- Stars (fade out as day arrives) ----
+            const starAlpha = Math.max(0, 1 - dayPhase * 6) * 0.5;
+            if (starAlpha > 0.02) {
+                ctx.fillStyle = `rgba(255,255,255,${starAlpha})`;
+                for (let i = 0; i < 60; i++) {
+                    const sx = (i * 173 - camera.x * 0.05) % W;
+                    const sy = (i * 97) % (H * 0.45);
+                    ctx.fillRect((sx + W) % W, sy, 1.5, 1.5);
+                }
+            }
+
+            // ---- clouds (brighter by day, subtle at night) ----
+            const cloudBrightness = 0.6 + dayPhase * 0.9;
+            for (const c of clouds) {
+                const cx = c.x - camera.x * c.depth;
+                if (cx + c.w < -80 || cx - 80 > W) continue;
+                ctx.save();
+                ctx.globalAlpha = c.alpha * cloudBrightness;
+                const lumpW = c.w / (c.lumps + 0.5);
+                for (let i = 0; i < c.lumps; i++) {
+                    const lx = cx - c.w * 0.38 + lumpW * (i + 0.4);
+                    const ly = c.y + (i % 2 === 0 ? 0 : -c.h * 0.20);
+                    const rx = lumpW * 0.60;
+                    const ry = c.h * (0.40 + (i === Math.floor(c.lumps / 2) ? 0.15 : 0));
+                    const g = ctx.createRadialGradient(lx, ly - ry * 0.15, 2, lx, ly, Math.max(rx, ry) * 1.1);
+                    g.addColorStop(0, 'rgba(225,235,255,0.90)');
+                    g.addColorStop(0.6, 'rgba(195,210,248,0.65)');
+                    g.addColorStop(1, 'rgba(165,188,238,0)');
+                    ctx.fillStyle = g;
+                    ctx.beginPath(); ctx.ellipse(lx, ly, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // ---- airplanes (silhouette jetliners with blinking nav lights) ----
+            for (const p of planes) {
+                const sx = p.wx - camera.x * p.depth;
+                const sy = p.wy;
+                if (sx < -p.len * 2 || sx > W + p.len * 2) continue;
+                const L = p.len, wg = p.wing;
+                const blink = Math.sin(p.blink * 0.10) > 0.5;
+                ctx.save();
+                ctx.translate(sx, sy);
+                if (p.dir === -1) ctx.scale(-1, 1);   // flip to face left
+                ctx.globalAlpha = 0.78;
+                // fuselage
+                ctx.fillStyle = '#c8d4f0';
+                ctx.beginPath(); ctx.ellipse(0, 0, L * 0.50, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+                // nose cone (slightly brighter)
+                ctx.fillStyle = '#dde6ff';
+                ctx.beginPath();
+                ctx.moveTo(L * 0.42, 0); ctx.quadraticCurveTo(L * 0.56, -0.5, L * 0.50, 4);
+                ctx.lineTo(L * 0.30, 4); ctx.closePath(); ctx.fill();
+                // main wings (swept back)
+                ctx.fillStyle = '#afc0de';
+                ctx.beginPath();
+                ctx.moveTo(L * 0.06, -2);
+                ctx.lineTo(-L * 0.10, -wg);
+                ctx.lineTo(-L * 0.16, -wg + 2);
+                ctx.lineTo(L * 0.14, 3);
+                ctx.closePath(); ctx.fill();
+                // vertical tail fin
+                ctx.fillStyle = '#a0b0d0';
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.38, -1); ctx.lineTo(-L * 0.33, -wg * 0.58); ctx.lineTo(-L * 0.24, -1);
+                ctx.closePath(); ctx.fill();
+                // horizontal stabilizer
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.36, 1); ctx.lineTo(-L * 0.46, -wg * 0.22);
+                ctx.lineTo(-L * 0.26, -wg * 0.06); ctx.lineTo(-L * 0.24, 2);
+                ctx.closePath(); ctx.fill();
+                // window strip
+                ctx.fillStyle = 'rgba(185,225,255,0.50)';
+                ctx.fillRect(-L * 0.18, -2.8, L * 0.40, 2.2);
+                // port nav light (wing tip, blinks red/blue alternating)
+                ctx.shadowColor = blink ? '#ff3030' : '#2244ff';
+                ctx.shadowBlur = blink ? 9 : 5;
+                ctx.fillStyle = blink ? '#ff5050' : '#4466ff';
+                ctx.beginPath(); ctx.arc(-L * 0.10, -wg + 1, 2.2, 0, Math.PI * 2); ctx.fill();
+                // tail strobe (white, faster flash)
+                if (Math.sin(p.blink * 0.16) > 0.72) {
+                    ctx.shadowColor = '#fff'; ctx.shadowBlur = 12;
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(-L * 0.33, -wg * 0.28, 1.8, 0, Math.PI * 2); ctx.fill();
+                }
+                // nose beacon
+                ctx.shadowColor = '#fff'; ctx.shadowBlur = 5;
+                ctx.fillStyle = 'rgba(255,255,255,0.90)';
+                ctx.beginPath(); ctx.arc(L * 0.48, 0, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.restore();
             }
 
             // building layers, far to near
@@ -2210,8 +3695,9 @@
                             const wy = topY + 10 + rr * 18;
                             if (wy > lay.baseY - camera.y) break;
                             if (seed < b.lit * 0.85) {
+                                const winDim = Math.max(0.12, 1 - dayPhase * 1.5);
                                 ctx.fillStyle = seed < 0.15 ? '#fff4c2' : lay.win;
-                                ctx.globalAlpha = 0.85;
+                                ctx.globalAlpha = 0.85 * winDim;
                                 ctx.fillRect(wx, wy, 7, 9);
                                 ctx.globalAlpha = 1;
                             }
@@ -2240,30 +3726,78 @@
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillRect(b.x + b.w - 5, top, 5, b.h);
 
-            // rows of lit windows
-            const cols = 5, rows = 6;
-            const pad = 18, gw = (b.w - pad * 2) / cols, gh = (b.h - 90) / rows;
+            // rows of lit windows — count adapts to building height
+            const cols = 5;
+            const rows = Math.max(6, Math.round((b.h - 80) / 42));
+            const pad = 18, gw = (b.w - pad * 2) / cols, gh = (b.h - 80) / rows;
+            const winDim = Math.max(0.15, 1 - dayPhase * 1.4);
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
                     const lit = ((r * 7 + c * 3 + Math.floor(b.x)) % 4) !== 0;
                     ctx.fillStyle = lit ? 'rgba(255,224,140,0.85)' : 'rgba(40,50,70,0.9)';
+                    ctx.globalAlpha = lit ? winDim : 0.9;
                     ctx.fillRect(b.x + pad + c * gw + 3, top + 30 + r * gh, gw - 8, gh - 8);
                 }
             }
+            ctx.globalAlpha = 1;
 
-            // rooftop globe (the "Planet") — original design, not a trademarked logo
-            const globeX = b.x + b.w / 2, globeY = top - 22;
+            // ---- ROOFTOP TERRACE (hero can land here) ----
+            // Concrete parapet
+            ctx.fillStyle = '#2e3848';
+            ctx.fillRect(b.x - 5, top, b.w + 10, 16);
+            ctx.fillStyle = '#3e4a5a';
+            ctx.fillRect(b.x - 5, top, b.w + 10, 4);
+            // Roof surface (subtle darker strip)
+            ctx.fillStyle = '#1e2530';
+            ctx.fillRect(b.x, top + 4, b.w, 12);
+
+            // Water tower (right side of roof)
+            const wtX = b.x + b.w * 0.75, wtY = top;
+            ctx.fillStyle = '#3a2810';
+            for (let li = -1; li <= 1; li += 2) {
+                ctx.fillRect(wtX + 7 + li * 12 - 3, wtY - 30, 5, 30);  // legs
+            }
+            ctx.fillStyle = '#5a3a18';
+            ctx.beginPath(); ctx.ellipse(wtX + 7, wtY - 30, 15, 9, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillRect(wtX - 8, wtY - 30, 30, 26);
+            ctx.fillStyle = '#4a2e12';
+            ctx.beginPath(); ctx.ellipse(wtX + 7, wtY - 4, 15, 6, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#2a1808'; ctx.lineWidth = 1.5;
+            for (let yi = 0; yi < 3; yi++) {
+                ctx.beginPath(); ctx.ellipse(wtX + 7, wtY - 22 + yi * 9, 15, 5, 0, 0, Math.PI * 2); ctx.stroke();
+            }
+
+            // AC unit (left side)
+            ctx.fillStyle = '#2a3848';
+            ctx.fillRect(b.x + 12, top + 4, 32, 18);
+            ctx.fillStyle = '#3a4858';
+            ctx.fillRect(b.x + 14, top + 6, 28, 10);
+            // AC vents
+            for (let vi = 0; vi < 5; vi++) {
+                ctx.fillStyle = '#1e2c38';
+                ctx.fillRect(b.x + 16 + vi * 5, top + 8, 3, 6);
+            }
+
+            // Skylight (centre) — glowing from the newsroom below
+            const slX = b.x + b.w * 0.38;
+            ctx.fillStyle = `rgba(255,220,130,${0.18 + Math.sin(Date.now() * 0.002) * 0.06})`;
+            ctx.fillRect(slX, top + 4, 28, 12);
+            ctx.strokeStyle = '#4a5060'; ctx.lineWidth = 1;
+            ctx.strokeRect(slX, top + 4, 28, 12);
+
+            // rooftop globe — raised on a taller mast so it clears the parapet
+            const globeX = b.x + b.w / 2, globeY = top - 28;
             ctx.fillStyle = '#2a3550';
-            ctx.fillRect(globeX - 4, top - 14, 8, 16);   // mast
+            ctx.fillRect(globeX - 3, top - 20, 6, 22);   // taller mast
             ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 18;
-            const gg = ctx.createRadialGradient(globeX - 5, globeY - 5, 2, globeX, globeY, 20);
+            const gg = ctx.createRadialGradient(globeX - 5, globeY - 5, 2, globeX, globeY, 22);
             gg.addColorStop(0, '#ffe9a8'); gg.addColorStop(0.6, '#e8b84d'); gg.addColorStop(1, '#9a7020');
             ctx.fillStyle = gg;
-            ctx.beginPath(); ctx.arc(globeX, globeY, 18, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(globeX, globeY, 20, 0, Math.PI * 2); ctx.fill();
             ctx.shadowBlur = 0;
             // orbit ring
             ctx.strokeStyle = 'rgba(255,240,200,0.8)'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.ellipse(globeX, globeY, 24, 8, 0.5, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(globeX, globeY, 27, 9, 0.5, 0, Math.PI * 2); ctx.stroke();
 
             // doorway (the rescue entrance)
             const doorW = 46, doorH = 70;
@@ -2287,7 +3821,7 @@
             ctx.fillText(b.name, b.x + b.w / 2, top + 24);
 
             // a "drop off here" hint when carrying in this district
-            if (carriedCivilian && b.district === currentDistrict) {
+            if (carriedCivilians.length > 0) {   // visible from any district (single building)
                 const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
                 ctx.globalAlpha = pulse;
                 ctx.fillStyle = '#9fffa0';
@@ -2296,7 +3830,7 @@
                 ctx.globalAlpha = 1;
             }
             // "press ENTER to go inside" prompt when the hero stands at the door
-            if (b.district === currentDistrict && !carriedCivilian) {
+            if (carriedCivilians.length === 0) {   // single central building
                 const heroMid = hero.x + hero.w / 2;
                 const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
                 if (Math.abs(heroMid - globeX) < b.w / 2 + 16 && nearGround) {
@@ -2325,23 +3859,26 @@
             const bodyTop = headY + headR - 1;
             const bodyH = 18 * s, bodyW = 13 * s;
 
-            // legs (walk swing)
-            const swing = Math.sin(walkPhase) * 4 * s;
+            // legs — swing raises the stepping leg's TOP so feet never go below bodyTop+bodyH+legH
+            const swing = Math.sin(walkPhase) * 3.5 * s;
+            const legH = 10 * s;
             ctx.fillStyle = '#2f3340';
-            ctx.fillRect(cx - 5 * s, bodyTop + bodyH, 4 * s, 10 * s + swing);
-            ctx.fillRect(cx + 1 * s, bodyTop + bodyH, 4 * s, 10 * s - swing);
+            ctx.fillRect(cx - 5 * s, bodyTop + bodyH - Math.max(0, swing), 4 * s, legH);
+            ctx.fillRect(cx + 1 * s, bodyTop + bodyH - Math.max(0, -swing), 4 * s, legH);
 
             // body
             ctx.fillStyle = shirt;
             ctx.fillRect(cx - bodyW / 2, bodyTop, bodyW, bodyH);
 
-            // arms — raised/worried when distressed, down when relieved
+            // arms — swing opposite to legs while walking; hang at sides when idle or carried
             ctx.fillStyle = skin;
-            if (distressed) {
-                const wob = Math.sin(Date.now() * 0.008 + cx) * 2 * s;
-                ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop - 4 * s + wob, 3 * s, 9 * s);
-                ctx.fillRect(cx + bodyW / 2, bodyTop - 4 * s - wob, 3 * s, 9 * s);
+            const armSwing = Math.sin(walkPhase + Math.PI) * 4.5 * s;
+            if (distressed && Math.abs(armSwing) > 0.3) {
+                // walking: natural counter-swing (arm swings forward when opposite leg steps back)
+                ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop + 2 * s + armSwing * 0.55, 3 * s, 9 * s);
+                ctx.fillRect(cx + bodyW / 2, bodyTop + 2 * s - armSwing * 0.55, 3 * s, 9 * s);
             } else {
+                // idle / carried: arms relaxed at sides
                 ctx.fillRect(cx - bodyW / 2 - 3 * s, bodyTop + 3 * s, 3 * s, 9 * s);
                 ctx.fillRect(cx + bodyW / 2, bodyTop + 3 * s, 3 * s, 9 * s);
             }
@@ -2494,6 +4031,10 @@
                 ctx.restore();
             }
 
+            // ---- street-level parks, playgrounds, plazas, dockyards ----
+            drawBuildings();
+            drawGroundDecor();
+
             // ---- rescue buildings (The Weekly Planet) ----
             for (const b of rescueBuildings) {
                 drawRescueBuilding(b);
@@ -2518,42 +4059,99 @@
                 ctx.restore();
             }
 
-            // ---- civilians to rescue (named human NPCs, now larger & roaming) ----
+            // ---- rescue civilians — threat level drives pose + indicator urgency ----
+            const civS = 1.3;
+            const civFigH = 42 * civS + 1;
+            const civTopY = GROUND_Y - civFigH;
             for (const c of civilians) {
-                if (c.rescued || c.carried) continue;   // carried ones are drawn on the hero
-                const walkPhase = (c.roamPhase || 0) * 0.2;
-                drawCivilianFigure(c, c.x + c.w / 2, c.y, 1, walkPhase, true);
+                if (c.rescued || c.carried) continue;
+                const threat = c.threatLevel || 0;
+                // Cornered: rapid arm-wave; threatened: arm swing while fleeing; calm: relaxed
+                const walkPhase = threat === 2
+                    ? Date.now() * 0.012 + c.x   // frantic fast oscillation
+                    : (c.roamPhase || 0) * 0.20;
+                const isDistressed = threat >= 1;
+                drawCivilianFigure(c, c.x + c.w / 2, civTopY, civS, walkPhase, isDistressed);
 
-                // help indicator + name/prompt when the hero is near
                 const ccx = c.x + c.w / 2;
-                const bob = Math.sin(Date.now() * 0.005 + ccx) * 4;
+                const now = Date.now();
+                const bob = Math.sin(now * 0.005 + ccx) * 4;
                 ctx.save();
-                ctx.fillStyle = 'rgba(255,160,80,0.95)';
-                ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('!', ccx, c.y - 16 + bob);
-                const distHero = Math.hypot(hero.x - ccx, hero.y - (c.y + c.h / 2));
+                ctx.textAlign = 'center';
+
+                if (threat === 2) {
+                    // CORNERED — big red blinking HELP!
+                    const blink = Math.sin(now * 0.022) > 0;
+                    ctx.globalAlpha = blink ? 1.0 : 0.55;
+                    ctx.fillStyle = '#ff1818';
+                    ctx.shadowColor = '#ff1818'; ctx.shadowBlur = 12;
+                    ctx.font = 'bold 13px Arial Black, Arial';
+                    ctx.fillText('HELP!', ccx, civTopY - 14 + bob * 0.5);
+                    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+                } else if (threat === 1) {
+                    // THREATENED — double exclamation, warm orange-red
+                    ctx.fillStyle = '#ff5018';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.fillText('!!', ccx, civTopY - 12 + bob);
+                } else {
+                    // CALM — single soft exclamation
+                    ctx.fillStyle = 'rgba(255,160,80,0.90)';
+                    ctx.font = 'bold 15px Arial';
+                    ctx.fillText('!', ccx, civTopY - 10 + bob);
+                }
+
+                // Proximity label + actionable hint
+                const distHero = Math.hypot(hero.x - ccx, hero.y - (GROUND_Y - civFigH / 2));
                 if (distHero < 170) {
-                    ctx.fillStyle = '#ffd24d';
+                    ctx.fillStyle = threat >= 2 ? '#ff8080' : '#ffd24d';
                     ctx.font = 'bold 12px Arial';
-                    ctx.fillText(c.name, ccx, c.y - 32);
-                    if (!carriedCivilian) {
-                        ctx.fillStyle = 'rgba(150,255,150,0.9)';
+                    ctx.fillText(c.name, ccx, civTopY - 28);
+                    if (carriedCivilians.length < 3) {
+                        ctx.fillStyle = threat >= 1 ? '#ff9060' : 'rgba(150,255,150,0.9)';
                         ctx.font = '10px Arial';
-                        ctx.fillText('approach to carry', ccx, c.y - 46);
+                        const hint = threat === 2 ? 'DANGER — carry to safety!'
+                            : threat === 1 ? 'enemy nearby — carry them!'
+                                : carriedCivilians.length > 0
+                                    ? `pick up (${carriedCivilians.length}/3)`
+                                    : 'approach to carry';
+                        ctx.fillText(hint, ccx, civTopY - 42);
                     }
                 }
                 ctx.restore();
             }
 
-            // ---- carried civilian (held in the hero's arms) ----
-            if (carriedCivilian && !cutscene.active) {
-                const c = carriedCivilian;
-                // drawn slightly smaller & cradled, relieved (not distressed)
-                drawCivilianFigure(c, c.x + c.w / 2, c.y, 0.85, 0, false);
+            // ---- carried civilians (up to 3, held in the hero's arms) ----
+            if (!cutscene.active) {
+                for (const c of carriedCivilians) {
+                    drawCivilianFigure(c, c.x + c.w / 2, c.y, 1.05, 0, false);
+                }
             }
 
-            // enemies
-            for (const en of enemies) if (en.alive) drawEnemy(en);
+            // ambient pedestrians (behind enemies/hero)
+            drawAmbientNPCs();
+
+            // enemies + defeat animations (dead enemies fade out with a spinning exit)
+            for (const en of enemies) {
+                if (en.alive) {
+                    drawEnemy(en);
+                } else if ((en.deathTimer || 0) > 0) {
+                    const dt = en.deathTimer / 24;  // 1→0
+                    ctx.save();
+                    ctx.globalAlpha = dt * 0.75;
+                    const ecx = en.x + en.w / 2, ecy = en.y + en.h / 2;
+                    ctx.translate(ecy, ecy);  // intentional: tumble animation
+                    ctx.translate(ecy - ecy, 0);
+                    // Rise + spin + grow then disappear
+                    const driftY = (1 - dt) * 36;
+                    const spin = (1 - dt) * (en._deathSpin || 0.55);
+                    ctx.translate(en.x + en.w / 2, en.y + en.h / 2 - driftY);
+                    ctx.rotate(spin);
+                    ctx.scale(1 + (1 - dt) * 0.28, 1 + (1 - dt) * 0.28);
+                    ctx.translate(-(en.x + en.w / 2), -(en.y + en.h / 2));
+                    drawEnemy(en);
+                    ctx.restore();
+                }
+            }
 
             // heroes
             drawEntity(hero);
@@ -2620,32 +4218,113 @@
 
         // ---------- MAP & TITLE-CARD OVERLAYS ----------
         function drawMinimap() {
-            const mw = 220, mh = 54, mx = W - mw - 12, my = 12;
-            ctx.save();
-            // panel
-            ctx.fillStyle = 'rgba(8,10,18,0.7)';
-            ctx.strokeStyle = '#2a3148'; ctx.lineWidth = 1;
-            ctx.fillRect(mx, my, mw, mh); ctx.strokeRect(mx, my, mw, mh);
+            const mw = 240, mh = 60, mx = W - mw - 12, my = 12;
             const sx = mw / WORLD_WIDTH;
-            // district bands
+            const now = Date.now();
+            ctx.save();
+
+            // Panel with subtle rounded feel
+            ctx.fillStyle = 'rgba(6,8,16,0.82)';
+            ctx.strokeStyle = '#3a4560'; ctx.lineWidth = 1.5;
+            ctx.fillRect(mx, my, mw, mh);
+            ctx.strokeRect(mx, my, mw, mh);
+
+            // District color bands
             for (const d of districts) {
-                ctx.fillStyle = d.unlocked ? d.color : '#2a2030';
-                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = d.unlocked ? d.color : '#1e1828';
+                ctx.globalAlpha = 0.45;
                 ctx.fillRect(mx + d.x0 * sx, my, (d.x1 - d.x0) * sx, mh);
                 ctx.globalAlpha = 1;
+                // District boundary tick
+                if (d.x0 > 0) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+                    ctx.fillRect(mx + d.x0 * sx - 0.5, my, 1, mh);
+                }
             }
-            // objective dots
-            for (const c of civilians) if (!c.rescued) { ctx.fillStyle = '#ffd24d'; ctx.fillRect(mx + c.x * sx - 1, my + mh * 0.7, 3, 3); }
-            for (const b of rescueBuildings) { ctx.fillStyle = '#9fffa0'; ctx.fillRect(mx + (b.x + b.w / 2) * sx - 2, my + mh * 0.15, 4, 4); }
-            for (const em of emitters) if (!em.destroyed) { ctx.fillStyle = '#ff5cf0'; ctx.fillRect(mx + em.x * sx - 1, my + mh * 0.4, 3, 3); }
+
+            // ── Emitters (purple squares) ──
+            for (const em of emitters) {
+                if (em.destroyed) continue;
+                ctx.fillStyle = '#e040f0';
+                ctx.fillRect(mx + em.x * sx - 2, my + mh * 0.38, 4, 4);
+            }
+
+            // ── Boss (red skull-ish marker) ──
             const boss = enemies.find(e => e.boss);
-            if (boss && boss.alive) { ctx.fillStyle = '#ff3030'; ctx.fillRect(mx + boss.x * sx - 2, my + mh * 0.3, 4, 4); }
-            // hero + hound markers
-            ctx.fillStyle = '#7fd3ff'; ctx.fillRect(mx + hero.x * sx - 2, my + mh * 0.5, 4, 4);
-            ctx.fillStyle = '#d4a85c'; ctx.fillRect(mx + hound.x * sx - 1, my + mh * 0.5, 3, 3);
-            // label
-            ctx.fillStyle = '#9fb6ff'; ctx.font = '9px Arial'; ctx.textAlign = 'left';
-            ctx.fillText('M: full map', mx + 4, my + mh - 4);
+            if (boss && boss.alive) {
+                ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 6;
+                ctx.fillStyle = '#ff3030';
+                ctx.beginPath(); ctx.arc(mx + boss.x * sx, my + mh * 0.30, 4.5, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            // ── Civilians needing rescue: person-silhouette markers ──
+            civilians.forEach((c, i) => {
+                if (c.rescued) return;
+                const cx2 = mx + c.x * sx;
+                const cy2 = my + mh * 0.76;
+                const p = 0.7 + Math.sin(now * 0.009 + i * 1.4) * 0.3;
+                const col = c.threatLevel >= 2 ? '#ff3030' : c.threatLevel === 1 ? '#ff8820' : '#ffd24d';
+                ctx.globalAlpha = p;
+                ctx.fillStyle = col;
+                ctx.shadowColor = col; ctx.shadowBlur = c.threatLevel > 0 ? 7 : 3;
+                // Head
+                ctx.beginPath(); ctx.arc(cx2, cy2 - 5.5, 3.2, 0, Math.PI * 2); ctx.fill();
+                // Body
+                ctx.fillRect(cx2 - 2.4, cy2 - 2.5, 4.8, 5.5);
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            });
+
+            // ── Weekly Planet: golden globe icon ──
+            for (const b of rescueBuildings) {
+                const bx2 = mx + (b.x + b.w / 2) * sx;
+                const by2 = my + mh * 0.25;
+                // Glow
+                ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 10;
+                // Gold circle
+                ctx.fillStyle = '#ffd84d';
+                ctx.beginPath(); ctx.arc(bx2, by2, 5.5, 0, Math.PI * 2); ctx.fill();
+                // 'W' inside
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#1a1808';
+                ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('W', bx2, by2 + 2.2);
+                // Orbit ring
+                ctx.strokeStyle = 'rgba(255,240,180,0.75)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.ellipse(bx2, by2, 8, 3.5, 0.4, 0, Math.PI * 2); ctx.stroke();
+            }
+
+            // ── Hound: small amber dot ──
+            ctx.fillStyle = '#d4a85c';
+            ctx.beginPath(); ctx.arc(mx + hound.x * sx, my + mh * 0.50, 2.5, 0, Math.PI * 2); ctx.fill();
+
+            // ── HERO: directional white arrow (most prominent) ──
+            const hax = mx + hero.x * sx;
+            const hay = my + mh * 0.50;
+            ctx.shadowColor = '#7fd3ff'; ctx.shadowBlur = 10;
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#4ab8ff'; ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            if (hero.facing === 1) {
+                ctx.moveTo(hax + 7, hay);
+                ctx.lineTo(hax - 4, hay - 5);
+                ctx.lineTo(hax - 2, hay);
+                ctx.lineTo(hax - 4, hay + 5);
+            } else {
+                ctx.moveTo(hax - 7, hay);
+                ctx.lineTo(hax + 4, hay - 5);
+                ctx.lineTo(hax + 2, hay);
+                ctx.lineTo(hax + 4, hay + 5);
+            }
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Footer legend
+            ctx.fillStyle = '#7a8aaa'; ctx.font = '8px Arial'; ctx.textAlign = 'left';
+            ctx.fillText('M: full map   ▲=you', mx + 4, my + mh - 4);
+            ctx.fillStyle = '#ffd24d'; ctx.fillText('◆=civilian', mx + 90, my + mh - 4);
+            ctx.fillStyle = '#ffd84d'; ctx.fillText('✦=WP', mx + 152, my + mh - 4);
             ctx.restore();
         }
 
@@ -2676,24 +4355,141 @@
                 ctx.fillStyle = done ? '#90ee90' : (d.unlocked ? '#ffd24d' : '#ff8080');
                 ctx.fillText(d.unlocked ? (done ? '✓ cleared' : 'in progress') : '🔒 locked', cx, my + mh + 18);
             }
-            // markers
-            for (const c of civilians) if (!c.rescued) { ctx.fillStyle = '#ffd24d'; ctx.beginPath(); ctx.arc(mx + c.x * sx, my + mh * 0.75, 4, 0, 7); ctx.fill(); }
-            for (const b of rescueBuildings) {
-                const bx = mx + (b.x + b.w / 2) * sx;
-                ctx.fillStyle = '#9fffa0';
-                ctx.beginPath(); ctx.arc(bx, my + mh * 0.2, 5, 0, 7); ctx.fill();
-                ctx.fillStyle = '#9fffa0'; ctx.font = '8px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('SAFE', bx, my + mh * 0.2 - 8);
+            const now2 = Date.now();
+
+            // ── Viewport indicator (white rectangle shows what's currently visible) ──
+            ctx.strokeStyle = 'rgba(255,255,255,0.30)'; ctx.lineWidth = 1.5;
+            ctx.strokeRect(mx + camera.x * sx, my + 2, W * sx, mh - 4);
+
+            // ── Emitters (purple) ──
+            for (const em of emitters) {
+                if (em.destroyed) continue;
+                ctx.fillStyle = '#e040f0'; ctx.shadowColor = '#e040f0'; ctx.shadowBlur = 5;
+                ctx.beginPath(); ctx.arc(mx + em.x * sx, my + mh * 0.38, 4.5, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
             }
-            for (const em of emitters) if (!em.destroyed) { ctx.fillStyle = '#ff5cf0'; ctx.beginPath(); ctx.arc(mx + em.x * sx, my + mh * 0.4, 4, 0, 7); ctx.fill(); }
+
+            // ── Boss (red skull) ──
             const boss = enemies.find(e => e.boss);
-            if (boss && boss.alive) { ctx.fillStyle = '#ff3030'; ctx.beginPath(); ctx.arc(mx + boss.x * sx, my + mh * 0.3, 6, 0, 7); ctx.fill(); }
-            ctx.fillStyle = '#7fd3ff'; ctx.beginPath(); ctx.arc(mx + hero.x * sx, my + mh * 0.55, 5, 0, 7); ctx.fill();
-            // legend
-            ctx.textAlign = 'center'; ctx.font = '13px Arial'; ctx.fillStyle = '#9fb6ff';
-            ctx.fillText('CITY MAP  —  🟡 rescue   🟣 emitter   🔴 boss   🔵 you', W / 2, my - 40);
-            ctx.font = '11px Arial'; ctx.fillStyle = '#6b7390';
-            ctx.fillText('Press M to close', W / 2, my + mh + 44);
+            if (boss && boss.alive) {
+                const bossX = mx + boss.x * sx, bossY = my + mh * 0.28;
+                ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 12;
+                ctx.fillStyle = '#ff3030';
+                ctx.beginPath(); ctx.arc(bossX, bossY, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('☠', bossX, bossY + 3.5);
+            }
+
+            // ── Civilians: person silhouettes, threat-colored, with count badge ──
+            const civRemaining = civilians.filter(c => !c.rescued).length;
+            civilians.forEach((c, ci) => {
+                if (c.rescued) return;
+                const cx = mx + c.x * sx, cy = my + mh * 0.72;
+                const th = c.threatLevel || 0;
+                const col = th >= 2 ? '#ff4040' : th === 1 ? '#ff8820' : '#ffd24d';
+                // Pulse halo for endangered
+                if (th > 0) {
+                    const tp = 0.38 + Math.sin(now2 * 0.015 + ci * 1.2) * 0.35;
+                    ctx.globalAlpha = tp;
+                    ctx.fillStyle = col;
+                    ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = th > 0 ? 7 : 3;
+                ctx.beginPath(); ctx.arc(cx, cy - 5.5, 4, 0, Math.PI * 2); ctx.fill();  // head
+                ctx.fillRect(cx - 3, cy - 1.5, 6, 7);  // body
+                ctx.shadowBlur = 0;
+            });
+            // Count badge (bottom-left of map)
+            if (civRemaining > 0) {
+                ctx.fillStyle = '#ffd24d'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+                ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+                ctx.fillText('👤 ' + civRemaining + ' civilian' + (civRemaining > 1 ? 's' : '') + ' need rescue', mx + 6, my + mh * 0.95);
+                ctx.shadowBlur = 0;
+            } else {
+                ctx.fillStyle = '#90ee90'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
+                ctx.fillText('✓ all civilians safe', mx + 6, my + mh * 0.95);
+            }
+
+            // ── Weekly Planet: large prominent globe + label ──
+            for (const b of rescueBuildings) {
+                const bpx = mx + (b.x + b.w / 2) * sx;
+                const bpy = my + mh * 0.20;
+                const gp = 0.60 + Math.sin(now2 * 0.004) * 0.40;
+                // Outer glow
+                ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 18 * gp;
+                ctx.strokeStyle = `rgba(255,216,77,${gp * 0.42})`; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(bpx, bpy, 16, 0, Math.PI * 2); ctx.stroke();
+                // Globe fill
+                const ggl = ctx.createRadialGradient(bpx - 3, bpy - 3, 1, bpx, bpy, 11);
+                ggl.addColorStop(0, '#ffe9a8'); ggl.addColorStop(1, '#c87e20');
+                ctx.fillStyle = ggl;
+                ctx.beginPath(); ctx.arc(bpx, bpy, 11, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                // 'W'
+                ctx.fillStyle = '#1a1808'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('W', bpx, bpy + 4.5);
+                // Orbit ring
+                ctx.strokeStyle = 'rgba(255,240,180,0.80)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.ellipse(bpx, bpy, 17, 6.5, 0.45, 0, Math.PI * 2); ctx.stroke();
+                // Connecting line to label
+                ctx.strokeStyle = 'rgba(255,216,77,0.32)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(bpx, bpy + 12); ctx.lineTo(bpx, bpy + 24); ctx.stroke();
+                // Label
+                ctx.shadowColor = '#000'; ctx.shadowBlur = 6;
+                ctx.fillStyle = '#ffd84d'; ctx.font = 'bold 10px Arial';
+                ctx.fillText('THE WEEKLY PLANET', bpx, bpy + 34);
+                ctx.shadowBlur = 0;
+            }
+
+            // ── Hero: directional arrow + pulsing ring + YOU label ──
+            const hfx = mx + hero.x * sx, hfy = my + mh * 0.52;
+            // Pulsing ring
+            const hp2 = 0.4 + Math.sin(now2 * 0.010) * 0.45;
+            ctx.globalAlpha = hp2;
+            ctx.strokeStyle = '#7fd3ff'; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(hfx, hfy, 15, 0, Math.PI * 2); ctx.stroke();
+            ctx.globalAlpha = 1;
+            // White directional arrow (same style as minimap)
+            ctx.shadowColor = '#7fd3ff'; ctx.shadowBlur = 14;
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4ab8ff'; ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            if (hero.facing === 1) {
+                ctx.moveTo(hfx + 12, hfy); ctx.lineTo(hfx - 7, hfy - 8); ctx.lineTo(hfx - 4, hfy); ctx.lineTo(hfx - 7, hfy + 8);
+            } else {
+                ctx.moveTo(hfx - 12, hfy); ctx.lineTo(hfx + 7, hfy - 8); ctx.lineTo(hfx + 4, hfy); ctx.lineTo(hfx + 7, hfy + 8);
+            }
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.shadowBlur = 0;
+            // YOU label
+            ctx.fillStyle = '#7fd3ff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+            ctx.shadowColor = '#000'; ctx.shadowBlur = 5;
+            ctx.fillText('▲ YOU', hfx, hfy - 22);
+            ctx.shadowBlur = 0;
+
+            // ── Legend (top bar) ──
+            ctx.textAlign = 'center'; ctx.font = 'bold 12px Arial'; ctx.fillStyle = '#9fb6ff';
+            ctx.fillText('CITY MAP', W / 2, my - 34);
+            const legItems = [
+                { col: '#ffd24d', label: 'civilians' },
+                { col: '#ffd84d', label: 'Weekly Planet' },
+                { col: '#e040f0', label: 'emitters' },
+                { col: '#ff3030', label: 'boss' },
+                { col: '#7fd3ff', label: 'you (▲)' },
+                { col: 'rgba(255,255,255,0.3)', label: 'your view' },
+            ];
+            let legX = mx;
+            const legSpacing = mw / legItems.length;
+            for (const li of legItems) {
+                ctx.fillStyle = li.col;
+                ctx.fillRect(legX + legSpacing * 0.18, my - 22, 11, 11);
+                ctx.fillStyle = '#b0b8d0'; ctx.font = '9px Arial'; ctx.textAlign = 'left';
+                ctx.fillText(li.label, legX + legSpacing * 0.18 + 14, my - 13);
+                legX += legSpacing;
+            }
+            ctx.font = '10px Arial'; ctx.fillStyle = '#6b7390'; ctx.textAlign = 'center';
+            ctx.fillText('Press M to close', W / 2, my + mh + 42);
             ctx.restore();
         }
 
@@ -3092,14 +4888,15 @@
             ctx.fillStyle = '#3a4a5a';
             ctx.fillRect(sz.x + 30, interior.floorY - 44, 100, 14);
             // drop-off prompt when carrying a civilian and standing in the zone
-            if (carriedCivilian) {
+            if (carriedCivilians.length > 0) {
                 const heroMid = hero.x + hero.w / 2;
                 const inZone = heroMid > sz.x && heroMid < sz.x + sz.w;
                 const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
                 ctx.globalAlpha = pulse;
                 ctx.fillStyle = inZone ? '#9fffa0' : '#ffe072';
                 ctx.font = 'bold 13px Arial';
-                ctx.fillText(inZone ? 'Press F to drop off ' + carriedCivilian.name : 'Bring them to the SAFE ZONE →',
+                const dropNames = carriedCivilians.map(c => c.name).join(' & ');
+                ctx.fillText(inZone ? 'Press F to drop off ' + dropNames : 'Bring them to the SAFE ZONE →',
                     inZone ? sz.x + sz.w / 2 : hero.x + hero.w / 2, interior.floorY - 180);
                 ctx.globalAlpha = 1;
             }
@@ -3131,6 +4928,83 @@
                 drawResident(r);
             }
 
+            // ---- carried civilians are visible inside the building ----
+            if (carriedCivilians.length > 0) {
+                const civS = 1.05, civH = 42 * civS + 1;
+                for (const c of carriedCivilians) {
+                    drawCivilianFigure(c, c.x + c.w / 2, c.y, civS, 0, false);
+                }
+            }
+
+            // ── HERO'S OFFICE (far right of newsroom) ──────────────────────────
+            const offX = 1605;
+            // Partition wall (left edge of office)
+            ctx.fillStyle = '#28304a';
+            ctx.fillRect(offX, interior.floorY - 200, 8, 200);
+            ctx.fillStyle = '#3a4460'; ctx.fillRect(offX, interior.floorY - 200, 8, 4);
+
+            // Office sign on partition
+            ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 8;
+            ctx.fillStyle = '#ffd84d'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+            ctx.fillText("— HERO'S OFFICE —", offX + 14, interior.floorY - 190);
+            ctx.shadowBlur = 0;
+
+            // Large mahogany desk
+            ctx.fillStyle = '#6a4020';
+            ctx.fillRect(offX + 22, interior.floorY - 40, 130, 18);
+            ctx.fillStyle = '#7a5030'; ctx.fillRect(offX + 22, interior.floorY - 40, 130, 5);
+            // Desk legs
+            ctx.fillStyle = '#4a2a10';
+            ctx.fillRect(offX + 24, interior.floorY - 22, 7, 22);
+            ctx.fillRect(offX + 138, interior.floorY - 22, 7, 22);
+
+            // Monitor + keyboard on desk
+            ctx.fillStyle = '#18202e'; ctx.fillRect(offX + 70, interior.floorY - 76, 48, 36);
+            ctx.fillStyle = 'rgba(100,180,255,0.80)'; ctx.fillRect(offX + 73, interior.floorY - 73, 42, 28);
+            // Tiny crime-data on screen
+            ctx.fillStyle = '#80ff80'; ctx.font = '5px monospace'; ctx.textAlign = 'left';
+            for (let li = 0; li < 4; li++) ctx.fillRect(offX + 76, interior.floorY - 70 + li * 6, 14 + li * 2, 2);
+            ctx.fillStyle = '#ff6060'; ctx.fillRect(offX + 96, interior.floorY - 70, 14, 2);
+            ctx.fillStyle = '#18202e'; ctx.fillRect(offX + 86, interior.floorY - 38, 18, 4);  // stand
+
+            // Papers stacked on desk
+            ctx.fillStyle = '#e0d8c8'; ctx.fillRect(offX + 26, interior.floorY - 38, 36, 20);
+            ctx.fillStyle = '#cec0a8'; ctx.fillRect(offX + 30, interior.floorY - 42, 32, 20);
+            ctx.fillStyle = '#9090a0'; ctx.font = '4px Arial';
+            for (let pi = 0; pi < 5; pi++) ctx.fillRect(offX + 33, interior.floorY - 40 + pi * 3, 20, 1);
+
+            // Cape on coat rack (right side)
+            const rkX = offX + 170;
+            ctx.fillStyle = '#5a3820';
+            ctx.fillRect(rkX - 2, interior.floorY - 150, 4, 150);  // pole
+            ctx.fillRect(rkX - 22, interior.floorY - 150, 44, 5);  // bar
+            // Cape draped on bar (hero's red cape)
+            ctx.fillStyle = '#c41e2a';
+            ctx.beginPath();
+            ctx.moveTo(rkX - 14, interior.floorY - 145);
+            ctx.bezierCurveTo(rkX - 22, interior.floorY - 88, rkX + 18, interior.floorY - 60, rkX + 6, interior.floorY - 18);
+            ctx.lineTo(rkX - 6, interior.floorY - 18);
+            ctx.bezierCurveTo(rkX + 4, interior.floorY - 60, rkX - 22, interior.floorY - 88, rkX - 14, interior.floorY - 145);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#8a1420';
+            ctx.beginPath();
+            ctx.moveTo(rkX - 4, interior.floorY - 145);
+            ctx.bezierCurveTo(rkX, interior.floorY - 90, rkX + 6, interior.floorY - 65, rkX + 2, interior.floorY - 28);
+            ctx.lineTo(rkX, interior.floorY - 28); ctx.closePath(); ctx.fill();
+
+            // City window (right wall of office)
+            ctx.fillStyle = 'rgba(50,70,120,0.38)';
+            ctx.fillRect(offX + 105, interior.floorY - 195, 90, 148);
+            ctx.strokeStyle = '#3a4060'; ctx.lineWidth = 3;
+            ctx.strokeRect(offX + 105, interior.floorY - 195, 90, 148);
+            ctx.fillStyle = 'rgba(255,224,140,0.55)';
+            for (let wi = 0; wi < 12; wi++) {
+                ctx.fillRect(offX + 112 + (wi % 4) * 20, interior.floorY - 188 + Math.floor(wi / 4) * 42, 10, 16);
+            }
+            ctx.fillStyle = '#3a4060';
+            ctx.fillRect(offX + 105, interior.floorY - 121, 90, 3);  // window cross bar
+            ctx.fillRect(offX + 149, interior.floorY - 195, 3, 148);
+
             // hero + hound
             drawEntity(hound);
             drawEntity(hero);
@@ -3147,50 +5021,55 @@
             const standing = n.type === 'walk' || n.standing;
             const bob = Math.sin(n.phase) * (standing ? 0 : 1.5);
             ctx.save();
-            // body
-            ctx.fillStyle = ['#5a6a8a', '#7a5a6a', '#5a7a6a', '#8a7a5a'][n.name.charCodeAt(0) % 4];
-            const topY = standing ? y - 46 : y - 38;
-            ctx.fillRect(x - 8, topY + 14 + bob, 16, standing ? 24 : 18);
+            // body (~1.4× larger than before)
+            // Rescued civilians wear green/teal — easy to spot vs original staff
+            const shirtPal = n.rescued
+                ? ['#3a7a6a', '#4a8a5a', '#2a6a5a', '#4a7060']
+                : ['#5a6a8a', '#7a5a6a', '#5a7a6a', '#8a7a5a'];
+            ctx.fillStyle = shirtPal[n.name.charCodeAt(0) % 4];
+            const topY = standing ? y - 64 : y - 52;
+            ctx.fillRect(x - 11, topY + 20 + bob, 22, standing ? 33 : 25);
             // head
             ctx.fillStyle = '#e8c8a0';
-            ctx.beginPath(); ctx.arc(x, topY + 8 + bob, 7, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x, topY + 11 + bob, 10, 0, Math.PI * 2); ctx.fill();
             // hair
             ctx.fillStyle = ['#2a2a2a', '#4a3520', '#1a1a1a'][n.name.charCodeAt(1) % 3];
-            ctx.beginPath(); ctx.arc(x, topY + 6 + bob, 7.5, Math.PI * 0.8, Math.PI * 2.2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x, topY + 8 + bob, 10.5, Math.PI * 0.8, Math.PI * 2.2); ctx.fill();
             // eyes look toward the hero when greeting
             ctx.fillStyle = '#1a1a1a';
-            const ed = (n.faceDir || 1) * 2;
-            ctx.fillRect(x - 3 + ed, topY + 7 + bob, 1.6, 2);
-            ctx.fillRect(x + 1 + ed, topY + 7 + bob, 1.6, 2);
+            const ed = (n.faceDir || 1) * 2.5;
+            ctx.fillRect(x - 4 + ed, topY + 10 + bob, 2.2, 2.8);
+            ctx.fillRect(x + 2 + ed, topY + 10 + bob, 2.2, 2.8);
             // legs (standing/walking)
             if (standing) {
                 ctx.fillStyle = '#2f3340';
                 const moving = n.type === 'walk' && n.greeting <= 20;
-                const sw = moving ? Math.sin(n.phase * 3) * 3 : 0;
-                ctx.fillRect(x - 6, y - 14, 5, 14 + sw);
-                ctx.fillRect(x + 1, y - 14, 5, 14 - sw);
+                const sw = moving ? Math.sin(n.phase * 3) * 4 : 0;
+                // Shift leg TOP up — feet always stay at floor (y)
+                ctx.fillRect(x - 8, y - 20 - Math.max(0, sw), 7, 20);
+                ctx.fillRect(x + 1, y - 20 - Math.max(0, -sw), 7, 20);
             }
             // "working" indicator over seated workers
             if (!standing && Math.sin(n.phase * 0.5) > 0.7) {
                 ctx.fillStyle = 'rgba(255,224,140,0.8)';
-                ctx.font = '10px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('✎', x, topY - 4 + bob);
+                ctx.font = '12px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('✎', x, topY - 6 + bob);
             }
             // GREETING speech bubble when the hero is near
             if (n.greeting > 20) {
                 const lines = npcGreeting(n.name);
                 ctx.fillStyle = 'rgba(255,255,255,0.92)';
                 ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-                const bw = 96, bh = 22, bx = x - bw / 2, by = topY - 34;
+                const bw = 110, bh = 26, bx = x - bw / 2, by = topY - 44;
                 ctx.fillRect(bx, by, bw, bh);
-                ctx.beginPath(); ctx.moveTo(x - 4, by + bh); ctx.lineTo(x + 4, by + bh); ctx.lineTo(x, by + bh + 6); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(x - 5, by + bh); ctx.lineTo(x + 5, by + bh); ctx.lineTo(x, by + bh + 8); ctx.fill();
                 ctx.fillStyle = '#1a2030'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(lines, x, by + 14);
+                ctx.fillText(lines, x, by + 16);
             } else {
                 // faint name label otherwise
                 ctx.fillStyle = 'rgba(200,210,230,0.4)';
-                ctx.font = '8px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(n.name, x, topY - 14);
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(n.name, x, topY - 18);
             }
             ctx.restore();
         }
@@ -3208,35 +5087,45 @@
         function drawResident(r) {
             const x = r.x, y = interior.floorY;
             ctx.save();
+            // body (~1.4× larger)
             ctx.fillStyle = '#6a8a6a';
-            ctx.fillRect(x - 7, y - 30, 14, 18);
+            ctx.fillRect(x - 10, y - 42, 20, 24);
+            // head
             ctx.fillStyle = '#e8c8a0';
-            ctx.beginPath(); ctx.arc(x, y - 34, 6, 0, Math.PI * 2); ctx.fill();
-            // happy bob + small smile
-            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(x, y - 33, 2, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+            ctx.beginPath(); ctx.arc(x, y - 47, 8.5, 0, Math.PI * 2); ctx.fill();
+            // hair
+            ctx.fillStyle = '#2a2a2a';
+            ctx.beginPath(); ctx.arc(x, y - 48, 9, Math.PI * 0.8, Math.PI * 2.2); ctx.fill();
+            // happy smile
+            ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.arc(x, y - 44, 3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+            // eyes
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(x - 4, y - 47, 2, 2.5);
+            ctx.fillRect(x + 2, y - 47, 2, 2.5);
             // legs
             ctx.fillStyle = '#2f3340';
-            const sw = Math.sin(r.phase * 3) * 2;
-            ctx.fillRect(x - 5, y - 12, 4, 12 + sw);
-            ctx.fillRect(x + 1, y - 12, 4, 12 - sw);
-            // safe heart, or a "thank you" wave when the hero is near
+            const sw = Math.sin(r.phase * 3) * 2.5;
+            ctx.fillRect(x - 7, y - 18 - Math.max(0, sw), 5.5, 18);
+            ctx.fillRect(x + 1.5, y - 18 - Math.max(0, -sw), 5.5, 18);
+            // safe heart, or "thank you" when hero is near
             if (r.greeting > 20) {
                 ctx.fillStyle = 'rgba(255,255,255,0.92)';
-                const bw = 80, bh = 20, bx = x - bw / 2, by = y - 60;
+                const bw = 90, bh = 22, bx = x - bw / 2, by = y - 82;
                 ctx.fillRect(bx, by, bw, bh);
-                ctx.beginPath(); ctx.moveTo(x - 4, by + bh); ctx.lineTo(x + 4, by + bh); ctx.lineTo(x, by + bh + 5); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(x - 5, by + bh); ctx.lineTo(x + 5, by + bh); ctx.lineTo(x, by + bh + 7); ctx.fill();
                 ctx.fillStyle = '#1a4020'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('Thank you!', x, by + 13);
+                ctx.fillText('Thank you!', x, by + 14);
             } else {
                 ctx.fillStyle = 'rgba(150,255,150,0.5)';
-                ctx.font = '9px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('♥', x, y - 42);
+                ctx.font = '11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('♥', x, y - 60);
             }
             ctx.restore();
         }
 
         function loop() {
+            updateAtmosphere();   // always runs — clouds/planes animate on title screen too
             // ---- front-end screens: render and wait for the player ----
             if (gameScreen === 'title' || gameScreen === 'howto') {
                 // keep the on-page HUD/controls hidden behind the screens
@@ -3253,6 +5142,7 @@
                 document.getElementById('hud').style.display = '';
                 document.getElementById('controls').style.display = controlsVisible ? '' : 'none';
                 document.getElementById('ctrlHint').style.display = controlsVisible ? 'none' : 'block';
+                titleCard = { text: 'THE WEEKLY PLANET', sub: 'Your city needs you. Head to EXIT to begin!', timer: 240 };
                 loop._uiShown = true;
             }
 
@@ -3300,6 +5190,8 @@
             updateEntity(hound, p2);
             updateEnemies();
             updateCivilians();
+            updateAmbientNPCs();
+            updateBankRobbery();
             updateWorldState();
             updateHitFX();
             updateCamera();
