@@ -506,6 +506,18 @@
         let p2Mode = 'ai';
         let controlsVisible = true;
 
+        // Start inside the Weekly Planet as civilian form
+        scene = 'interior';
+        hero.persona = 'civilian';
+        hero.x = interior.exitDoor.x + 150; hero.y = interior.floorY - hero.h;
+        hound.x = interior.exitDoor.x + 80; hound.y = interior.floorY - hound.h;
+        // Pre-fill savedCityState so exiting the building works from the start
+        savedCityState = {
+            hx: 60, hy: GROUND_Y - 74, hvx: 0, hvy: 0, hf: 1, hfly: false,
+            dx: 160, dy: GROUND_Y - 44, dvx: 0, dvy: 0, df: 1,
+            district: 'downtown'
+        };
+
         // ---------- SCENE TRANSITIONS ----------
         // Enter the Weekly Planet interior: save city positions, drop the hero/hound
         // just inside the door, switch scene. Full powers (flight) remain available.
@@ -680,7 +692,8 @@
             // feedback
             if (kind !== 'freeze') {
                 screenShake = Math.max(screenShake, killed ? 14 : 6);
-                if (killed) hitStop = Math.max(hitStop, 4);
+                // laser kills don't trigger hitstop — the beam pierces through instantly
+                if (killed && kind !== 'laser') hitStop = Math.max(hitStop, 4);
             }
         }
 
