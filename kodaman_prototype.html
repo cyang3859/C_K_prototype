@@ -146,7 +146,18 @@
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         const W = canvas.width, H = canvas.height;
-        const WORLD_WIDTH = 20000;   // extended city — 3 districts + deeper uptown
+        const WORLD_WIDTH = 20000;
+
+        // ---------- BACKGROUND MUSIC ----------
+        let bgMusic = null;
+        function startMusic() {
+            if (!bgMusic) {
+                bgMusic = new Audio('audio/last_son.mp3');
+                bgMusic.loop = true;
+                bgMusic.volume = 0.5;
+            }
+            if (bgMusic.paused) bgMusic.play().catch(() => { });
+        }
 
         // ---------- TUNING ----------
         const GRAVITY = 0.55;
@@ -736,7 +747,7 @@
                 return;
             }
             if (gameScreen === 'howto') {
-                if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'playing'; e.preventDefault(); }
+                if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'playing'; startMusic(); e.preventDefault(); }
                 return;
             }
 
@@ -814,7 +825,7 @@
         // also let the player click/tap to advance the front-end screens
         canvas.addEventListener('click', () => {
             if (gameScreen === 'title') gameScreen = 'howto';
-            else if (gameScreen === 'howto') gameScreen = 'playing';
+            else if (gameScreen === 'howto') { gameScreen = 'playing'; startMusic(); }
         });
 
         function aabb(a, b) {
