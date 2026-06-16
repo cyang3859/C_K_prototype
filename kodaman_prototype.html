@@ -155,8 +155,10 @@
                 bgMusic = new Audio('audio/last_son.mp3');
                 bgMusic.loop = true;
                 bgMusic.volume = 0.5;
+                // If the browser blocks file:// audio, abort cleanly so it never retries
+                bgMusic.onerror = () => { bgMusic.src = ''; bgMusic = null; };
             }
-            if (bgMusic.paused) bgMusic.play().catch(() => { });
+            if (bgMusic && bgMusic.paused) bgMusic.play().catch(() => {});
         }
 
         // ---------- TUNING ----------
@@ -3443,6 +3445,34 @@
                     alpha: 0.08 + r() * 0.32,
                 });
             }
+            // Pre-render each cloud to a sprite — avoids createRadialGradient every frame
+            const PAD = 30;
+            for (const c of arr) {
+                const lumpW = c.w / (c.lumps + 0.5);
+                const sw = Math.ceil(c.w) + PAD * 2 + Math.ceil(lumpW);
+                const sh = Math.ceil(c.h * 1.6) + PAD * 2;
+                const oc = document.createElement('canvas');
+                oc.width = sw; oc.height = sh;
+                const ox = oc.getContext('2d');
+                // anchorX is the sprite column that maps to screen cx
+                const anchorX = PAD + c.w * 0.38;
+                const anchorY = PAD + c.h * 0.5;
+                for (let i = 0; i < c.lumps; i++) {
+                    const lx = anchorX - c.w * 0.38 + lumpW * (i + 0.4);
+                    const ly = anchorY + (i % 2 === 0 ? 0 : -c.h * 0.20);
+                    const rx = lumpW * 0.60;
+                    const ry = c.h * (0.40 + (i === Math.floor(c.lumps / 2) ? 0.15 : 0));
+                    const g = ox.createRadialGradient(lx, ly - ry * 0.15, 2, lx, ly, Math.max(rx, ry) * 1.1);
+                    g.addColorStop(0, 'rgba(225,235,255,0.90)');
+                    g.addColorStop(0.6, 'rgba(195,210,248,0.65)');
+                    g.addColorStop(1, 'rgba(165,188,238,0)');
+                    ox.fillStyle = g;
+                    ox.beginPath(); ox.ellipse(lx, ly, rx, ry, 0, 0, Math.PI * 2); ox.fill();
+                }
+                c.sprite = oc;
+                c.anchorX = anchorX;
+                c.anchorY = anchorY;
+            }
             return arr;
         })();
 
@@ -3580,23 +3610,10 @@
             for (const c of clouds) {
                 const cx = c.x - camera.x * c.depth;
                 if (cx + c.w < -80 || cx - 80 > W) continue;
-                ctx.save();
                 ctx.globalAlpha = c.alpha * cloudBrightness;
-                const lumpW = c.w / (c.lumps + 0.5);
-                for (let i = 0; i < c.lumps; i++) {
-                    const lx = cx - c.w * 0.38 + lumpW * (i + 0.4);
-                    const ly = c.y + (i % 2 === 0 ? 0 : -c.h * 0.20);
-                    const rx = lumpW * 0.60;
-                    const ry = c.h * (0.40 + (i === Math.floor(c.lumps / 2) ? 0.15 : 0));
-                    const g = ctx.createRadialGradient(lx, ly - ry * 0.15, 2, lx, ly, Math.max(rx, ry) * 1.1);
-                    g.addColorStop(0, 'rgba(225,235,255,0.90)');
-                    g.addColorStop(0.6, 'rgba(195,210,248,0.65)');
-                    g.addColorStop(1, 'rgba(165,188,238,0)');
-                    ctx.fillStyle = g;
-                    ctx.beginPath(); ctx.ellipse(lx, ly, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
-                }
-                ctx.restore();
+                ctx.drawImage(c.sprite, cx - c.anchorX, c.y - c.anchorY);
             }
+            ctx.globalAlpha = 1;
 
             // ---- airplanes (silhouette jetliners with blinking nav lights) ----
             for (const p of planes) {
@@ -3916,6 +3933,7 @@
 
         // ---------- DRAW ----------
         function draw() {
+            const frameNow = Date.now();
             drawManhattan();
 
             ctx.save();
@@ -3927,8 +3945,7 @@
             // ground / street
             ctx.fillStyle = '#2c3340';
             let cursor = 0;
-            const sortedGaps = [...gaps].sort((a, b) => a.x - b.x);
-            for (const g of sortedGaps) {
+            for (const g of gaps) {
                 ctx.fillRect(cursor, GROUND_Y, g.x - cursor, GROUND_H);
                 ctx.fillStyle = 'rgba(0,0,0,0.25)';
                 for (let x = cursor; x < g.x; x += 50) ctx.fillRect(x, GROUND_Y, 26, GROUND_H);
@@ -3943,7 +3960,7 @@
                         const yy = GROUND_Y + 12 + i * 16;
                         ctx.beginPath();
                         for (let xx = g.x; xx < g.x + g.w; xx += 20) {
-                            const ny = yy + Math.sin((xx + Date.now() * 0.04) * 0.05) * 2;
+                            const ny = yy + Math.sin((xx + frameNow * 0.04) * 0.05) * 2;
                             xx === g.x ? ctx.moveTo(xx, ny) : ctx.lineTo(xx, ny);
                         }
                         ctx.stroke();
