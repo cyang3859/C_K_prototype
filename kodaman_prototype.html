@@ -768,7 +768,7 @@
             factoryPhase = 'intro'; factoryIntroStep = 0; factoryIntroTimer = 220;
             lexEscaped = false;
             platforms.splice(0, platforms.length, ...FACTORY_PLATFORMS);
-            camera.x = 0; camera.y = 0;
+            camera.x = 0; camera.y = Math.max(0, FACTORY.floorY + 80 - H);
             darkWing.x = 70; darkWing._targetX = 70;
             darkWing.y = FACTORY.floorY; darkWing._onGround = true; darkWing.vy = 0;
             darkWing._swinging = false; darkWing._gliding = false;
@@ -842,9 +842,7 @@
             if (hound.x + hound.w > FACTORY.w) { hound.x = FACTORY.w - hound.w; if (hound.vx > 0) hound.vx = 0; }
             if (hound.y + hound.h > FACTORY.floorY) { hound.y = FACTORY.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
 
-            // Camera follows hero inside factory
-            camera.x = Math.max(0, Math.min(hero.x - W / 2, FACTORY.w - W));
-        }
+        } // updateCamera() handles factory camera each frame
 
         // ── Factory henchmen spawn ───────────────────────────────────────
         function spawnFactoryHenchmen() {
@@ -2854,8 +2852,13 @@
             const ty = hero.y * 0.85 + hound.y * 0.15 + hero.h / 2;
             let dx = tx - W / 2;
             let dy = ty - H / 2;
-            dx = Math.max(0, Math.min(WORLD_WIDTH - W, dx));
-            dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
+            if (scene === 'factory') {
+                dx = Math.max(0, Math.min(FACTORY.w - W, dx));
+                dy = Math.max(0, Math.min(FACTORY.floorY + 80 - H, dy));
+            } else {
+                dx = Math.max(0, Math.min(WORLD_WIDTH - W, dx));
+                dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
+            }
             camera.x += (dx - camera.x) * 0.1;
             camera.y += (dy - camera.y) * 0.1;
         }
@@ -8225,6 +8228,7 @@
                 updateDarkWing();
                 updateFactory();
                 updateHitFX();
+                updateCamera();
 
                 draw(); // draw() detects scene==='factory' and handles background/floor swap
                 updateHUD();
