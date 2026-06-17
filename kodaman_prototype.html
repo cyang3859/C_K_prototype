@@ -138,7 +138,7 @@
             <div class="grp">Hound (P2 / AI)</div>
             &larr;/&rarr; move &nbsp; &uarr; fly (then &uarr;/&darr;) &nbsp; ; land &nbsp; / dash<br>
             . Punch &nbsp; , Laser &nbsp; ' Freeze &nbsp; R: land Hound
-            <div class="grp">M: map &nbsp; T: P1/P2 &nbsp; H: hide panel &nbsp; F1: help</div>
+            <div class="grp">M: map &nbsp; N: case file &nbsp; T: P1/P2 &nbsp; H: hide panel &nbsp; F1: help</div>
         </div>
         <div id="ctrlHint" style="display:none;">H: show controls</div>
     </div>
@@ -207,7 +207,7 @@
             },
             {
                 id: 'uptown', name: 'UPTOWN HEIGHTS', x0: 10300, x1: 20000, color: '#5a3a6e',
-                intro: 'Towering spires. The Warlord rules from the summit.', unlocked: false
+                intro: 'Towering spires. The Warlord rules from the summit.', unlocked: true
             },
         ];
 
@@ -215,10 +215,9 @@
         // and shows a title card. (No loading wall — the world is continuous.)
         const gateways = [
             { x: 5200, name: 'THE DOCKS', to: 'docks' },
-            {
-                x: 10300, name: 'UPTOWN HEIGHTS', to: 'uptown', locked: true,
-                requires: 'Clear Downtown & Docks objectives'
-            },
+            // Uptown is open from the start — the case-file clues are scattered
+            // across the entire map and shouldn't be gated behind district progress.
+            { x: 10300, name: 'UPTOWN HEIGHTS', to: 'uptown', locked: false },
         ];
 
         // Gaps in the ground (bay water in the Docks, chasms elsewhere).
@@ -230,45 +229,10 @@
             { x: 12000, w: 300, district: 'uptown' },
         ];
 
-        // Solid rooftops / platforms.
+        // Solid rooftops — only the Weekly Planet roof remains as a real landing surface.
+        // All floating mid-air ledges have been removed; the hero uses flight to traverse.
         const platforms = [
-            // Downtown
-            { x: 760, y: 820, w: 150, h: 22, district: 'downtown' },
-            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },    // Weekly Planet roof (central)
-            { x: 1150, y: 720, w: 170, h: 22, district: 'downtown' },
-            { x: 1850, y: 640, w: 160, h: 22, district: 'downtown' },
-            { x: 2300, y: 560, w: 180, h: 22, district: 'downtown' },
-            { x: 2750, y: 700, w: 150, h: 22, district: 'downtown' },
-            { x: 3150, y: 470, w: 200, h: 22, district: 'downtown' },
-            { x: 3700, y: 560, w: 170, h: 22, district: 'downtown' },
-            { x: 4250, y: 640, w: 160, h: 22, district: 'downtown' },
-            { x: 4700, y: 520, w: 180, h: 22, district: 'downtown' },
-            // Docks — crane platforms over the bay
-            { x: 5500, y: 760, w: 160, h: 22, district: 'docks' },
-            { x: 6100, y: 640, w: 200, h: 22, district: 'docks' },   // crane arm over water
-            { x: 6700, y: 740, w: 160, h: 22, district: 'docks' },
-            { x: 7300, y: 560, w: 180, h: 22, district: 'docks' },
-            { x: 7900, y: 700, w: 200, h: 22, district: 'docks' },
-            { x: 8500, y: 600, w: 180, h: 22, district: 'docks' },   // over second bay span
-            { x: 9200, y: 700, w: 170, h: 22, district: 'docks' },
-            { x: 9800, y: 540, w: 180, h: 22, district: 'docks' },
-            // Uptown — vertical tower ledges
-            { x: 10600, y: 760, w: 150, h: 22, district: 'uptown' },
-            { x: 11100, y: 600, w: 160, h: 22, district: 'uptown' },
-            { x: 11600, y: 440, w: 160, h: 22, district: 'uptown' },
-            { x: 12200, y: 560, w: 170, h: 22, district: 'uptown' },
-            { x: 12800, y: 380, w: 160, h: 22, district: 'uptown' },
-            { x: 13400, y: 520, w: 170, h: 22, district: 'uptown' },
-            { x: 14000, y: 340, w: 180, h: 22, district: 'uptown' },
-            { x: 14700, y: 260, w: 220, h: 22, district: 'uptown' },  // old mid-section ledge
-            // ---- Extended uptown climb (15500-20000) ----
-            { x: 15600, y: 700, w: 170, h: 22, district: 'uptown' },
-            { x: 16100, y: 540, w: 160, h: 22, district: 'uptown' },
-            { x: 16700, y: 380, w: 170, h: 22, district: 'uptown' },
-            { x: 17300, y: 500, w: 180, h: 22, district: 'uptown' },
-            { x: 17900, y: 320, w: 160, h: 22, district: 'uptown' },
-            { x: 18500, y: 440, w: 175, h: 22, district: 'uptown' },
-            { x: 19100, y: 220, w: 240, h: 22, district: 'uptown' },  // final boss arena
+            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },   // Weekly Planet roof
         ];
 
         // Power orbs.
@@ -315,89 +279,28 @@
 
         // Electric hazard barriers — guard AERIAL routes (raised off the ground so
         // you can always walk underneath; they block high-flight shortcuts).
+        // Laser barrier towers — inactive until the corresponding clue is found.
+        // They span floor-to-ceiling and HARD-BLOCK both hero and hound.
+        // The hero must use punch / laser / freeze to destroy them (3 hits).
+        // activatesOnClue: the clue index whose discovery powers them on.
         const hazards = [
-            { x: 1280, y: 300, w: 16, h: 420, district: 'downtown' },   // ends at y720, ground clear
-            { x: 7000, y: 200, w: 16, h: 500, district: 'docks' },      // ends at y700
-            { x: 11500, y: 120, w: 16, h: 480, district: 'uptown' },    // ends at y600
-            { x: 13800, y: 200, w: 16, h: 520, district: 'uptown' },    // ends at y720
+            { x: 1280, y: 0, w: 18, h: 900, district: 'downtown', activatesOnClue: 0, hp: 3, destroyed: false, phase: 0 },
+            { x: 5200, y: 0, w: 18, h: 900, district: 'docks',    activatesOnClue: 1, hp: 3, destroyed: false, phase: 0 },
+            { x: 9800, y: 0, w: 18, h: 900, district: 'uptown',   activatesOnClue: 3, hp: 3, destroyed: false, phase: 0 },
+            { x: 13800, y: 0, w: 18, h: 900, district: 'uptown',  activatesOnClue: 4, hp: 3, destroyed: false, phase: 0 },
         ];
+        function hazardActive(hz) {
+            return !hz.destroyed && cluesFound > hz.activatesOnClue;
+        }
 
         // Enemy archetypes (original designs in classic Superman-villain molds):
         //   warlord  - armored alien tyrant   brute - hulking monster
         //   genius   - powered battlesuit      energy - unstable energy being
-        const enemies = [
-            // ---- DOWNTOWN (9 → 14 enemies) ----
-            { x: 600, y: 920, w: 40, h: 52, vx: 1.2, minX: 540, maxX: 760, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
-            { x: 980, y: 910, w: 38, h: 50, vx: -1.0, minX: 860, maxX: 1080, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
-            { x: 1450, y: 760, w: 44, h: 44, vx: 1.5, minX: 1320, maxX: 1580, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 700, maxY: 840, district: 'downtown' },
-            { x: 1750, y: 700, w: 44, h: 44, vx: -1.3, minX: 1620, maxX: 1860, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 640, maxY: 800, district: 'downtown' },
-            { x: 2200, y: 930, w: 40, h: 52, vx: 0.8, minX: 2120, maxX: 2320, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
-            { x: 2380, y: 915, w: 38, h: 50, vx: 0.9, minX: 2280, maxX: 2480, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
-            { x: 3050, y: 560, w: 44, h: 44, vx: 1.4, minX: 2920, maxX: 3220, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 480, maxY: 660, district: 'downtown' },
-            { x: 4000, y: 920, w: 40, h: 52, vx: 1.0, minX: 3900, maxX: 4120, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
-            { x: 4340, y: 915, w: 38, h: 50, vx: -1.1, minX: 4240, maxX: 4440, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
-            // NEW: ground patrol pair
-            { x: 1200, y: 920, w: 40, h: 52, vx: 1.3, minX: 1100, maxX: 1350, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
-            { x: 3300, y: 920, w: 40, h: 52, vx: -1.2, minX: 3150, maxX: 3450, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'downtown' },
-            // NEW: aerial patrol
-            { x: 2600, y: 680, w: 44, h: 44, vx: -1.6, minX: 2400, maxX: 2800, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.4, minY: 600, maxY: 780, district: 'downtown' },
-            { x: 3700, y: 500, w: 44, h: 44, vx: 1.5, minX: 3550, maxX: 3850, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.6, minY: 420, maxY: 620, district: 'downtown' },
-            { x: 4600, y: 620, w: 38, h: 50, vx: -1.0, minX: 4450, maxX: 4750, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'downtown' },
-
-            // ---- BANK ROBBERS (3) — guard the bank at x≈1200, type='robber' ----
-            { x: 1240, y: 948, w: 38, h: 52, vx: 1.1, minX: 1190, maxX: 1390, alive: true, hp: 3, frozen: 0, type: 'robber', district: 'downtown', robber: true },
-            { x: 1300, y: 948, w: 38, h: 52, vx: -0.9, minX: 1190, maxX: 1390, alive: true, hp: 3, frozen: 0, type: 'robber', district: 'downtown', robber: true },
-            { x: 1365, y: 948, w: 38, h: 52, vx: 0.8, minX: 1190, maxX: 1390, alive: true, hp: 3, frozen: 0, type: 'robber', district: 'downtown', robber: true },
-
-            // ---- DOCKS (8 → 16 enemies) ---- (energy-heavy aerial combat over water)
-            { x: 5700, y: 700, w: 44, h: 44, vx: 1.4, minX: 5560, maxX: 5840, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 620, maxY: 820, district: 'docks' },
-            { x: 6300, y: 560, w: 44, h: 44, vx: -1.3, minX: 6150, maxX: 6450, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 480, maxY: 700, district: 'docks' },
-            { x: 6800, y: 740, w: 40, h: 52, vx: 0.9, minX: 6720, maxX: 6900, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'docks' },
-            { x: 7400, y: 480, w: 44, h: 44, vx: 1.5, minX: 7260, maxX: 7560, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 400, maxY: 620, district: 'docks' },
-            { x: 7950, y: 700, w: 38, h: 50, vx: -1.0, minX: 7860, maxX: 8060, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'docks' },
-            { x: 8600, y: 560, w: 44, h: 44, vx: 1.3, minX: 8460, maxX: 8760, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 480, maxY: 700, district: 'docks' },
-            { x: 9300, y: 700, w: 40, h: 52, vx: -1.1, minX: 9220, maxX: 9400, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'docks' },
-            { x: 9850, y: 540, w: 44, h: 44, vx: 1.4, minX: 9720, maxX: 9980, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 460, maxY: 680, district: 'docks' },
-            // NEW: wave formation over bay
-            { x: 5400, y: 620, w: 44, h: 44, vx: 1.6, minX: 5250, maxX: 5550, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.4, minY: 520, maxY: 740, district: 'docks' },
-            { x: 6600, y: 480, w: 44, h: 44, vx: -1.4, minX: 6450, maxX: 6750, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 400, maxY: 600, district: 'docks' },
-            { x: 7700, y: 640, w: 38, h: 50, vx: 1.1, minX: 7550, maxX: 7850, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'docks' },
-            { x: 8300, y: 700, w: 40, h: 52, vx: -0.95, minX: 8150, maxX: 8450, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'docks' },
-            { x: 9000, y: 480, w: 44, h: 44, vx: 1.35, minX: 8850, maxX: 9150, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 400, maxY: 620, district: 'docks' },
-            { x: 9650, y: 620, w: 44, h: 44, vx: -1.5, minX: 9500, maxX: 9800, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 540, maxY: 740, district: 'docks' },
-
-            // ---- UPTOWN (7 → 15 enemies) ---- (vertical gauntlet up to the boss)
-            { x: 10700, y: 760, w: 40, h: 52, vx: 1.0, minX: 10620, maxX: 10800, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
-            { x: 11200, y: 600, w: 44, h: 44, vx: -1.3, minX: 11060, maxX: 11360, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 520, maxY: 720, district: 'uptown' },
-            { x: 11700, y: 440, w: 38, h: 50, vx: 0.9, minX: 11620, maxX: 11800, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
-            { x: 12300, y: 560, w: 44, h: 44, vx: 1.4, minX: 12160, maxX: 12460, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 480, maxY: 700, district: 'uptown' },
-            { x: 12900, y: 380, w: 40, h: 52, vx: -1.0, minX: 12820, maxX: 13000, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
-            { x: 13500, y: 520, w: 44, h: 44, vx: 1.5, minX: 13360, maxX: 13660, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 440, maxY: 660, district: 'uptown' },
-            { x: 14100, y: 340, w: 38, h: 50, vx: -1.2, minX: 14020, maxX: 14200, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
-            // NEW: flanking patrols on lower tower
-            { x: 10900, y: 620, w: 44, h: 44, vx: 1.3, minX: 10750, maxX: 11050, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.4, minY: 540, maxY: 740, district: 'uptown' },
-            { x: 11400, y: 480, w: 40, h: 52, vx: -1.1, minX: 11280, maxX: 11520, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
-            // NEW: mid-tower ascent gauntlet
-            { x: 12100, y: 680, w: 44, h: 44, vx: 1.35, minX: 11950, maxX: 12250, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 580, maxY: 780, district: 'uptown' },
-            { x: 12700, y: 480, w: 38, h: 50, vx: 1.0, minX: 12580, maxX: 12820, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
-            // NEW: upper summit defenders
-            { x: 13100, y: 620, w: 44, h: 44, vx: -1.4, minX: 12950, maxX: 13250, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 540, maxY: 740, district: 'uptown' },
-            { x: 13800, y: 460, w: 40, h: 52, vx: 1.05, minX: 13720, maxX: 13900, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
-            { x: 14400, y: 560, w: 44, h: 44, vx: -1.45, minX: 14250, maxX: 14550, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.55, minY: 480, maxY: 680, district: 'uptown' },
-
-            // BOSS at the summit
-            // ---- Extended uptown gauntlet (15500-19000) ----
-            { x: 15700, y: 700, w: 40, h: 52, vx: 1.1, minX: 15620, maxX: 15820, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
-            { x: 16200, y: 540, w: 44, h: 44, vx: -1.3, minX: 16060, maxX: 16360, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.5, minY: 460, maxY: 660, district: 'uptown' },
-            { x: 16800, y: 380, w: 38, h: 50, vx: 0.9, minX: 16720, maxX: 16900, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
-            { x: 17400, y: 500, w: 44, h: 44, vx: 1.4, minX: 17260, maxX: 17560, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.5, minY: 420, maxY: 620, district: 'uptown' },
-            { x: 17800, y: 700, w: 40, h: 52, vx: -1.0, minX: 17720, maxX: 17900, alive: true, hp: 2, frozen: 0, type: 'brute', district: 'uptown' },
-            { x: 18200, y: 440, w: 44, h: 44, vx: 1.3, minX: 18060, maxX: 18360, alive: true, hp: 2, frozen: 0, type: 'energy', vy: 0.6, minY: 360, maxY: 560, district: 'uptown' },
-            { x: 18700, y: 700, w: 38, h: 50, vx: -1.2, minX: 18620, maxX: 18800, alive: true, hp: 2, frozen: 0, type: 'genius', district: 'uptown' },
-            { x: 19000, y: 320, w: 44, h: 44, vx: 1.5, minX: 18860, maxX: 19160, alive: true, hp: 2, frozen: 0, type: 'energy', vy: -0.6, minY: 240, maxY: 440, district: 'uptown' },
-            // BOSS — deep in the final arena
-            { x: 19380, y: 380, w: 76, h: 92, vx: 0.6, minX: 19240, maxX: 19520, alive: true, hp: 6, frozen: 0, type: 'warlord', vy: 0, district: 'uptown', boss: true },
-        ];
+        // The city starts calm and quiet — no enemies exist until the hero finds
+        // the first clue. From there, each clue's quest pushes a wave into this
+        // array (see spawnQuestForClue), and the boss is added once the final
+        // quest is resolved (see spawnBoss).
+        const enemies = [];
 
         // Give every enemy a small health pool, a dodge ability, and timers.
         // Regular enemies take ~3 hits; the boss keeps its larger pool.
@@ -444,30 +347,9 @@
                 vx: 0, stopTimer: 0, dropCooldown: 0
             };
         }
-        const civilians = [
-            // DOWNTOWN (~5) — placed where ground enemies patrol
-            mkCiv(640, 'downtown', 'Sarah'),
-            mkCiv(1250, 'downtown', 'Marcus'),
-            mkCiv(2240, 'downtown', 'Elena'),
-            mkCiv(3340, 'downtown', 'James'),
-            mkCiv(4050, 'downtown', 'Priya'),
-            // DOCKS (~5)
-            mkCiv(5740, 'docks', 'Diego'),
-            mkCiv(6840, 'docks', 'Mei'),
-            mkCiv(7990, 'docks', 'Omar'),
-            mkCiv(8340, 'docks', 'Lena'),
-            mkCiv(9340, 'docks', 'Tariq'),
-            // UPTOWN (~5)
-            mkCiv(10740, 'uptown', 'Nora'),
-            mkCiv(12940, 'uptown', 'Sam'),
-            mkCiv(13540, 'uptown', 'Ava'),
-            mkCiv(11440, 'uptown', 'Leo'),
-            mkCiv(14140, 'uptown', 'Zoe'),
-            // Extended uptown civilians
-            mkCiv(15720, 'uptown', 'Kai'),
-            mkCiv(17360, 'uptown', 'Mia'),
-            mkCiv(18880, 'uptown', 'Rex'),
-        ];
+        // The city starts calm — nobody needs rescuing until a clue's quest spawns
+        // them (see spawnQuestForClue). Mirrors the empty `enemies` array above.
+        const civilians = [];
         // Now that civilians exist, pull enemies in to surround them.
         clusterEnemiesAroundCivilians();
         // Rescue buildings — carry a civilian here and drop them off to safety.
@@ -499,50 +381,624 @@
 
         // Clues build toward the escaped inmate's identity (the LexCorp "genius"
         // archetype) without naming him — and without placing him on this level.
+        // Each clue also leaves behind a "trap": a civilian in danger guarded by a
+        // wave of enemies the convict left in his wake. Difficulty escalates with
+        // each clue. Clues reveal one at a time (see activeClueIndex) and span the
+        // whole map — nothing here is gated behind district progress.
+        // Each clue's "quest" plays out differently — bank heist, civilian rescue,
+        // prison lockdown, cargo recovery, car chase — instead of the same fight
+        // every time, while still escalating in difficulty.
         const clues = [
             {
-                x: 900, district: 'downtown', found: false, lines: [
+                x: 1100, district: 'downtown', found: false, questType: 'bank',
+                civName: 'Bank Teller', trapTypes: ['robber', 'robber', 'robber'], lines: [
                     "CASE FILE — CLUE 1 OF 5",
-                    "Witnesses near the breach say the escapee never raised his voice, never raised a fist — he didn't need to. \"Smartest man I ever met,\" one guard muttered, \"and he never once let you forget it.\""
+                    "Witnesses near the breach say the escapee never raised his voice, never raised a fist — he didn't need to. \"Smartest man I ever met,\" one guard muttered, \"and he never once let you forget it.\"",
+                    "A silent alarm just tripped at FIRST NATIONAL BANK — masked men, moving fast. Could be unrelated... or could be funding his next move."
                 ]
             },
             {
-                x: 3150, district: 'downtown', found: false, lines: [
+                x: 3150, district: 'downtown', found: false, questType: 'rescue',
+                civName: 'Records Clerk', trapTypes: ['brute', 'brute'], lines: [
                     "CASE FILE — CLUE 2 OF 5",
                     "Prison intake records are sealed, but an old newspaper clipping found in his cell shows a boardroom photo — pinstripe suit, corner office, a company logo torn away before anyone could read it."
                 ]
             },
             {
-                x: 4865, district: 'downtown', found: false, lines: [
+                x: 4865, district: 'downtown', found: false, questType: 'lockdown',
+                civName: 'Prison Guard', trapTypes: ['brute', 'brute', 'genius'], lines: [
                     "CASE FILE — CLUE 3 OF 5",
                     "At the breach itself: a guard's report. \"Bald. Calm. Looked at the warden like he pitied him.\" One line is underlined twice — \"Said something about settling a score with the man who can fly.\""
                 ]
             },
             {
-                x: 6700, district: 'docks', found: false, lines: [
+                x: 6700, district: 'docks', found: false, questType: 'cargo',
+                civName: 'Missing Cargo Crate', trapTypes: ['genius', 'genius', 'energy'], lines: [
                     "CASE FILE — CLUE 4 OF 5",
-                    "A dockworker found a shipping crate forced open from the inside. Stamped on the side, half scratched off: a stylized letter 'L'. The metal inside was still warm — like it had powered something, recently."
+                    "A dockworker found a shipping crate forced open from the inside. Stamped on the side, half scratched off: a stylized letter 'L'. The metal inside was still warm — like it had powered something, recently.",
+                    "The crate itself has gone missing again, dragged off toward the warehouses. Whatever's inside, it needs to come back."
                 ]
             },
             {
-                x: 12600, district: 'uptown', found: false, lines: [
+                x: 12600, district: 'uptown', found: false, questType: 'chase',
+                civName: 'Hijacked Car', trapTypes: ['genius', 'energy', 'energy', 'energy'], lines: [
                     "CASE FILE — CLUE 5 OF 5",
                     "Uptown security caught a thermal signature in an abandoned tower basement — humming servers, fresh welding marks, the unmistakable green glow of unlicensed reactor tech. He's already rebuilding.",
-                    "All five threads point to one boardroom shadow. CK has more than enough leads now to start tracking him through the city."
+                    "All five threads point to one boardroom shadow. CK has more than enough leads now to start tracking him through the city.",
+                    "A car just peeled out of the tower's garage, swerving through traffic. Whoever's behind the wheel isn't stopping for anyone."
                 ]
             },
         ];
         let cluesFound = 0;
+        let activeClueIndex = 0;   // only this clue is present in the world right now
+        let pendingTrapCiv = null;   // the civilian from the in-progress trap; once
+                                      // rescued, the next clue is revealed
+
+        // Lois Lane city presence — she stands near each active clue, reacts to
+        // the hero approaching, and offers dialogue as a hint.
+        const cityLois = {
+            x: clues[0].x - 55,   // starts near clue 0
+            y: 0,                  // set each frame to GROUND_Y - bodyH
+            phase: 0,
+            dir: 1,
+            faceDir: 1,
+            greeting: 0,
+            _targetX: clues[0].x - 55,
+        };
+        function updateCityLois() {
+            if (!interior.note.read) return;   // she only appears after the briefing
+            const cl = clues[activeClueIndex];
+            if (!cl) return;
+            // re-target 55px left of the active clue
+            cityLois._targetX = cl.x - 55;
+            // smoothly walk toward target (she teleports large distances instantly)
+            const dx = cityLois._targetX - cityLois.x;
+            if (Math.abs(dx) > 600) {
+                cityLois.x = cityLois._targetX;  // snap for big jumps
+            } else if (Math.abs(dx) > 8) {
+                cityLois.x += Math.sign(dx) * 1.2;
+                cityLois.faceDir = Math.sign(dx);
+            }
+            cityLois.phase += 0.05;
+            cityLois.y = GROUND_Y - 74;   // approximate standing height
+            const heroMid = hero.x + hero.w / 2;
+            const nearHero = Math.abs(heroMid - cityLois.x) < 80;
+            cityLois.greeting = nearHero
+                ? Math.min(cityLois.greeting + 1, 40)
+                : Math.max(cityLois.greeting - 1, 0);
+            if (nearHero) cityLois.faceDir = heroMid < cityLois.x ? -1 : 1;
+        }
+        // How far a quest objective must be carried from its crime scene before
+        // it's considered safe — no trip back to the Weekly Planet required.
+        const SAFE_RESCUE_DIST = 700;
+
+        // Build a fully-initialized enemy left behind as part of a clue's quest.
+        function makeTrapEnemy(type, x, district) {
+            const base = {
+                x, alive: true, frozen: 0, dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
+                district, vx: (Math.random() < 0.5 ? -1 : 1) * 1.2, maxHp: 3, hp: 3
+            };
+            if (type === 'energy') {
+                const y = 480 + Math.random() * 200;
+                return Object.assign(base, {
+                    y, w: 44, h: 44, minX: x - 120, maxX: x + 120,
+                    vy: (Math.random() < 0.5 ? -0.5 : 0.5), minY: y - 100, maxY: y + 100, type: 'energy'
+                });
+            }
+            if (type === 'genius') {
+                return Object.assign(base, { y: GROUND_Y - 50, w: 38, h: 50, minX: x - 120, maxX: x + 120, type: 'genius' });
+            }
+            if (type === 'robber') {
+                return Object.assign(base, { y: GROUND_Y - 52, w: 38, h: 52, minX: x - 120, maxX: x + 120, type: 'robber', robber: true });
+            }
+            return Object.assign(base, { y: GROUND_Y - 52, w: 40, h: 52, minX: x - 120, maxX: x + 120, type: 'brute' });
+        }
+
+        // Drop a clue's enemy wave around a center point, flanking left/right.
+        function spawnTrapEnemies(cl, centerX) {
+            let side = -1;
+            (cl.trapTypes || []).forEach((type, i) => {
+                const ex = (centerX !== undefined ? centerX : cl.x) + side * (90 + i * 30);
+                side *= -1;
+                enemies.push(makeTrapEnemy(type, ex, cl.district));
+            });
+        }
+
+        // ---- QUEST DISPATCH: each clue plays out as a different kind of quest ----
+        function spawnQuestForClue(cl) {
+            switch (cl.questType) {
+                case 'bank': return spawnBankQuest(cl);
+                case 'cargo': return spawnCargoQuest(cl);
+                case 'chase': return spawnChaseQuest(cl);
+                default: return spawnRescueQuest(cl);   // 'rescue' and 'lockdown'
+            }
+        }
+
+        // Civilian rescue / prison lockdown: a person in danger, surrounded by a
+        // wave of enemies (existing "guard nearest civilian" AI picks them up
+        // automatically — no extra logic needed there).
+        function spawnRescueQuest(cl) {
+            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Civilian');
+            civ.trapVictim = true;
+            civ.crimeX = cl.x;
+            civilians.push(civ);
+            spawnTrapEnemies(cl);
+            titleCard = {
+                text: '⚠ TRAP SPRUNG ⚠',
+                sub: civ.name + ' is in danger nearby — clear the enemies and rescue them!',
+                timer: 200
+            };
+            return civ;
+        }
+
+        // Bank heist: robbers hit FIRST NATIONAL BANK and hold the teller. Reuses
+        // the bank's existing alarm-light visual (bankRobbery.triggered/complete).
+        function spawnBankQuest(cl) {
+            const bankX = bankRobbery.bankX;
+            const civ = mkCiv(bankX + 87, 'downtown', cl.civName || 'Bank Teller');
+            civ.trapVictim = true;
+            civ.crimeX = bankX + 87;
+            civilians.push(civ);
+            spawnTrapEnemies(cl, bankX + 80);
+            bankRobbery.triggered = true;
+            bankRobbery.complete = false;
+            titleCard = {
+                text: '🚨 BANK HEIST IN PROGRESS!',
+                sub: 'Stop the robbers and get the teller to safety!',
+                timer: 220
+            };
+            return civ;
+        }
+
+        // Cargo recovery: an object (not a person) needs carrying back to safety,
+        // guarded by the wave just like any other quest.
+        function spawnCargoQuest(cl) {
+            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Missing Cargo');
+            civ.trapVictim = true;
+            civ.isObject = true;
+            civ.crimeX = cl.x;
+            civilians.push(civ);
+            spawnTrapEnemies(cl);
+            titleCard = {
+                text: '📦 CARGO RECOVERY',
+                sub: 'Recover ' + civ.name + ' before the guards drag it off for good!',
+                timer: 200
+            };
+            return civ;
+        }
+
+        // Car chase: a hijacked car speeds off — it roams much faster/farther
+        // than a normal rescue target, so catching it feels like a real chase.
+        function spawnChaseQuest(cl) {
+            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Hijacked Car');
+            civ.trapVictim = true;
+            civ.isVehicle = true;
+            civ.crimeX = cl.x;
+            civilians.push(civ);
+            spawnTrapEnemies(cl);
+            titleCard = {
+                text: '🚗 CAR CHASE!',
+                sub: 'Catch up to ' + civ.name + ' before it gets away!',
+                timer: 200
+            };
+            return civ;
+        }
+
+        // Final payoff: once every clue's trap has been resolved, the Warlord
+        // himself appears at the summit for the last confrontation.
+        function spawnBoss() {
+            enemies.push({
+                x: 19380, y: 380, w: 76, h: 92, vx: 0.6, minX: 19240, maxX: 19520,
+                alive: true, hp: 6, maxHp: 6, frozen: 0, type: 'warlord', vy: 0,
+                district: 'uptown', boss: true, dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0
+            });
+            titleCard = {
+                text: '⚠ THE WARLORD AWAKENS ⚠',
+                sub: 'With his identity exposed, he makes his final stand in Uptown.',
+                timer: 240
+            };
+        }
         let mapOpen = false;
+        let caseFileOpen = false;   // N: review all case-file clues found so far
         let grabbedEnemy = null;   // enemy currently held by the hero
+
+        // ---------- DINING INTERIORS (diners & shops) ----------
+        // A small shared room template, reskinned per building type. Holds a
+        // reference to the actual building so eatCooldown stays per-building.
+        let diningScene = null;   // { building, saved: {...} } or null when not inside
+        const DINING_ROOM = {
+            w: 480, h: 540, floorY: 420, ceilingY: 40,
+            exitDoor: { x: 24, w: 50 },
+            counter: { x: 280, w: 130 }
+        };
+        function enterDining(b) {
+            diningScene = {
+                building: b,
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive,
+                    dx: hound.x, dy: hound.y, dvx: hound.vx, dvy: hound.vy, df: hound.facing
+                }
+            };
+            hero.x = DINING_ROOM.exitDoor.x + 90; hero.y = DINING_ROOM.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true; hero.facing = 1;
+            hound.x = DINING_ROOM.exitDoor.x + 40; hound.y = DINING_ROOM.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            enterCooldown = 30;
+            titleCard = { text: b.name, sub: 'Press F at the counter to order — ENTER at the door to leave.', timer: 180 };
+        }
+        function exitDining() {
+            const s = diningScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = 0; hero.vy = 0; hero.facing = s.hf;
+            hero.flightActive = false; hero.onGround = true; hero.takeoffPhase = 0;
+            hound.x = s.dx; hound.y = s.dy; hound.vx = 0; hound.vy = 0; hound.facing = s.df;
+            hound.flightActive = false; hound.onGround = true;
+            diningScene = null;
+            enterCooldown = 30;
+            titleCard = { text: 'BACK ON THE STREETS', sub: '', timer: 90 };
+        }
+        // Order food / grab a bite at the counter — same reward as before, just
+        // moved inside the room instead of an instant popup at the door.
+        function handleDiningEat() {
+            const b = diningScene.building;
+            if ((b.eatCooldown || 0) > 0) {
+                titleCard = { text: b.name, sub: "CK already ate here recently — give it a bit.", timer: 90 };
+            } else {
+                b.eatCooldown = 600;
+                hero.orbBoost = 240;
+                const food = b.type === 'diner' ? 'digs into a hot meal' : 'grabs some snacks';
+                titleCard = { text: b.name, sub: 'CK ' + food + "... refueled! (brief speed boost)", timer: 160 };
+            }
+        }
+        function clampToDining(e) {
+            if (e.x < 20) { e.x = 20; if (e.vx < 0) e.vx = 0; }
+            if (e.x + e.w > DINING_ROOM.w - 20) { e.x = DINING_ROOM.w - 20 - e.w; if (e.vx > 0) e.vx = 0; }
+            if (e.y < DINING_ROOM.ceilingY) { e.y = DINING_ROOM.ceilingY; if (e.vy < 0) e.vy = 0; }
+            if (e.y + e.h >= DINING_ROOM.floorY) {
+                e.y = DINING_ROOM.floorY - e.h;
+                if (e.vy > 0) e.vy = 0;
+                e.onGround = true;
+                if (e.flightActive && e.vy >= -0.05) { e.flightActive = false; e.landing = false; e.takeoffPhase = 0; }
+            } else {
+                e.onGround = false;
+            }
+        }
+        function updateDiningScene() {
+            clampToDining(hero);
+            clampToDining(hound);
+        }
+
+        function drawDiningScene() {
+            const b = diningScene.building;
+            const isDiner = b.type === 'diner';
+            const R = DINING_ROOM;
+            ctx.save();
+
+            // ── BACKGROUND WALL ──────────────────────────────────────────────
+            if (isDiner) {
+                // warm cream walls with red stripe
+                ctx.fillStyle = '#f5ead8';
+                ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#c8282a';
+                ctx.fillRect(0, R.ceilingY + 60, W, 18);
+                ctx.fillRect(0, R.ceilingY + 82, W, 6);
+                // ceiling
+                ctx.fillStyle = '#e8dcc8';
+                ctx.fillRect(0, 0, W, R.ceilingY + 60);
+                // neon sign
+                const signPulse = 0.75 + Math.sin(Date.now() * 0.004) * 0.25;
+                ctx.save();
+                ctx.shadowColor = '#ff4466'; ctx.shadowBlur = 12 * signPulse;
+                ctx.fillStyle = `rgba(255,60,80,${signPulse})`;
+                ctx.font = 'bold italic 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('✦ ' + b.name.toUpperCase() + ' ✦', W / 2, R.ceilingY + 48);
+                ctx.restore();
+            } else {
+                // shop: green/beige walls
+                ctx.fillStyle = '#e8f0e0';
+                ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#5a8a5a';
+                ctx.fillRect(0, R.ceilingY + 50, W, 14);
+                ctx.fillStyle = '#d8ecd0';
+                ctx.fillRect(0, 0, W, R.ceilingY + 50);
+                // store sign
+                ctx.fillStyle = '#2a5a2a';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(b.name.toUpperCase(), W / 2, R.ceilingY + 38);
+            }
+
+            // ── FLOOR ────────────────────────────────────────────────────────
+            if (isDiner) {
+                // classic red-and-white checkerboard
+                const tileW = 48;
+                for (let tx = 0; tx < W; tx += tileW) {
+                    for (let ty = R.floorY; ty < H; ty += tileW) {
+                        const col = Math.floor(tx / tileW) + Math.floor((ty - R.floorY) / tileW);
+                        ctx.fillStyle = col % 2 === 0 ? '#f8f0e8' : '#d42020';
+                        ctx.fillRect(tx, ty, tileW, tileW);
+                    }
+                }
+                // baseboard
+                ctx.fillStyle = '#a01818';
+                ctx.fillRect(0, R.floorY, W, 5);
+            } else {
+                // shop: wood-plank floor
+                ctx.fillStyle = '#c4a070';
+                ctx.fillRect(0, R.floorY, W, H - R.floorY);
+                ctx.strokeStyle = '#a08050'; ctx.lineWidth = 2;
+                for (let tx = 0; tx < W; tx += 80) {
+                    ctx.beginPath(); ctx.moveTo(tx, R.floorY); ctx.lineTo(tx, H); ctx.stroke();
+                }
+                // baseboard
+                ctx.fillStyle = '#7a5030';
+                ctx.fillRect(0, R.floorY, W, 5);
+            }
+
+            // ── EXIT DOOR (left wall) ────────────────────────────────────────
+            const dr = R.exitDoor;
+            ctx.fillStyle = isDiner ? '#8b4513' : '#4a7a4a';
+            ctx.fillRect(dr.x, R.floorY - 100, dr.w, 100);
+            ctx.fillStyle = isDiner ? '#6b2a00' : '#2a5a2a';
+            ctx.fillRect(dr.x + 5, R.floorY - 94, dr.w - 10, 94);
+            // door knob
+            ctx.fillStyle = '#f0d060';
+            ctx.beginPath(); ctx.arc(dr.x + dr.w - 10, R.floorY - 48, 4, 0, Math.PI * 2); ctx.fill();
+            // EXIT label
+            ctx.fillStyle = '#7fff9f'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('EXIT', dr.x + dr.w / 2, R.floorY - 108);
+            // leave prompt when near door
+            const heroMid = hero.x + hero.w / 2;
+            if (Math.abs(heroMid - (dr.x + dr.w / 2)) < 80) {
+                const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial';
+                ctx.fillText('Press ENTER to leave', dr.x + dr.w / 2, R.floorY - 122);
+                ctx.globalAlpha = 1;
+            }
+
+            // ── DINER: booths + counter ──────────────────────────────────────
+            if (isDiner) {
+                // two booth tables
+                for (let bi = 0; bi < 2; bi++) {
+                    const bx = 90 + bi * 140;
+                    const by = R.floorY - 72;
+                    // bench back (far)
+                    ctx.fillStyle = '#c41e2a';
+                    ctx.fillRect(bx, by - 20, 80, 10);
+                    // bench seat (far)
+                    ctx.fillStyle = '#e02030';
+                    ctx.fillRect(bx, by - 10, 80, 14);
+                    // table
+                    ctx.fillStyle = '#e8e0c8';
+                    ctx.fillRect(bx + 8, by + 4, 64, 8);
+                    ctx.fillStyle = '#c8b89a';
+                    ctx.fillRect(bx + 8, by + 4, 64, 3);
+                    // ketchup + mustard
+                    ctx.fillStyle = '#c41e2a'; ctx.fillRect(bx + 20, by - 2, 6, 8);
+                    ctx.fillStyle = '#e0c020'; ctx.fillRect(bx + 30, by - 2, 6, 8);
+                    // bench seat (near, same row as hero)
+                    ctx.fillStyle = '#c41e2a';
+                    ctx.fillRect(bx, R.floorY - 22, 80, 14);
+                    ctx.fillStyle = '#e02030';
+                    ctx.fillRect(bx, R.floorY - 34, 80, 14);
+                }
+                // lunch counter
+                const ctr = R.counter;
+                ctx.fillStyle = '#c8b098';
+                ctx.fillRect(ctr.x, R.floorY - 52, ctr.w, 52);
+                ctx.fillStyle = '#e0c8a8';
+                ctx.fillRect(ctr.x, R.floorY - 52, ctr.w, 8);
+                // stools
+                for (let si = 0; si < 3; si++) {
+                    const sx = ctr.x + 18 + si * 36;
+                    ctx.fillStyle = '#c41e2a';
+                    ctx.beginPath(); ctx.arc(sx, R.floorY - 56, 10, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#7a4040';
+                    ctx.fillRect(sx - 2, R.floorY - 46, 4, 26);
+                    ctx.fillRect(sx - 7, R.floorY - 22, 14, 3);
+                }
+                // pie display on counter
+                ctx.fillStyle = '#e8c880'; ctx.fillRect(ctr.x + 10, R.floorY - 64, 30, 12);
+                ctx.fillStyle = '#c07830'; ctx.fillRect(ctr.x + 12, R.floorY - 68, 26, 6);
+                // coffee mug silhouette
+                ctx.fillStyle = '#6a4030';
+                ctx.fillRect(ctr.x + 60, R.floorY - 60, 14, 10);
+                ctx.strokeStyle = '#6a4030'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(ctr.x + 76, R.floorY - 56, 5, -Math.PI * 0.4, Math.PI * 0.4); ctx.stroke();
+                // jukebox silhouette (far right)
+                ctx.fillStyle = '#1a1a2a';
+                ctx.fillRect(W - 60, R.floorY - 110, 44, 110);
+                ctx.fillStyle = '#c41e2a'; ctx.fillRect(W - 56, R.floorY - 106, 36, 30);
+                ctx.fillStyle = 'rgba(200,220,255,0.6)'; ctx.fillRect(W - 52, R.floorY - 102, 28, 22);
+                ctx.fillStyle = '#f0d060'; ctx.font = '7px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('♪', W - 38, R.floorY - 88);
+            } else {
+                // ── SHOP: shelves + checkout counter ────────────────────────
+                // two shelf racks
+                for (let si = 0; si < 2; si++) {
+                    const sx = 90 + si * 170;
+                    // upright posts
+                    ctx.fillStyle = '#8a7a6a';
+                    ctx.fillRect(sx, R.floorY - 160, 8, 160);
+                    ctx.fillRect(sx + 100, R.floorY - 160, 8, 160);
+                    // three shelves
+                    for (let sh = 0; sh < 3; sh++) {
+                        const sy = R.floorY - 50 - sh * 50;
+                        ctx.fillStyle = '#a09080';
+                        ctx.fillRect(sx, sy, 108, 6);
+                        // goods on shelf
+                        const colors = ['#e04040','#40a040','#4060d0','#e0c040','#c040c0'];
+                        for (let g = 0; g < 5; g++) {
+                            ctx.fillStyle = colors[(g + si * 3 + sh) % 5];
+                            ctx.fillRect(sx + 8 + g * 18, sy - 18, 12, 18);
+                            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                            ctx.fillRect(sx + 10 + g * 18, sy - 16, 4, 6);
+                        }
+                    }
+                }
+                // checkout counter + register
+                const ctr = R.counter;
+                ctx.fillStyle = '#7a6a5a';
+                ctx.fillRect(ctr.x, R.floorY - 58, ctr.w, 58);
+                ctx.fillStyle = '#9a8a78';
+                ctx.fillRect(ctr.x, R.floorY - 58, ctr.w, 6);
+                // cash register
+                ctx.fillStyle = '#2a2a2a'; ctx.fillRect(ctr.x + 20, R.floorY - 84, 36, 28);
+                ctx.fillStyle = '#404040'; ctx.fillRect(ctr.x + 24, R.floorY - 80, 28, 20);
+                ctx.fillStyle = '#e0e0e0'; ctx.font = '6px monospace'; ctx.textAlign = 'left';
+                ctx.fillText('$', ctr.x + 28, R.floorY - 66);
+                // screen glow
+                ctx.fillStyle = 'rgba(100,255,100,0.4)'; ctx.fillRect(ctr.x + 26, R.floorY - 78, 24, 14);
+            }
+
+            // ── COUNTER INTERACTION PROMPT ───────────────────────────────────
+            const ctr = R.counter;
+            const nearCounter = heroMid > ctr.x - 20 && heroMid < ctr.x + ctr.w + 20;
+            if (nearCounter) {
+                const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = (b.eatCooldown || 0) > 0 ? '#ffaa55' : '#ffe072';
+                ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                const prompt = (b.eatCooldown || 0) > 0
+                    ? 'Already ordered recently...'
+                    : (isDiner ? 'Press F to order food' : 'Press F to grab snacks');
+                ctx.fillText(prompt, ctr.x + ctr.w / 2, R.floorY - 70);
+                ctx.globalAlpha = 1;
+            }
+
+            // ── ENTITIES ────────────────────────────────────────────────────
+            drawEntity(hound);
+            drawEntity(hero);
+            drawHitFX();
+
+            // ── SCREEN-SPACE OVERLAYS ───────────────────────────────────────
+            drawTitleCard();
+            ctx.restore();
+        }
+
+        // ── LOIS LANE ───────────────────────────────────────────────────────
+        function drawLois(n) {
+            const x = n.x, y = interior.floorY;
+            const bob = Math.sin(n.phase) * 1.2;
+            ctx.save();
+            // legs
+            const moving = n.greeting <= 20;
+            const sw = moving ? Math.sin(n.phase * 3) * 4 : 0;
+            ctx.fillStyle = '#1a1a30';
+            ctx.fillRect(x - 7, y - 20 - Math.max(0, sw), 6, 20);
+            ctx.fillRect(x + 1, y - 20 - Math.max(0, -sw), 6, 20);
+            // heels
+            ctx.fillStyle = '#c01820';
+            ctx.fillRect(x - 8, y - 3, 8, 4);
+            ctx.fillRect(x + 1, y - 3, 8, 4);
+            // red blazer body
+            ctx.fillStyle = '#b81c2c';
+            ctx.fillRect(x - 12, y - 55 + bob, 24, 36);
+            // white blouse collar
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(x - 5, y - 54 + bob, 10, 10);
+            // lapels
+            ctx.fillStyle = '#941420';
+            ctx.beginPath();
+            ctx.moveTo(x - 12, y - 54 + bob); ctx.lineTo(x - 2, y - 44 + bob); ctx.lineTo(x - 12, y - 44 + bob);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 12, y - 54 + bob); ctx.lineTo(x + 2, y - 44 + bob); ctx.lineTo(x + 12, y - 44 + bob);
+            ctx.closePath(); ctx.fill();
+            // head
+            ctx.fillStyle = '#e8c0a0';
+            ctx.beginPath(); ctx.arc(x, y - 66 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            // dark bob hair
+            ctx.fillStyle = '#1a1010';
+            ctx.beginPath(); ctx.arc(x, y - 68 + bob, 11, Math.PI * 0.75, Math.PI * 2.25); ctx.fill();
+            // side bob sweeping left
+            ctx.beginPath();
+            ctx.moveTo(x - 10, y - 68 + bob);
+            ctx.quadraticCurveTo(x - 18, y - 60 + bob, x - 12, y - 56 + bob);
+            ctx.lineTo(x - 10, y - 58 + bob);
+            ctx.closePath(); ctx.fill();
+            // eyes
+            ctx.fillStyle = '#1a1a1a';
+            const ed = (n.faceDir || 1) * 2.5;
+            ctx.fillRect(x - 4 + ed, y - 68 + bob, 2, 2.5);
+            ctx.fillRect(x + 2 + ed, y - 68 + bob, 2, 2.5);
+            // press badge
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(x - 4, y - 46 + bob, 12, 8);
+            ctx.fillStyle = '#1a1a80'; ctx.font = '4px Arial'; ctx.textAlign = 'left';
+            ctx.fillText('PRESS', x - 3, y - 41 + bob);
+            // notepad in hand
+            ctx.fillStyle = '#f5f0e0';
+            ctx.fillRect(x + 10, y - 44 + bob, 10, 14);
+            ctx.strokeStyle = '#888'; ctx.lineWidth = 0.5;
+            for (let li = 0; li < 3; li++) ctx.strokeRect(x + 11, y - 42 + bob + li * 4, 8, 1);
+            // name label or greeting bubble
+            if (n.greeting > 20) {
+                const lines = "I've got information for you.";
+                const bw = 160, bh = 28, bx = x - bw / 2, by = y - 100 + bob;
+                ctx.fillStyle = 'rgba(255,240,245,0.95)';
+                ctx.strokeStyle = '#b81c2c'; ctx.lineWidth = 1.5;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.beginPath(); ctx.moveTo(x - 5, by + bh); ctx.lineTo(x + 5, by + bh); ctx.lineTo(x, by + bh + 8); ctx.fill();
+                ctx.fillStyle = '#1a1a1a'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(lines, x, by + 17);
+                ctx.fillStyle = '#b81c2c'; ctx.font = 'bold 8px Arial';
+                ctx.fillText('Press F or P to talk', x, by + 27);
+            } else {
+                ctx.fillStyle = 'rgba(200,180,210,0.5)';
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('Lois', x, y - 82 + bob);
+            }
+            ctx.restore();
+        }
+
+        function clueRecap(cl) {
+            if (!cl || !cl.found) return null;
+            const summaries = {
+                bank: 'Clue 1 — Bank alarm: the escapee financed his next move through armed robbery.',
+                rescue: 'Clue 2 — Prison records: pinstripe suit, corner-office photo, company logo torn away.',
+                lockdown: 'Clue 3 — Guard report: bald, calm, said he had a score to settle with the man who flies.',
+                cargo: 'Clue 4 — Docks crate stamped "L", forced from inside, still warm — stolen tech.',
+                chase: 'Clue 5 — Uptown tower: reactor tech, abandoned servers. All threads point to one man.',
+            };
+            return summaries[cl.questType] || null;
+        }
+
+        function talkToLois() {
+            const found = clues.filter(c => c.found);
+            const lines = ['LOIS LANE — Investigative Reporter'];
+            if (!interior.note.read) {
+                lines.push("CK — you haven't even read your case file yet. Check your desk first.");
+            } else if (found.length === 0) {
+                lines.push("The city's quiet right now, but it won't stay that way.");
+                lines.push("Get out there and look for clues. I'll be here when you find something.");
+            } else {
+                lines.push("Here's what the clues are telling us so far:");
+                for (const cl of found) {
+                    const s = clueRecap(cl);
+                    if (s) lines.push(s);
+                }
+                if (pendingTrapCiv && !pendingTrapCiv.rescued) {
+                    lines.push("⚠ Active mission: get that objective clear of the scene — then the next clue drops.");
+                }
+                if (activeClueIndex >= clues.length) {
+                    lines.push("We have everything we need. He's close — go bring him in.");
+                } else if (found.length < clues.length) {
+                    lines.push("There's still more out there. Keep searching — the next clue is waiting.");
+                }
+            }
+            showStory(lines);
+        }
+
         // ── BANK ROBBERY MISSION ──────────────────────────────────────────
+        // Drives the bank building's alarm-light visual only — the actual heist
+        // is Quest 1, spawned by spawnBankQuest() when the first clue is read.
         let bankRobbery = {
-            triggered: false,   // hero has entered trigger radius
-            complete: false,   // all robbers defeated (this wave)
-            bankX: 1200,    // matches buildings array
-            alertPhase: 0,
-            wave: 0,       // 0 = first robbery, increments after each clear
-            cooldown: 0,       // frames until next wave spawns
+            triggered: false,   // quest 1 is active
+            complete: false,   // quest 1 resolved (teller rescued)
+            bankX: 1200,        // matches buildings array
         };
 
         // ── STOREFRONTS & CIVIC BUILDINGS ────────────────────────────────
@@ -634,8 +1090,9 @@
                 { x: 1120, baseX: 1120, type: 'sit', name: 'Photographer', phase: 0.7 },
                 { x: 1320, baseX: 1320, type: 'sit', name: 'Intern', phase: 2.2 },
                 { x: 1520, baseX: 1520, type: 'sit', name: 'Columnist', phase: 4.1 },
-                { x: 950, baseX: 950, type: 'walk', name: 'Editor-in-Chief', phase: 0, dir: 1, range: 220, speed: 0.8 },
-                { x: 480, baseX: 480, type: 'walk', name: 'Copy Editor', phase: 0, dir: -1, range: 160, speed: 0.6 },
+                { x: 950, baseX: 950, type: 'walk', name: 'Editor-in-Chief', phase: 0, dir: 1, range: 220, speed: 0.8, greeting: 0, faceDir: 1 },
+                { x: 480, baseX: 480, type: 'walk', name: 'Copy Editor', phase: 0, dir: -1, range: 160, speed: 0.6, greeting: 0, faceDir: 1 },
+                { x: 680, baseX: 680, type: 'walk', lois: true, name: 'Lois', phase: 0, dir: 1, range: 80, speed: 0.5, greeting: 0, faceDir: 1 },
             ],
             // rescued civilians who now live here safely (filled as you rescue them)
             residents: [],
@@ -809,28 +1266,66 @@
                 return;
             }
 
+            // ---- dining interior intercept: ENTER = leave, F = order food ----
+            if (diningScene) {
+                if (e.code === 'Enter' && enterCooldown <= 0) { exitDining(); e.preventDefault(); }
+                if (e.code === 'KeyF') {
+                    const heroMid = hero.x + hero.w / 2;
+                    const ctr = DINING_ROOM.counter;
+                    if (heroMid > ctr.x - 20 && heroMid < ctr.x + ctr.w + 20) {
+                        handleDiningEat(); e.preventDefault();
+                    }
+                }
+                keys[e.code] = true;
+                return;
+            }
+
             keys[e.code] = true;
             if (e.code === 'KeyQ') hero.persona = hero.persona === 'super' ? 'civilian' : 'super';
             if (e.code === 'KeyT') p2Mode = (p2Mode === 'ai') ? 'coop' : 'ai';
             if (e.code === 'KeyR') { hound.forceLand = true; hound.flightActive = false; }
             if (e.code === 'KeyM') mapOpen = !mapOpen;
+            if (e.code === 'KeyN' && interior.note.read) caseFileOpen = !caseFileOpen;
+            // P: talk to Lois from anywhere (interior or city), or F near her in interior
+            if (e.code === 'KeyP' && interior.note.read && !storyModal) { talkToLois(); e.preventDefault(); }
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
             // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
             if (e.code === 'Enter' && enterCooldown <= 0) {
                 if (scene === 'city') {
+                    let handled = false;
                     for (const b of rescueBuildings) {
                         // No district gate — single central building, accessible anywhere
                         const heroMid = hero.x + hero.w / 2;
                         const doorMid = b.x + b.w / 2;
                         const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
                         if (Math.abs(heroMid - doorMid) < b.w / 2 + 16 && nearGround) {
-                            enterInterior(b); e.preventDefault(); break;
+                            enterInterior(b); e.preventDefault(); handled = true; break;
+                        }
+                    }
+                    // Enter a diner or shop — walk inside the actual interior room.
+                    if (!handled) {
+                        for (const b of buildings) {
+                            if (b.type !== 'diner' && b.type !== 'shop') continue;
+                            const heroMid = hero.x + hero.w / 2;
+                            const doorMid = b.x + b.w / 2;
+                            const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                            if (Math.abs(heroMid - doorMid) < b.w / 2 + 16 && nearGround) {
+                                enterDining(b);
+                                e.preventDefault(); handled = true; break;
+                            }
                         }
                     }
                 } else if (scene === 'interior') {
                     const heroMid = hero.x + hero.w / 2;
                     const doorMid = interior.exitDoor.x + interior.exitDoor.w / 2;
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
+                }
+            }
+            // F: talk to Lois when nearby in the interior
+            if (e.code === 'KeyF' && scene === 'interior' && interior.note.read) {
+                const loisNPC = interior.npcs.find(n => n.lois);
+                if (loisNPC && Math.abs((hero.x + hero.w / 2) - loisNPC.x) < 70 && !storyModal) {
+                    talkToLois(); e.preventDefault();
                 }
             }
             // F: read the case-file note on the hero's desk (kicks off the story)
@@ -847,18 +1342,20 @@
                     e.preventDefault();
                 }
             }
-            // F: read a case-file clue found out in the city
+            // F: read the currently-active case-file clue found out in the city
             if (e.code === 'KeyF' && scene === 'city' && interior.note.read) {
                 const heroMid = hero.x + hero.w / 2;
-                for (const cl of clues) {
-                    if (cl.found) continue;
+                const cl = clues[activeClueIndex];
+                if (cl && !cl.found) {
                     const cy = GROUND_Y - 90;
                     if (Math.abs(heroMid - cl.x) < 60 && Math.abs(hero.y - cy) < 120) {
                         cl.found = true;
                         cluesFound++;
                         showStory(cl.lines);
+                        // The next clue won't appear until this quest's objective is
+                        // actually rescued — see the check in updateWorldState().
+                        pendingTrapCiv = spawnQuestForClue(cl);
                         e.preventDefault();
-                        break;
                     }
                 }
             }
@@ -868,6 +1365,29 @@
                 const sz = interior.safeZone;
                 if (heroMid > sz.x && heroMid < sz.x + sz.w) {
                     dropOffCivilian();
+                    e.preventDefault();
+                }
+            }
+            // F: set down any quest objective that's reached a safe distance from
+            // its crime scene — the player picks the exact spot, not an instant trigger
+            if (e.code === 'KeyF' && scene === 'city' && carriedCivilians.length > 0) {
+                let droppedAny = false;
+                const names = [];
+                for (let i = carriedCivilians.length - 1; i >= 0; i--) {
+                    const c = carriedCivilians[i];
+                    if (!c.inSafeZone) continue;
+                    c.rescued = true; c.carried = false;
+                    carriedCivilians.splice(i, 1);
+                    spawnRescueFX(c.x + c.w / 2, c.y - 10);
+                    names.push(c.name);
+                    droppedAny = true;
+                }
+                if (droppedAny) {
+                    titleCard = {
+                        text: names.join(' & ') + (names.length > 1 ? ' are' : ' is') + ' safe!',
+                        sub: 'Set down clear of the scene — quest complete.',
+                        timer: 180
+                    };
                     e.preventDefault();
                 }
             }
@@ -1136,6 +1656,25 @@
             hitFX.push({ x: cx, y: cy - 12, life: 0, max: 18, type: 'word', text: 'MISS', color: '#c8d2e0', outline: '#2a3040' });
         }
 
+        function damageHazards(box, dmg) {
+            for (const hz of hazards) {
+                if (!hazardActive(hz)) continue;
+                if (aabb(box, hz)) {
+                    hz.hp -= dmg;
+                    if (hz.hp <= 0) {
+                        hz.destroyed = true;
+                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.4, 'laser', true);
+                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.7, 'punch', true);
+                        screenShake = Math.max(screenShake, 14);
+                        titleCard = { text: 'BARRIER DESTROYED', sub: 'Path is clear — keep moving.', timer: 150 };
+                    } else {
+                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.4, 'laser', false);
+                        screenShake = Math.max(screenShake, 5);
+                    }
+                }
+            }
+        }
+
         function doPunch(e) {
             e.punchTimer = PUNCH_EFFECT;
             e.lunge = 7 * e.facing;
@@ -1150,6 +1689,7 @@
                 if (en.alive && aabb(box, en)) tryHitEnemy(en, PUNCH_DMG, 9, 'punch', e);
             }
             damageEmitters(box, PUNCH_DMG);
+            if (e === hero) damageHazards(box, 1);
         }
         function doLaser(e) {
             e.laserTimer = LASER_EFFECT;
@@ -1178,11 +1718,12 @@
                 if (!hitEn.alive) { stopX = dir === 1 ? WORLD_WIDTH : 0; hitEn = null; }
             }
 
-            // Emitters also block the beam
+            // Emitters + hazard towers also block/take beam damage
             const emBox = dir === 1
                 ? { x: srcX, y: beamY, w: stopX - srcX, h: beamH }
                 : { x: stopX, y: beamY, w: srcX - stopX, h: beamH };
             damageEmitters(emBox, LASER_DMG);
+            if (e === hero) damageHazards(emBox, 1);
 
             e._laserStopX = stopX;    // used by draw to terminate the beam visually
             e._laserHit = !!hitEn;  // flag: beam hit something real (not a kill)
@@ -1199,6 +1740,7 @@
                     en.frozen = FREEZE_DURATION;
                 }
             }
+            if (e === hero) damageHazards(box, 1);
         }
 
         // ---------- COLLISION ----------
@@ -1230,13 +1772,23 @@
                 }
             }
 
-            // electric hazards: zap + nudge back (deters but won't hard-wall you)
+            // Laser barrier towers — hard wall when active. Dash does NOT help.
+            // The entity is pushed back to the correct side and velocity zeroed.
             for (const hz of hazards) {
+                if (!hazardActive(hz)) continue;
                 if (aabb(e, hz)) {
                     const fromLeft = (e.x + e.w / 2) < (hz.x + hz.w / 2);
-                    e.x += fromLeft ? -8 : 8;
-                    e.vx = fromLeft ? -2.5 : 2.5;
-                    e.zap = 8;
+                    // resolve penetration: snap to the correct edge
+                    if (fromLeft) {
+                        e.x = hz.x - e.w;
+                        if (e.vx > 0) e.vx = 0;
+                        if (e.dashTimer > 0) { e.dashTimer = 0; e.vx = 0; }
+                    } else {
+                        e.x = hz.x + hz.w;
+                        if (e.vx < 0) e.vx = 0;
+                        if (e.dashTimer > 0) { e.dashTimer = 0; e.vx = 0; }
+                    }
+                    e.zap = 10;
                 }
             }
 
@@ -1486,6 +2038,19 @@
                     c.y = e.y + e.h * 0.28 + i * 6;
                     c.vx = 0;
                 });
+
+                // Quest objectives (civilian/crate/car) don't need a trip all the
+                // way back to the Weekly Planet — once carried far enough from
+                // where they were found, they're IN a safe zone. The player still
+                // chooses exactly where to set them down (press F) rather than
+                // having them yanked out of his arms the instant he crosses the
+                // line — see the KeyF handler and isInSafeZone() below.
+                if (e === hero && scene === 'city') {
+                    for (const c of carriedCivilians) {
+                        c.inSafeZone = c.trapVictim && c.crimeX !== undefined &&
+                            Math.abs((e.x + e.w / 2) - c.crimeX) >= SAFE_RESCUE_DIST;
+                    }
+                }
             }
         }
 
@@ -1551,22 +2116,45 @@
                 input.moveDown = true;
             }
 
-            // ---- attack: only enemies that are CLOSE and roughly IN FRONT ----
+            // ---- hazard avoidance: if an active barrier is between hound and hero, fly over it ----
+            for (const hz of hazards) {
+                if (!hazardActive(hz)) continue;
+                const hcx = hound.x + hound.w / 2;
+                const heroCx = hero.x + hero.w / 2;
+                // barrier sits between them
+                const blocked = (hcx < hz.x && heroCx > hz.x + hz.w) ||
+                                (hcx > hz.x + hz.w && heroCx < hz.x);
+                if (blocked) {
+                    // fly high enough to clear it — barriers go floor-to-ceiling so
+                    // the hound must go WAY above (y < 80) to navigate around by air
+                    if (hound.y > 100) {
+                        input.jumpHeld = true;
+                        input.left = false; input.right = false;  // pause horizontal until clear
+                    }
+                    break;
+                }
+            }
+
+            // ---- attack: drag nearby enemies — no laser/freeze, just a shove + tiny damage ----
             let best = null, bestD = Infinity;
             for (const en of enemies) {
                 if (!en.alive) continue;
                 const ex = en.x + en.w / 2, ey = en.y + en.h / 2;
                 const hx = hound.x + hound.w / 2, hy = hound.y + hound.h / 2;
                 const d = Math.hypot(ex - hx, ey - hy);
-                // must be on the side the hound faces and not far vertically
                 const inFront = (ex - hx) * hound.facing > -20;
-                if (d < bestD && d < 240 && inFront && Math.abs(ey - hy) < 120) { bestD = d; best = en; }
+                if (d < bestD && d < 160 && inFront && Math.abs(ey - hy) < 80) { bestD = d; best = en; }
             }
-            if (best) {
-                if (best.type === 'warlord') { if (bestD < 130) input.punch = true; else input.laser = true; }
-                else if (best.type === 'energy') { if (bestD < 150) input.freeze = true; else input.laser = true; }
-                else { if (bestD < 90) input.punch = true; else if (bestD < 200) input.laser = true; }
+            if (best && (hound._dragCD || 0) <= 0) {
+                // drag: shove the enemy away from the hero (create separation) and
+                // deal a small amount of damage — no laser beam, no freeze cone.
+                const dragDir = best.x < hound.x ? -1 : 1;
+                best.vx = dragDir * 3.5;
+                best.x += dragDir * 14;
+                tryHitEnemy(best, 1, 3, 'punch', hound);
+                hound._dragCD = 55;
             }
+            if ((hound._dragCD || 0) > 0) hound._dragCD--;
             return input;
         }
 
@@ -1675,6 +2263,11 @@
                     en.chaseTimer--;
                     if (en.chaseTimer <= 0 || carriedCivilians.length === 0) {
                         en.chaseMode = false;   // give up — go back to patrol
+                        // Make sure aerial enemies resume inside their patrol band
+                        // immediately, instead of slowly drifting back over time.
+                        if (en.vy !== undefined && en.minY !== undefined && en.maxY !== undefined) {
+                            en.y = Math.max(en.minY, Math.min(en.maxY, en.y));
+                        }
                     } else {
                         if ((en.chaseAlert || 0) > 0) en.chaseAlert--;
                         const heroMid = hero.x + hero.w / 2;
@@ -1683,11 +2276,17 @@
                         const CSPD = en.type === 'energy' ? 2.9 : 2.3;
 
                         if (en.vy !== undefined) {
-                            // Aerial enemy: close on hero in X and Y
+                            // Aerial enemy: close on hero in X and Y, but stay within its
+                            // own patrol band (+/- a little give) — chasing all the way
+                            // down to ground level left them stranded near the sidewalk
+                            // for a long time after the chase ended, since the patrol
+                            // logic only nudges them back slowly.
                             en.x += Math.sign(dx) * Math.min(CSPD, Math.abs(dx));
                             const dy = (hero.y + hero.h / 2) - (en.y + en.h / 2);
                             en.y += Math.sign(dy) * Math.min(2.2, Math.abs(dy));
-                            en.y = Math.max(80, Math.min(GROUND_Y - en.h - 4, en.y));
+                            const loY = (en.minY !== undefined ? en.minY : 80) - 60;
+                            const hiY = (en.maxY !== undefined ? en.maxY : GROUND_Y - en.h - 4) + 60;
+                            en.y = Math.max(loY, Math.min(hiY, en.y));
                         } else {
                             // Ground enemy: gap-aware horizontal chase
                             const nextX = en.x + Math.sign(dx) * CSPD;
@@ -1816,13 +2415,16 @@
                     if (lookX > g.x - 40 && lookX < g.x + g.w + 40) { nearGap = true; break; }
                 }
 
-                // Occasional direction change and random idle pauses
-                if (c.roamPhase % 300 === 0) {
+                // Occasional direction change and random idle pauses (a fleeing
+                // car never stops to idle — it just keeps speeding away)
+                if (!c.isVehicle && c.roamPhase % 300 === 0) {
                     if (Math.random() < 0.28) {
                         c.stopTimer = 60 + Math.floor(Math.random() * 210);  // 1–4 sec stop
                         continue;
                     }
                     if (Math.random() < 0.45) c.roamDir = Math.random() < 0.5 ? 1 : -1;
+                } else if (c.isVehicle && c.roamPhase % 240 === 0 && Math.random() < 0.5) {
+                    c.roamDir = Math.random() < 0.5 ? 1 : -1;
                 }
 
                 // Hard boundaries
@@ -1830,7 +2432,8 @@
                 if (c.x >= maxX) c.roamDir = -1;
                 if (nearGap) c.roamDir = -(c.roamDir || 1);
 
-                c.vx = (c.roamDir || 1) * 0.62;
+                const speed = c.isVehicle ? 2.6 : 0.62;   // a hijacked car really moves
+                c.vx = (c.roamDir || 1) * speed;
                 c.x += c.vx;
             }
         }
@@ -1889,84 +2492,11 @@
             }
         }
 
-        // ── Spawn a fresh wave of robbers (called after each clear) ─────────
-        function spawnRobberWave() {
-            const w = bankRobbery.wave;
-            const count = Math.min(3 + Math.floor(w / 2), 6);   // 3, 3, 4, 4, 5, 5, 6…
-            const hp = 3 + Math.floor(w / 3);                  // 3, 3, 3, 4, 4, 4, 5…
-            for (let i = 0; i < count; i++) {
-                enemies.push({
-                    x: bankRobbery.bankX + 28 + i * 52, y: 948,
-                    w: 38, h: 52,
-                    vx: (i % 2 === 0 ? 1 : -1) * (0.8 + Math.random() * 0.45),
-                    minX: bankRobbery.bankX - 20, maxX: bankRobbery.bankX + 220,
-                    alive: true, hp, maxHp: hp, frozen: 0,
-                    type: 'robber', district: 'downtown', robber: true,
-                    dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
-                    hitReact: 0, hitFlash: 0, knockback: 0, phase: Math.random() * 6,
-                });
-            }
-            bankRobbery.wave++;
-            bankRobbery.complete = false;
-            bankRobbery.alertPhase = 0;
-            bankRobbery.triggered = true;  // subsequent waves auto-trigger
-            titleCard = {
-                text: `🚨 ROBBERY WAVE ${bankRobbery.wave}!`,
-                sub: `${count} masked robbers hit the bank — tougher every time!`,
-                timer: 220,
-            };
-        }
-
-        // ── Bank robbery mission logic (looping) ──────────────────────────
-        function updateBankRobbery() {
-            bankRobbery.alertPhase++;
-
-            const allRobbers = enemies.filter(e => e.robber);
-            const robberAlive = allRobbers.some(e => e.alive);
-
-            // ── Wave-complete cooldown: count down then spawn next wave ──
-            if (bankRobbery.complete) {
-                bankRobbery.cooldown++;
-                // Wait ~40 s (2400 frames), and only spawn when in downtown
-                if (bankRobbery.cooldown >= 2400 && currentDistrict === 'downtown') {
-                    bankRobbery.cooldown = 0;
-                    spawnRobberWave();
-                }
-                return;
-            }
-
-            // ── First-time trigger: hero walks near the bank ──
-            if (!bankRobbery.triggered && currentDistrict === 'downtown') {
-                const heroMid = hero.x + hero.w / 2;
-                if (Math.abs(heroMid - (bankRobbery.bankX + 87)) < 380) {
-                    bankRobbery.triggered = true;
-                    titleCard = {
-                        text: '🚨 BANK ROBBERY IN PROGRESS!',
-                        sub: 'Stop the robbers before they escape with the money!', timer: 220
-                    };
-                }
-            }
-
-            // ── Wave cleared ──
-            if (bankRobbery.triggered && !robberAlive) {
-                bankRobbery.complete = true;
-                bankRobbery.cooldown = 0;
-                const isFirst = bankRobbery.wave === 0;
-                if (isFirst) {
-                    bankRobbery.wave = 1;   // mark first wave done
-                    orbs.push(
-                        { x: bankRobbery.bankX + 40, y: 820, r: 14, taken: false, district: 'downtown' },
-                        { x: bankRobbery.bankX + 87, y: 780, r: 14, taken: false, district: 'downtown' },
-                        { x: bankRobbery.bankX + 134, y: 820, r: 14, taken: false, district: 'downtown' }
-                    );
-                }
-                titleCard = {
-                    text: isFirst ? '✔ ROBBERY FOILED!' : `✔ WAVE ${bankRobbery.wave} STOPPED!`,
-                    sub: 'Stay alert — they may strike again! (~40 s)',
-                    timer: 280,
-                };
-            }
-        }
+        // The bank heist is no longer a standalone proximity-triggered, endlessly
+        // repeating mission — it's Quest 1, spawned once by spawnBankQuest() when
+        // the first clue is read, and resolved like every other quest (see the
+        // pendingTrapCiv check in updateWorldState). bankRobbery only tracks the
+        // alarm-light visual on the bank building now.
 
         // Advance plane positions + day/night cycle every frame.
         const DAY_CYCLE = 14400;  // ~4 min at 60fps; day lasts ~75% of the cycle
@@ -3375,7 +3905,7 @@
                 ctx.fillStyle = '#6a8ab0'; ctx.fillRect(x + w / 2 - 17, GROUND_Y - 57, 34, 40); // glass
                 // Bank robbery alarm overlay
                 if (bankRobbery.triggered && !bankRobbery.complete) {
-                    const blink = Math.sin(bankRobbery.alertPhase * 0.25) > 0;
+                    const blink = Math.sin(Date.now() * 0.015) > 0;
                     if (blink) {
                         ctx.globalAlpha = 0.30;
                         ctx.fillStyle = '#ff2020';
@@ -3536,6 +4066,21 @@
                     ctx.fillRect(ti, -3, 16, 6);
                 }
                 ctx.restore();
+            }
+
+            // Shared: "grab a bite" prompt for diners/shops when the hero is near
+            if (type === 'diner' || type === 'shop') {
+                const heroMid = hero.x + hero.w / 2;
+                const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                if (Math.abs(heroMid - (x + w / 2)) < w / 2 + 16 && nearGround) {
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = (b.eatCooldown || 0) > 0 ? '#ff9a6a' : '#9fffa0';
+                    ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText((b.eatCooldown || 0) > 0 ? 'Already ate here recently' : 'Press ENTER to grab a bite',
+                        x + w / 2, top - 14);
+                    ctx.globalAlpha = 1;
+                }
             }
 
             // Shared: curb shadow line
@@ -4043,10 +4588,45 @@
             ctx.restore();
         }
 
+        // ---- "Cargo" quest objective: a crate the hero has to recover ----
+        function drawObjectiveCrate(c, cx, topY, scale) {
+            ctx.save();
+            const s = scale, w = 26 * s, h = 22 * s;
+            const y = topY + 18 * s;
+            ctx.fillStyle = '#8b6020'; ctx.fillRect(cx - w / 2, y, w, h);
+            ctx.fillStyle = '#6a4010'; ctx.fillRect(cx - w / 2, y, w, 4 * s);
+            ctx.strokeStyle = '#5a3408'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(cx - w / 2, y); ctx.lineTo(cx + w / 2, y + h); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx + w / 2, y); ctx.lineTo(cx - w / 2, y + h); ctx.stroke();
+            ctx.strokeRect(cx - w / 2, y, w, h);
+            ctx.fillStyle = '#ffd84d'; ctx.font = 'bold ' + Math.round(10 * s) + 'px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('!', cx, y + h * 0.7);
+            ctx.restore();
+        }
+
+        // ---- "Chase" quest objective: a hijacked car the hero has to catch ----
+        function drawObjectiveCar(c, cx, topY, scale) {
+            ctx.save();
+            const s = scale, w = 38 * s, h = 16 * s;
+            const y = topY + 22 * s;
+            ctx.fillStyle = '#c0392b'; ctx.fillRect(cx - w / 2, y, w, h);
+            ctx.fillStyle = '#a02f22'; ctx.fillRect(cx - w * 0.28, y - 9 * s, w * 0.56, 10 * s); // cabin
+            ctx.fillStyle = 'rgba(180,220,255,0.7)'; ctx.fillRect(cx - w * 0.18, y - 7 * s, w * 0.36, 6 * s); // window
+            ctx.fillStyle = '#181818';
+            ctx.beginPath(); ctx.arc(cx - w * 0.28, y + h, 5 * s, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cx + w * 0.28, y + h, 5 * s, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffe072'; ctx.fillRect(cx + w / 2 - 2, y + h * 0.3, 3, 4 * s); // headlight
+            ctx.restore();
+        }
+
         // ---- a larger, animated civilian figure ----
         // cx = center x, topY = top of head area, scale, walkPhase for leg swing,
         // distressed = arms up / worried vs. relieved when carried.
         function drawCivilianFigure(c, cx, topY, scale, walkPhase, distressed) {
+            // Some quest objectives aren't people — a crate to recover, a hijacked
+            // car to catch up to. Draw those with a dedicated sprite instead.
+            if (c.isObject) { drawObjectiveCrate(c, cx, topY, scale); return; }
+            if (c.isVehicle) { drawObjectiveCar(c, cx, topY, scale); return; }
             ctx.save();
             const s = scale;
             const skin = (c.name.charCodeAt(1) % 3 === 0) ? '#c79a6e' : (c.name.charCodeAt(1) % 3 === 1) ? '#e8c8a0' : '#a87a55';
@@ -4162,26 +4742,50 @@
                 ctx.fillRect(p.x + p.w - 16, p.y + p.h, 6, 24);
             }
 
-            // ---- electric hazard barriers ----
+            // ---- laser barrier towers ----
             for (const hz of hazards) {
-                const flick = 0.5 + Math.random() * 0.5;
+                hz.phase = (hz.phase || 0) + 0.06;
+                if (hz.destroyed) continue;
+                const active = hazardActive(hz);
                 ctx.save();
-                ctx.shadowColor = '#5ce0ff'; ctx.shadowBlur = 16;
-                ctx.fillStyle = `rgba(120,220,255,${0.5 * flick})`;
-                ctx.fillRect(hz.x, hz.y, hz.w, hz.h);
-                // arcing zig-zag bolt down the middle
-                ctx.strokeStyle = `rgba(220,250,255,${flick})`;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(hz.x + hz.w / 2, hz.y);
-                for (let yy = hz.y; yy < hz.y + hz.h; yy += 24) {
-                    ctx.lineTo(hz.x + hz.w / 2 + (Math.random() - 0.5) * hz.w, yy);
+                if (active) {
+                    // pylon body
+                    ctx.fillStyle = '#1a1a2e';
+                    ctx.fillRect(hz.x - 5, 0, hz.w + 10, GROUND_Y);
+                    // glowing beam core
+                    const flick = 0.6 + Math.sin(hz.phase * 7) * 0.4;
+                    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 22 * flick;
+                    ctx.fillStyle = `rgba(80,230,255,${0.55 * flick})`;
+                    ctx.fillRect(hz.x, 0, hz.w, GROUND_Y);
+                    // zig-zag arc
+                    ctx.strokeStyle = `rgba(200,250,255,${0.8 * flick})`;
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.moveTo(hz.x + hz.w / 2, 0);
+                    for (let yy = 0; yy < GROUND_Y; yy += 32) {
+                        ctx.lineTo(hz.x + hz.w / 2 + (Math.random() - 0.5) * 20, yy + 32);
+                    }
+                    ctx.stroke();
+                    // emitter nodes every 200px
+                    ctx.fillStyle = '#9be8ff';
+                    for (let ny = 80; ny < GROUND_Y; ny += 200) {
+                        ctx.fillRect(hz.x - 8, ny - 6, hz.w + 16, 12);
+                    }
+                    // HP pips — drawn in world space (camera.x already translated out)
+                    ctx.shadowBlur = 0;
+                    for (let i = 0; i < 3; i++) {
+                        ctx.fillStyle = i < hz.hp ? '#00e5ff' : '#1a2a2a';
+                        ctx.fillRect(hz.x - 20 + i * 16, 18, 12, 7);
+                    }
+                    ctx.fillStyle = '#9be8ff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('BARRIER — USE POWERS', hz.x + hz.w / 2, 14);
+                } else {
+                    // inactive: just a dark pylon stub
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#2a2a3a';
+                    ctx.fillRect(hz.x - 4, 0, hz.w + 8, GROUND_Y);
+                    ctx.globalAlpha = 1;
                 }
-                ctx.stroke();
-                // emitter caps
-                ctx.fillStyle = '#9be8ff';
-                ctx.fillRect(hz.x - 4, hz.y - 6, hz.w + 8, 8);
-                ctx.fillRect(hz.x - 4, hz.y + hz.h - 2, hz.w + 8, 8);
                 ctx.restore();
             }
 
@@ -4257,10 +4861,82 @@
                 ctx.restore();
             }
 
-            // ---- STORY CLUES: case-file pickups revealing the escapee's identity ----
+            // ---- LOIS LANE in the city — stands near the active clue ----
+            if (interior.note.read && clues[activeClueIndex]) {
+                const lx = cityLois.x, ly = cityLois.y;
+                const bob = Math.sin(cityLois.phase) * 1.2;
+                ctx.save();
+                // legs
+                const sw = Math.abs(cityLois._targetX - cityLois.x) > 8 ? Math.sin(cityLois.phase * 3) * 4 : 0;
+                ctx.fillStyle = '#1a1a30';
+                ctx.fillRect(lx - 7, GROUND_Y - 20 - Math.max(0, sw), 6, 20);
+                ctx.fillRect(lx + 1, GROUND_Y - 20 - Math.max(0, -sw), 6, 20);
+                // heels
+                ctx.fillStyle = '#c01820';
+                ctx.fillRect(lx - 8, GROUND_Y - 3, 8, 4);
+                ctx.fillRect(lx + 1, GROUND_Y - 3, 8, 4);
+                // red blazer
+                ctx.fillStyle = '#b81c2c';
+                ctx.fillRect(lx - 12, GROUND_Y - 55 + bob, 24, 36);
+                // white blouse
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(lx - 5, GROUND_Y - 54 + bob, 10, 10);
+                // lapels
+                ctx.fillStyle = '#941420';
+                ctx.beginPath(); ctx.moveTo(lx - 12, GROUND_Y - 54 + bob); ctx.lineTo(lx - 2, GROUND_Y - 44 + bob); ctx.lineTo(lx - 12, GROUND_Y - 44 + bob); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(lx + 12, GROUND_Y - 54 + bob); ctx.lineTo(lx + 2, GROUND_Y - 44 + bob); ctx.lineTo(lx + 12, GROUND_Y - 44 + bob); ctx.closePath(); ctx.fill();
+                // head
+                ctx.fillStyle = '#e8c0a0';
+                ctx.beginPath(); ctx.arc(lx, GROUND_Y - 66 + bob, 10, 0, Math.PI * 2); ctx.fill();
+                // dark bob hair
+                ctx.fillStyle = '#1a1010';
+                ctx.beginPath(); ctx.arc(lx, GROUND_Y - 68 + bob, 11, Math.PI * 0.75, Math.PI * 2.25); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(lx - 10, GROUND_Y - 68 + bob);
+                ctx.quadraticCurveTo(lx - 18, GROUND_Y - 60 + bob, lx - 12, GROUND_Y - 56 + bob);
+                ctx.lineTo(lx - 10, GROUND_Y - 58 + bob); ctx.closePath(); ctx.fill();
+                // eyes
+                ctx.fillStyle = '#1a1a1a';
+                const ed = cityLois.faceDir * 2.5;
+                ctx.fillRect(lx - 4 + ed, GROUND_Y - 68 + bob, 2, 2.5);
+                ctx.fillRect(lx + 2 + ed, GROUND_Y - 68 + bob, 2, 2.5);
+                // press badge
+                ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lx - 4, GROUND_Y - 46 + bob, 12, 8);
+                ctx.fillStyle = '#1a1a80'; ctx.font = '4px Arial'; ctx.textAlign = 'left';
+                ctx.fillText('PRESS', lx - 3, GROUND_Y - 41 + bob);
+                // notepad
+                ctx.fillStyle = '#f5f0e0'; ctx.fillRect(lx + 10, GROUND_Y - 44 + bob, 10, 14);
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 0.5;
+                for (let li = 0; li < 3; li++) ctx.strokeRect(lx + 11, GROUND_Y - 42 + bob + li * 4, 8, 1);
+                // greeting bubble or name label
+                if (cityLois.greeting > 20) {
+                    const cl = clues[activeClueIndex];
+                    const hint = cl && !cl.found ? 'Check that clue, CK!' : 'The city needs you!';
+                    const bw = 150, bh = 26, bx = lx - bw / 2, bby = GROUND_Y - 102 + bob;
+                    ctx.fillStyle = 'rgba(255,240,245,0.95)';
+                    ctx.strokeStyle = '#b81c2c'; ctx.lineWidth = 1.5;
+                    ctx.fillRect(bx, bby, bw, bh);
+                    ctx.strokeRect(bx, bby, bw, bh);
+                    ctx.beginPath(); ctx.moveTo(lx - 5, bby + bh); ctx.lineTo(lx + 5, bby + bh); ctx.lineTo(lx, bby + bh + 8); ctx.fill();
+                    ctx.fillStyle = '#1a1a1a'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(hint, lx, bby + 16);
+                    // "Press P" hint
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#b81c2c'; ctx.font = 'bold 9px Arial';
+                    ctx.fillText('Press P for intel', lx, GROUND_Y - 115 + bob);
+                    ctx.globalAlpha = 1;
+                } else {
+                    ctx.fillStyle = 'rgba(255,200,210,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Lois', lx, GROUND_Y - 84 + bob);
+                }
+                ctx.restore();
+            }
+
+            // ---- STORY CLUES: only the currently-active clue is in the world ----
             if (interior.note.read) {
-                for (const cl of clues) {
-                    if (cl.found) continue;
+                const cl = clues[activeClueIndex];
+                if (cl && !cl.found) {
                     const bob = Math.sin(Date.now() * 0.004 + cl.x) * 5;
                     const cy = GROUND_Y - 90 + bob;
                     ctx.save();
@@ -4345,8 +5021,19 @@
 
             // ---- carried civilians (up to 3, held in the hero's arms) ----
             if (!cutscene.active) {
+                let anyInSafeZone = false;
                 for (const c of carriedCivilians) {
                     drawCivilianFigure(c, c.x + c.w / 2, c.y, 1.05, 0, false);
+                    if (c.inSafeZone) anyInSafeZone = true;
+                }
+                if (anyInSafeZone) {
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.save();
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Safe zone reached — Press F to set down', hero.x + hero.w / 2, hero.y - 18);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
                 }
             }
 
@@ -4499,6 +5186,17 @@
                 ctx.globalAlpha = 1;
             });
 
+            // ── Case-file clues: markers for clues revealed so far (one at a time) ──
+            if (interior.note.read) {
+                for (const cl of clues.slice(0, activeClueIndex + 1)) {
+                    const clx = mx + cl.x * sx, cly = my + mh * 0.62;
+                    ctx.fillStyle = cl.found ? '#5fd97a' : '#ffd84d';
+                    ctx.shadowColor = cl.found ? '#5fd97a' : '#ffd84d'; ctx.shadowBlur = 5;
+                    ctx.beginPath(); ctx.arc(clx, cly, 3, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+
             // ── Weekly Planet: golden globe icon ──
             for (const b of rescueBuildings) {
                 const bx2 = mx + (b.x + b.w / 2) * sx;
@@ -4635,6 +5333,25 @@
                 ctx.fillText('✓ all civilians safe', mx + 6, my + mh * 0.95);
             }
 
+            // ── Case-file clues: magnifying-glass markers, gold = unfound, green = found ──
+            // Only clues revealed so far appear — they unlock one at a time.
+            if (interior.note.read) {
+                clues.slice(0, activeClueIndex + 1).forEach((cl, ci) => {
+                    const clx = mx + cl.x * sx, cly = my + mh * 0.58;
+                    const col = cl.found ? '#5fd97a' : '#ffd84d';
+                    if (!cl.found) {
+                        const cp = 0.5 + Math.sin(now2 * 0.012 + ci * 1.3) * 0.5;
+                        ctx.globalAlpha = 0.4 + cp * 0.5;
+                    }
+                    ctx.shadowColor = col; ctx.shadowBlur = 8;
+                    ctx.fillStyle = col;
+                    ctx.beginPath(); ctx.arc(clx, cly, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+                    ctx.fillStyle = '#1a1808'; ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(cl.found ? '✓' : '?', clx, cly + 2.5);
+                });
+            }
+
             // ── Weekly Planet: large prominent globe + label ──
             for (const b of rescueBuildings) {
                 const bpx = mx + (b.x + b.w / 2) * sx;
@@ -4702,6 +5419,7 @@
                 { col: '#7fd3ff', label: 'you (▲)' },
                 { col: 'rgba(255,255,255,0.3)', label: 'your view' },
             ];
+            if (interior.note.read) legItems.push({ col: '#ffd84d', label: 'clue (N: review)' });
             let legX = mx;
             const legSpacing = mw / legItems.length;
             for (const li of legItems) {
@@ -4785,6 +5503,31 @@
 
             // emitter animation phase
             for (const em of emitters) em.phase = (em.phase || 0) + 0.08;
+
+            // diner/shop "grab a bite" cooldowns
+            for (const b of buildings) if (b.eatCooldown > 0) b.eatCooldown--;
+
+            // ---- QUEST RESOLVED? once the current clue's quest objective is
+            // actually rescued, reveal the next clue (or the boss, if that was the last) ----
+            if (pendingTrapCiv && pendingTrapCiv.rescued) {
+                // Turn off the bank's alarm light and grant a small first-quest
+                // reward, if it was the bank heist that just got resolved.
+                if (bankRobbery.triggered && !bankRobbery.complete) {
+                    bankRobbery.complete = true;
+                    orbs.push(
+                        { x: bankRobbery.bankX + 40, y: 820, r: 14, taken: false, district: 'downtown' },
+                        { x: bankRobbery.bankX + 87, y: 780, r: 14, taken: false, district: 'downtown' },
+                        { x: bankRobbery.bankX + 134, y: 820, r: 14, taken: false, district: 'downtown' }
+                    );
+                }
+                pendingTrapCiv = null;
+                activeClueIndex++;
+                if (activeClueIndex >= clues.length) {
+                    spawnBoss();
+                } else {
+                    titleCard = { text: 'NEW LEAD', sub: 'A new clue has turned up somewhere in the city.', timer: 160 };
+                }
+            }
 
             // boss defeated?
             const boss = enemies.find(e => e.boss);
@@ -5145,7 +5888,7 @@
 
             // working NPCs (drawn as simple seated/standing figures)
             for (const n of interior.npcs) {
-                drawWorkerNPC(n);
+                if (n.lois) drawLois(n); else drawWorkerNPC(n);
             }
             // rescued residents (relieved, milling around)
             for (const r of interior.residents) {
@@ -5419,6 +6162,58 @@
             ctx.restore();
         }
 
+        // ---------- CASE FILE: review every clue found so far (N to toggle) ----------
+        function drawCaseFile() {
+            ctx.save();
+            ctx.fillStyle = 'rgba(4,6,12,0.85)';
+            ctx.fillRect(0, 0, W, H);
+
+            const boxW = W - 100, boxH = H - 70, bx = 50, by = 35;
+            ctx.fillStyle = 'rgba(12,16,28,0.95)';
+            ctx.strokeStyle = '#ffd84d'; ctx.lineWidth = 2;
+            ctx.fillRect(bx, by, boxW, boxH);
+            ctx.strokeRect(bx, by, boxW, boxH);
+
+            ctx.textAlign = 'center'; ctx.font = 'bold 18px Arial'; ctx.fillStyle = '#ffd84d';
+            ctx.fillText('CASE FILE — ESCAPED INMATE', bx + boxW / 2, by + 30);
+            ctx.font = '12px Arial'; ctx.fillStyle = '#9fb6ff';
+            ctx.fillText('Leads gathered: ' + cluesFound + '/' + clues.length, bx + boxW / 2, by + 50);
+
+            // Two-column layout so all 5 entries fit without scrolling.
+            const colW = (boxW - 60) / 2;
+            const col1X = bx + 24, col2X = bx + 36 + colW;
+            const colTop = by + 74, colBottom = by + boxH - 30;
+            let cx = col1X, cy = colTop;
+            ctx.textAlign = 'left';
+            clues.forEach((cl, i) => {
+                if (cy > colBottom - 40 && cx === col1X) { cx = col2X; cy = colTop; }
+                ctx.font = 'bold 13px Arial';
+                ctx.fillStyle = cl.found ? '#ffd84d' : '#5a5f72';
+                ctx.fillText((cl.found ? '🔎 ' : '🔒 ') + 'CLUE ' + (i + 1) + ' OF ' + clues.length, cx, cy);
+                cy += 18;
+                ctx.font = '12px Arial';
+                if (cl.found) {
+                    ctx.fillStyle = '#d8d4e8';
+                    // skip the redundant "CLUE X OF 5" header line already shown above
+                    for (const line of cl.lines.slice(1)) {
+                        for (const wl of wrapText(line, colW)) { ctx.fillText(wl, cx, cy); cy += 16; }
+                    }
+                } else {
+                    ctx.fillStyle = '#4a4f60';
+                    ctx.fillText('Not yet discovered — keep exploring the city.', cx, cy);
+                    cy += 16;
+                }
+                cy += 16;
+            });
+
+            const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Press N to close', bx + boxW / 2, by + boxH - 14);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
         function loop() {
             updateAtmosphere();   // always runs — clouds/planes animate on title screen too
             // ---- front-end screens: render and wait for the player ----
@@ -5475,6 +6270,20 @@
 
             if (enterCooldown > 0) enterCooldown--;
 
+            // ---- DINING INTERIOR: diner / shop room ----
+            if (diningScene) {
+                const pin = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInputInterior() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                updateDiningScene();
+                updateHitFX();
+                drawDiningScene();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             // ---- INTERIOR SCENE: the Weekly Planet (its own update/draw path) ----
             if (scene === 'interior') {
                 const pin = computeP1Input();
@@ -5484,6 +6293,7 @@
                 updateInterior();
                 updateHitFX();
                 drawInterior();
+                if (caseFileOpen) drawCaseFile();
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
@@ -5496,11 +6306,12 @@
             updateEnemies();
             updateCivilians();
             updateAmbientNPCs();
-            updateBankRobbery();
+            updateCityLois();
             updateWorldState();
             updateHitFX();
             updateCamera();
             draw();
+            if (caseFileOpen) drawCaseFile();
             updateHUD();
             requestAnimationFrame(loop);
         }
