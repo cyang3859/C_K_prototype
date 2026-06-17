@@ -1425,7 +1425,7 @@
                 jumpHeldPrev: false,
                 landHeldPrev: false,
                 forceLand: false,
-                punchCD: 0, laserCD: 0, freezeCD: 0,
+                punchCD: 0, laserCD: 0, freezeCD: 0, _laserTarget: null,
                 punchTimer: 0, laserTimer: 0, freezeTimer: 0,
                 capePhase: 0,        // animates the cape
                 hitTimer: 0,         // invincibility frames after taking a hit
@@ -2062,34 +2062,60 @@
             const beamY = e.y + e.h * 0.05;
             const beamH = e.h * 0.50;
 
-            // Find the CLOSEST enemy along the beam and stop there
-            let stopX = dir === 1 ? WORLD_WIDTH : 0;
+            // Lock-on: keep targeting the same enemy while laser key held
+            // If current lock target is alive and in front, aim beam at it
             let hitEn = null;
-            for (const en of enemies) {
-                if (!en.alive) continue;
-                if (en.y + en.h <= beamY || en.y >= beamY + beamH) continue;  // vertical miss
-                const enEdge = dir === 1 ? en.x : en.x + en.w;             // near edge
-                const inFront = dir === 1 ? enEdge > srcX : enEdge < srcX;
-                if (!inFront) continue;
-                const closer = dir === 1 ? enEdge < stopX : enEdge > stopX;
-                if (closer) { stopX = enEdge; hitEn = en; }
-            }
-            if (hitEn) {
-                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
-                // If the hit killed the enemy, don't visually stop the beam there —
-                // let it pierce through to full length
-                if (!hitEn.alive) { stopX = dir === 1 ? WORLD_WIDTH : 0; hitEn = null; }
+            if (e._laserTarget && e._laserTarget.alive) {
+                const lt = e._laserTarget;
+                const ltMid = lt.x + lt.w / 2;
+                const inFront = dir === 1 ? ltMid > srcX : ltMid < srcX;
+                if (inFront) hitEn = lt;
+                else e._laserTarget = null; // target behind us — release lock
             }
 
-            // Emitters + hazard towers also block/take beam damage
+            // No active lock — acquire closest enemy in beam path
+            if (!hitEn) {
+                let stopX2 = dir === 1 ? WORLD_WIDTH : 0;
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    if (en.y + en.h <= beamY || en.y >= beamY + beamH) continue;
+                    const enEdge = dir === 1 ? en.x : en.x + en.w;
+                    const inFront = dir === 1 ? enEdge > srcX : enEdge < srcX;
+                    if (!inFront) continue;
+                    const closer = dir === 1 ? enEdge < stopX2 : enEdge > stopX2;
+                    if (closer) { stopX2 = enEdge; hitEn = en; }
+                }
+                if (hitEn) e._laserTarget = hitEn; // acquire lock
+            }
+
+            // Aim beam at locked target center Y (tracking beam)
+            let stopX = dir === 1 ? WORLD_WIDTH : 0;
+            let trackBeamY = beamY, trackBeamH = beamH;
+            if (hitEn) {
+                // Steer beam toward locked target's center
+                const enMidX = hitEn.x + hitEn.w / 2;
+                const enMidY = hitEn.y + hitEn.h / 2;
+                stopX = dir === 1 ? hitEn.x : hitEn.x + hitEn.w;
+                // Widen vertical window to track target
+                trackBeamY = Math.min(beamY, enMidY - 10);
+                trackBeamH = Math.max(beamH, enMidY + 10 - trackBeamY);
+                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
+                if (!hitEn.alive) {
+                    stopX = dir === 1 ? WORLD_WIDTH : 0;
+                    hitEn = null;
+                    e._laserTarget = null; // target destroyed — release lock
+                }
+            }
+
             const emBox = dir === 1
-                ? { x: srcX, y: beamY, w: stopX - srcX, h: beamH }
-                : { x: stopX, y: beamY, w: srcX - stopX, h: beamH };
+                ? { x: srcX, y: trackBeamY, w: stopX - srcX, h: trackBeamH }
+                : { x: stopX, y: trackBeamY, w: srcX - stopX, h: trackBeamH };
             damageEmitters(emBox, LASER_DMG);
             if (e === hero) damageHazards(emBox, 1);
 
-            e._laserStopX = stopX;    // used by draw to terminate the beam visually
-            e._laserHit = !!hitEn;  // flag: beam hit something real (not a kill)
+            e._laserStopX = stopX;
+            e._laserHit = !!hitEn;
+            e._laserTargetY = hitEn ? hitEn.y + hitEn.h / 2 : beamY + beamH / 2;
         }
         function doFreeze(e) {
             e.freezeTimer = FREEZE_EFFECT;
@@ -2370,7 +2396,7 @@
             else if (e.punchTimer > 0) e.punchTimer--;
 
             if (input.laser) { if (e.laserCD === 0) { doLaser(e); e.laserCD = LASER_CD; } e.laserTimer = LASER_EFFECT; }
-            else if (e.laserTimer > 0) e.laserTimer--;
+            else { if (e.laserTimer > 0) e.laserTimer--; e._laserTarget = null; }
 
             if (input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
@@ -3393,25 +3419,50 @@
             const [mx, my] = e._fx.mouth;
             const [fx, fy] = e._fx.fist;
 
-            // LASER — beams terminate at first enemy hit, with impact burst
+            // LASER — lock-on tracking beam: angles toward target, holds until defeated
             if (e.laserTimer > 0) {
                 const defaultEnd = dir === 1 ? exA + 2200 : exA - 2200;
                 const end = (e._laserStopX !== undefined) ? e._laserStopX : defaultEnd;
-                const impY = (eyA + eyB) / 2;
+                const srcMidY = (eyA + eyB) / 2;
+                // If locked on, smoothly angle beam toward target center Y
+                const targetY = (e._laserTarget && e._laserTarget.alive)
+                    ? e._laserTarget.y + e._laserTarget.h / 2
+                    : srcMidY;
+                const endYA = targetY - (eyA - srcMidY);
+                const endYB = targetY - (eyB - srcMidY);
+                const impY = targetY;
+
+                // Lock-on reticle around target
+                if (e._laserTarget && e._laserTarget.alive) {
+                    const lt = e._laserTarget;
+                    const rtX = lt.x + lt.w / 2, rtY = lt.y + lt.h / 2;
+                    const rtR = Math.max(lt.w, lt.h) * 0.7 + Math.sin(Date.now() * 0.01) * 3;
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255,60,20,0.85)'; ctx.lineWidth = 1.5;
+                    ctx.setLineDash([6, 4]);
+                    ctx.beginPath(); ctx.arc(rtX, rtY, rtR, 0, Math.PI * 2); ctx.stroke();
+                    ctx.setLineDash([]);
+                    // Corner brackets
+                    const bk = rtR * 0.4;
+                    for (const [cx2, cy2, sx, sy] of [[rtX - rtR, rtY - rtR, 1, 1],[rtX + rtR, rtY - rtR, -1, 1],[rtX - rtR, rtY + rtR, 1, -1],[rtX + rtR, rtY + rtR, -1, -1]]) {
+                        ctx.beginPath(); ctx.moveTo(cx2 + sx * bk, cy2); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2, cy2 + sy * bk); ctx.stroke();
+                    }
+                    ctx.restore();
+                }
 
                 ctx.save();
-                // Beam body
+                // Beam body — angled toward target
                 ctx.shadowColor = '#ff4030'; ctx.shadowBlur = 16;
                 ctx.strokeStyle = 'rgba(255,80,60,0.9)'; ctx.lineWidth = 5;
-                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, eyA); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, eyB); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, endYA); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, endYB); ctx.stroke();
                 ctx.shadowBlur = 0;
                 ctx.strokeStyle = 'rgba(255,235,210,0.95)'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, eyA); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, eyB); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, endYA); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, endYB); ctx.stroke();
                 // Eye glow origin
                 ctx.fillStyle = 'rgba(255,210,160,0.8)';
-                ctx.beginPath(); ctx.arc(exA + dir * 4, impY, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(exA + dir * 4, srcMidY, 4, 0, Math.PI * 2); ctx.fill();
 
                 // Impact burst at the beam terminus (only when hitting an enemy)
                 if (e._laserHit) {
@@ -5679,8 +5730,33 @@
 
             // ---- Level 2 grunge set-pieces + Dark Wing NPC ----
             if (currentLevel === 3 && scene !== 'temple') {
-                // Level 3: draw Wonder Woman in jungle
+                // Level 3: draw Wonder Woman
                 drawWonderWomanAt(wonderWoman.x, wonderWoman.y);
+                // Draw companion allies if selected
+                if (darkWing._l3Active && darkWing.x > -100) {
+                    // Minimal DW draw for L3 (reuse silhouette style)
+                    const lx3 = darkWing.x, dy3 = darkWing.y, bob3 = Math.sin(darkWing.phase) * 1.2;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(20,20,50,0.85)';
+                    ctx.beginPath(); ctx.moveTo(lx3, dy3 - 62);
+                    ctx.lineTo(lx3 - darkWing.faceDir * 34, dy3 - 10);
+                    ctx.lineTo(lx3 - darkWing.faceDir * 12, dy3 - 28); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(lx3 - 11, dy3 - 62, 22, 34);
+                    ctx.fillRect(lx3 - 9, dy3 - 28, 8, 28); ctx.fillRect(lx3 + 1, dy3 - 28, 8, 28);
+                    ctx.fillStyle = '#111'; ctx.fillRect(lx3 - 10, dy3 - 8, 10, 8); ctx.fillRect(lx3 + 1, dy3 - 8, 10, 8);
+                    ctx.fillStyle = '#222240'; ctx.beginPath(); ctx.arc(lx3, dy3 - 70 + bob3, 12, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#111';
+                    ctx.beginPath(); ctx.moveTo(lx3 - 6, dy3 - 79 + bob3); ctx.lineTo(lx3 - 10, dy3 - 90 + bob3); ctx.lineTo(lx3 - 2, dy3 - 79 + bob3); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(lx3 + 6, dy3 - 79 + bob3); ctx.lineTo(lx3 + 10, dy3 - 90 + bob3); ctx.lineTo(lx3 + 2, dy3 - 79 + bob3); ctx.fill();
+                    if (darkWing.hp < darkWing.maxHp) {
+                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(lx3 - 18, dy3 - 102 + bob3, 36, 5);
+                        ctx.fillStyle = '#4cf'; ctx.fillRect(lx3 - 18, dy3 - 102 + bob3, 36 * darkWing.hp / darkWing.maxHp, 5);
+                    }
+                    ctx.restore();
+                }
+                if (powerGirl.active && !powerGirl.captured && powerGirl.x > -100) {
+                    drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
+                }
             }
             if (currentLevel === 2 && scene !== 'factory' && scene !== 'temple') {
                 drawGrungeSetPieces();
@@ -7296,26 +7372,81 @@
                 }
             }
 
-            // ── Combat AI (zoneCombat or fightMode) ──────────────────────
+            // ── Combat AI: zone-combat, fight mode, or formation follow ────
             const inCombat = wonderWoman.fightMode || wonderWoman.zoneCombat;
+
+            // Formation offset: WW stays ~110px behind hero, DW ~220px behind
+            const FORM_OFFSET = 110;
+
+            if (wonderWoman.zoneCombat) {
+                // Arrived at quest zone — fight until zone clears
+                let target = null, tDist = Infinity;
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    const d = Math.abs((en.x + en.w / 2) - wonderWoman.x);
+                    if (d < tDist) { tDist = d; target = en; }
+                }
+                if (target) {
+                    const enMid  = target.x + target.w / 2;
+                    const enDist = Math.abs(enMid - wonderWoman.x);
+                    wonderWoman.faceDir = enMid < wonderWoman.x ? -1 : 1;
+                    const enAbove = (target.y + target.h) < wonderWoman.y - 80;
+                    if (enAbove) {
+                        if (wonderWoman._onGround && wonderWoman._jumpCD <= 0 && enDist < 240) {
+                            wonderWoman.vy = -16; wonderWoman._onGround = false; wonderWoman._jumpCD = 80;
+                        } else if (wonderWoman._gadgetCD <= 0 && wonderWoman._attackCD <= 0 && enDist < 500) {
+                            const dy_aim = (target.y + target.h / 2) - (wonderWoman.y - 50);
+                            wwProjectiles.push({ x: wonderWoman.x, y: wonderWoman.y - 50, vx: wonderWoman.faceDir * 10, vy: dy_aim / Math.max(enDist,1) * 5, life: 70, dmg: 4, type: 'tiara' });
+                            wonderWoman._gadgetCD = 52; wonderWoman._attackCD = 18;
+                            wonderWoman._throwTimer = 20; wonderWoman._animSide = wonderWoman.faceDir;
+                        }
+                    }
+                    if (!enAbove && enDist > 85) wonderWoman.x += Math.sign(enMid - wonderWoman.x) * 3.2;
+                    if (wonderWoman._attackCD <= 0) {
+                        const vertClose = Math.abs((wonderWoman.y - 35) - (target.y + target.h / 2)) < 65;
+                        if (enDist < 85 && vertClose) {
+                            const r = Math.random();
+                            tryHitEnemy(target, r < 0.5 ? 3 : 4, 9, 'punch', wonderWoman);
+                            wonderWoman._attackCD = r < 0.5 ? 24 : 38;
+                            if (r < 0.5) { wonderWoman._punchTimer = 16; } else { wonderWoman._kickTimer = 20; }
+                            wonderWoman._animSide = wonderWoman.faceDir;
+                        } else if (enDist < 340 && wonderWoman._gadgetCD <= 0) {
+                            wwProjectiles.push({ x: wonderWoman.x, y: wonderWoman.y - 50, vx: wonderWoman.faceDir * 11, vy: -0.5, life: 55, dmg: 3, type: 'lasso' });
+                            wonderWoman._gadgetCD = 48; wonderWoman._attackCD = 16;
+                            wonderWoman._lassoAnimTimer = 22; wonderWoman._animSide = wonderWoman.faceDir;
+                        }
+                    }
+                }
+                return;
+            }
+
             if (!inCombat) {
-                // Follow clue target position
-                const cl = clues[activeClueIndex];
-                wonderWoman._targetX = cl ? cl.x - 90 : wonderWoman._targetX;
-                const dx = wonderWoman._targetX - wonderWoman.x;
-                if (Math.abs(dx) > 900) wonderWoman.x = wonderWoman._targetX;
-                else if (Math.abs(dx) > 14) { wonderWoman.x += Math.sign(dx) * 1.8; wonderWoman.faceDir = Math.sign(dx); }
-                // Passive nearby hit
+                // Formation follow: stay FORM_OFFSET behind the hero
+                const heroMid = hero.x + hero.w / 2;
+                const wwTarget = heroMid - Math.sign(hero.facing || 1) * FORM_OFFSET;
+                const dx = wwTarget - wonderWoman.x;
+                if (Math.abs(dx) > 900) wonderWoman.x = wwTarget;
+                else if (Math.abs(dx) > 20) { wonderWoman.x += Math.sign(dx) * 2.0; wonderWoman.faceDir = Math.sign(dx); }
+                // Face the hero when very close
+                if (Math.abs(heroMid - wonderWoman.x) < 60) wonderWoman.faceDir = heroMid < wonderWoman.x ? -1 : 1;
+
+                // Engage nearby enemies passively
                 if (wonderWoman._attackCD <= 0) {
                     for (const en of enemies) {
                         if (!en.alive) continue;
-                        if (Math.abs((en.x + en.w / 2) - wonderWoman.x) < 100) {
+                        if (Math.abs((en.x + en.w / 2) - wonderWoman.x) < 120) {
                             tryHitEnemy(en, 2, 7, 'punch', wonderWoman);
-                            wonderWoman._attackCD = 55;
+                            wonderWoman._attackCD = 50;
                             wonderWoman._punchTimer = 16; wonderWoman._animSide = wonderWoman.faceDir;
                             break;
                         }
                     }
+                }
+
+                // Auto-activate zoneCombat when quest zone is active and WW is close
+                if (questZone && Math.abs(wonderWoman.x - questZone.x) < 400) {
+                    wonderWoman.zoneCombat = true;
+                    wonderWoman._targetX = questZone.x;
                 }
                 return;
             }
@@ -7546,8 +7677,14 @@
                     }
                     return;
                 }
-                // ── clue-following mode ──────────────────────────────────
-                darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
+                // ── clue-following / formation mode ─────────────────────────
+                if (currentLevel === 3) {
+                    // L3: form up 220px behind hero
+                    const heroMid3 = hero.x + hero.w / 2;
+                    darkWing._targetX = heroMid3 - Math.sign(hero.facing || 1) * 220;
+                } else {
+                    darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
+                }
                 const dx = darkWing._targetX - darkWing.x;
                 if (Math.abs(dx) > 900) {
                     darkWing.x = darkWing._targetX;
@@ -7560,6 +7697,10 @@
                 const near = Math.abs(heroMid - darkWing.x) < 90;
                 darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
                 if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
+                // On L3, auto-enter zoneCombat when quest zone active
+                if (currentLevel === 3 && questZone && Math.abs(darkWing.x - questZone.x) < 400) {
+                    darkWing.zoneCombat = true;
+                }
                 // basic attack nearby enemies even before fight mode
                 if (darkWing._attackCD > 0) { darkWing._attackCD--; return; }
                 for (const en of enemies) {
@@ -7748,57 +7889,157 @@
         // ── Level 2 background: grunge overcast city ──────────────────────────
         function drawJungle() {
             const t = Date.now() * 0.001;
-            // Sky — humid jungle canopy tint
+
+            // ── Sky: moonlit amazon night ─────────────────────────────────
             const sky = ctx.createLinearGradient(0, 0, 0, H);
-            sky.addColorStop(0, '#060e04');
-            sky.addColorStop(0.4, '#0a1a06');
-            sky.addColorStop(1, '#142608');
+            sky.addColorStop(0,   '#020a02');
+            sky.addColorStop(0.3, '#061408');
+            sky.addColorStop(0.7, '#0c2010');
+            sky.addColorStop(1,   '#142e10');
             ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
 
-            // Moonlight / mist
-            const mist = ctx.createLinearGradient(0, H * 0.4, 0, H * 0.85);
-            mist.addColorStop(0, 'rgba(20,50,10,0)');
-            mist.addColorStop(1, 'rgba(10,30,5,0.5)');
-            ctx.fillStyle = mist; ctx.fillRect(0, H * 0.4, W, H * 0.45);
+            // Moon
+            const moonX = 720 - camera.x * 0.02, moonY = 80;
+            ctx.save();
+            ctx.fillStyle = 'rgba(220,240,210,0.18)';
+            ctx.beginPath(); ctx.arc(moonX, moonY, 55, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#d8f0d0';
+            ctx.beginPath(); ctx.arc(moonX, moonY, 30, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(180,220,170,0.5)';
+            ctx.beginPath(); ctx.arc(moonX + 8, moonY - 4, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
 
-            // Far canopy silhouettes (parallax 0.04)
-            const par1 = camera.x * 0.04;
-            ctx.fillStyle = '#061004';
-            for (let i = 0; i < 14; i++) {
-                const sx = ((i * 270 - par1) % (W + 280)) - 140;
-                const sh = 240 + (i % 4) * 60;
-                // Tree trunk
-                ctx.fillStyle = '#040802';
-                ctx.fillRect(sx + 50, H - sh, 22, sh);
-                // Canopy blob
-                ctx.fillStyle = '#061004';
-                ctx.beginPath(); ctx.arc(sx + 61, H - sh, 70 + (i % 3) * 20, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(sx + 90, H - sh + 10, 50, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(sx + 30, H - sh + 15, 45, 0, Math.PI * 2); ctx.fill();
-            }
-
-            // Mid canopy (parallax 0.06)
-            const par2 = camera.x * 0.06;
-            ctx.fillStyle = '#0a1806';
-            for (let i = 0; i < 10; i++) {
-                const sx = ((i * 380 - par2) % (W + 380)) - 190;
-                const sh = 180 + (i % 3) * 50;
-                ctx.fillStyle = '#061004';
-                ctx.fillRect(sx + 60, H - sh, 18, sh);
-                ctx.fillStyle = '#0c1e08';
-                ctx.beginPath(); ctx.arc(sx + 69, H - sh, 55 + (i % 3) * 15, 0, Math.PI * 2); ctx.fill();
-            }
-
-            // Fireflies
-            for (let i = 0; i < 18; i++) {
-                const fx = ((i * 1137 - camera.x * 0.15) % (W + 100)) - 50;
-                const fy = 200 + (i % 5) * 90 + Math.sin(t * 1.1 + i) * 20;
-                const alpha = 0.3 + Math.sin(t * 3 + i * 2.3) * 0.3;
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle = '#aaff44';
-                ctx.beginPath(); ctx.arc(fx, fy, 2, 0, Math.PI * 2); ctx.fill();
+            // Stars
+            for (let i = 0; i < 60; i++) {
+                const sx = ((i * 317 + 50) % W);
+                const sy = 20 + (i * 137) % 160;
+                const sa = 0.2 + Math.sin(t * 0.8 + i) * 0.15;
+                ctx.globalAlpha = sa;
+                ctx.fillStyle = '#e0f0d8';
+                ctx.fillRect(sx, sy, 1.5, 1.5);
             }
             ctx.globalAlpha = 1;
+
+            // ── Far background: massive canopy ridge (parallax 0.03) ──────
+            const p0 = camera.x * 0.03;
+            ctx.fillStyle = '#040c04';
+            for (let i = 0; i < 8; i++) {
+                const bx = ((i * 480 - p0) % (W + 500)) - 250;
+                const bh = 300 + (i % 3) * 80;
+                ctx.beginPath();
+                ctx.moveTo(bx, H);
+                // irregular canopy ridge
+                for (let px = bx; px <= bx + 480; px += 30) {
+                    const py = H - bh + Math.sin(px * 0.04 + i) * 40 - (px > bx + 180 && px < bx + 300 ? 30 : 0);
+                    ctx.lineTo(px, py);
+                }
+                ctx.lineTo(bx + 480, H);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // ── Mid layer: tall jungle trees (parallax 0.06) ─────────────
+            const p1 = camera.x * 0.06;
+            for (let i = 0; i < 14; i++) {
+                const tx = ((i * 330 - p1) % (W + 340)) - 170;
+                const th = 220 + (i % 4) * 55;
+                const tw = 28 + (i % 3) * 8;
+                // Trunk
+                ctx.fillStyle = '#0a1206';
+                ctx.fillRect(tx + tw / 2 - tw / 4, H - th, tw / 2, th);
+                // Buttress roots
+                ctx.fillStyle = '#0c1608';
+                ctx.beginPath();
+                ctx.moveTo(tx + tw / 2, H - th * 0.3);
+                ctx.lineTo(tx, H); ctx.lineTo(tx + tw / 2 - 4, H); ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(tx + tw / 2, H - th * 0.3);
+                ctx.lineTo(tx + tw, H); ctx.lineTo(tx + tw / 2 + 4, H); ctx.closePath(); ctx.fill();
+                // Multi-blob canopy
+                const cr = 52 + (i % 3) * 18;
+                ctx.fillStyle = `hsl(${115 + (i % 4) * 8}, 60%, ${8 + (i % 3) * 3}%)`;
+                for (const [bOffX, bOffY, bR] of [
+                    [0, 0, cr], [-cr * 0.55, 12, cr * 0.7], [cr * 0.55, 10, cr * 0.65],
+                    [0, cr * 0.4, cr * 0.6], [-cr * 0.3, cr * 0.25, cr * 0.5]
+                ]) {
+                    ctx.beginPath();
+                    ctx.arc(tx + tw / 2 + bOffX, H - th + bOffY, bR, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // Hanging vines from canopy
+                ctx.strokeStyle = 'rgba(20,60,10,0.5)'; ctx.lineWidth = 2;
+                for (let v = 0; v < 3; v++) {
+                    const vx = tx + 10 + v * (tw * 0.4);
+                    ctx.beginPath(); ctx.moveTo(vx, H - th + cr);
+                    for (let vy = H - th + cr; vy < H - 20; vy += 25) {
+                        ctx.lineTo(vx + Math.sin(vy * 0.15 + v + i) * 8, vy + 25);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // ── Near foreground ferns / undergrowth ───────────────────────
+            const p2 = camera.x * 0.12;
+            for (let i = 0; i < 20; i++) {
+                const fx2 = ((i * 210 - p2) % (W + 220)) - 110;
+                const fy2 = H - 40 - (i % 3) * 18;
+                ctx.fillStyle = `hsl(${120 + (i % 5) * 6}, 65%, ${10 + (i % 3) * 4}%)`;
+                // Fan of fronds
+                for (let f = -3; f <= 3; f++) {
+                    const angle = (f / 3) * 0.9 - Math.PI / 2 + Math.sin(t * 0.4 + i) * 0.06;
+                    const len = 38 + (i % 3) * 12;
+                    ctx.beginPath();
+                    ctx.moveTo(fx2, fy2);
+                    const ex2 = fx2 + Math.cos(angle) * len;
+                    const ey2 = fy2 + Math.sin(angle) * len;
+                    const cpx = fx2 + Math.cos(angle - 0.3) * len * 0.55;
+                    const cpy = fy2 + Math.sin(angle - 0.3) * len * 0.55;
+                    ctx.quadraticCurveTo(cpx, cpy, ex2, ey2);
+                    ctx.lineWidth = 3 - Math.abs(f) * 0.4;
+                    ctx.strokeStyle = `hsl(${118 + f * 4}, 60%, ${12 + (i % 3) * 3}%)`;
+                    ctx.stroke();
+                }
+            }
+
+            // ── Mist layers ───────────────────────────────────────────────
+            const mist1 = ctx.createLinearGradient(0, H * 0.6, 0, H * 0.9);
+            mist1.addColorStop(0, 'rgba(20,60,15,0)');
+            mist1.addColorStop(1, 'rgba(15,45,10,0.38)');
+            ctx.fillStyle = mist1; ctx.fillRect(0, H * 0.6, W, H * 0.3);
+
+            // ── Fireflies ─────────────────────────────────────────────────
+            for (let i = 0; i < 28; i++) {
+                const ffx = ((i * 1137 - camera.x * 0.18) % (W + 80)) - 40;
+                const ffy = 180 + (i % 6) * 72 + Math.sin(t * 1.2 + i * 1.7) * 22;
+                const alpha = Math.max(0, 0.2 + Math.sin(t * 2.8 + i * 2.1) * 0.35);
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = i % 3 === 0 ? '#aaff44' : '#ccff88';
+                ctx.beginPath(); ctx.arc(ffx, ffy, 2, 0, Math.PI * 2); ctx.fill();
+                // subtle glow halo
+                ctx.globalAlpha = alpha * 0.3;
+                ctx.beginPath(); ctx.arc(ffx, ffy, 6, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            // ── River shimmer where gaps are ─────────────────────────────
+            for (const g of gaps) {
+                const gsx = g.x - camera.x;
+                if (gsx > W + 50 || gsx + g.w < -50) continue;
+                const rg = ctx.createLinearGradient(0, H * 0.75, 0, H);
+                rg.addColorStop(0, '#0a2a18'); rg.addColorStop(1, '#051408');
+                ctx.fillStyle = rg;
+                ctx.fillRect(g.x, L3_GROUND_Y, g.w, 80);
+                // water shimmer lines
+                ctx.strokeStyle = 'rgba(80,200,140,0.2)'; ctx.lineWidth = 1;
+                for (let wl = 0; wl < 4; wl++) {
+                    const wy = L3_GROUND_Y + 10 + wl * 16;
+                    ctx.beginPath();
+                    for (let wx = g.x; wx < g.x + g.w; wx += 18) {
+                        const ny = wy + Math.sin((wx + t * 40) * 0.06) * 3;
+                        wx === g.x ? ctx.moveTo(wx, ny) : ctx.lineTo(wx, ny);
+                    }
+                    ctx.stroke();
+                }
+            }
         }
 
                 function drawGrungeCity() {
