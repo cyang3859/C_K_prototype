@@ -1260,11 +1260,17 @@
             }
             // ---- front-end screens intercept input ----
             if (gameScreen === 'title') {
+                if (e.code === 'Digit1' || e.code === 'ArrowLeft')  { titleSelectedLevel = 1; e.preventDefault(); }
+                if (e.code === 'Digit2' || e.code === 'ArrowRight') { titleSelectedLevel = 2; e.preventDefault(); }
                 if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
                 return;
             }
             if (gameScreen === 'howto') {
-                if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'playing'; startMusic(); e.preventDefault(); }
+                if (e.code === 'Enter' || e.code === 'Space') {
+                    gameScreen = 'playing'; startMusic();
+                    if (titleSelectedLevel === 2) startLevel2();
+                    e.preventDefault();
+                }
                 return;
             }
 
@@ -1432,10 +1438,20 @@
         });
         window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-        // also let the player click/tap to advance the front-end screens
-        canvas.addEventListener('click', () => {
-            if (gameScreen === 'title') gameScreen = 'howto';
-            else if (gameScreen === 'howto') { gameScreen = 'playing'; startMusic(); }
+        // click/tap on title: detect which level button was hit; on howto, start game
+        canvas.addEventListener('click', (ev) => {
+            if (gameScreen === 'title') {
+                const rect = canvas.getBoundingClientRect();
+                const mx = (ev.clientX - rect.left) * (W / rect.width);
+                const my = (ev.clientY - rect.top) * (H / rect.height);
+                const btn1x = W / 2 - 160, btn2x = W / 2 + 20, btnY = H * 0.72, btnW = 140, btnH = 52;
+                if (mx >= btn1x && mx <= btn1x + btnW && my >= btnY && my <= btnY + btnH) { titleSelectedLevel = 1; gameScreen = 'howto'; }
+                else if (mx >= btn2x && mx <= btn2x + btnW && my >= btnY && my <= btnY + btnH) { titleSelectedLevel = 2; gameScreen = 'howto'; }
+                else gameScreen = 'howto';
+            } else if (gameScreen === 'howto') {
+                gameScreen = 'playing'; startMusic();
+                if (titleSelectedLevel === 2) startLevel2();
+            }
         });
 
         function aabb(a, b) {
@@ -6195,125 +6211,189 @@
         //  FRONT-END SCREENS: title + how-to-play
         // ============================================================
         let titlePulse = 0;
+        let titleSelectedLevel = 1;   // 1 or 2, chosen on the title screen
 
         function drawTitleScreen() {
-            // dusk-city backdrop (reuse the skyline for atmosphere)
             drawManhattan();
-            // darken
-            ctx.fillStyle = 'rgba(6,8,16,0.55)';
+            ctx.fillStyle = 'rgba(6,8,16,0.60)';
             ctx.fillRect(0, 0, W, H);
-
             titlePulse += 0.05;
 
-            // logo
             ctx.save();
             ctx.textAlign = 'center';
+
+            // logo
             ctx.shadowColor = '#2e5fb0'; ctx.shadowBlur = 30;
             ctx.fillStyle = '#7fb0ff';
             ctx.font = 'bold 86px Arial Black, Arial';
-            ctx.fillText('KODAMAN', W / 2, H * 0.34);
+            ctx.fillText('KODAMAN', W / 2, H * 0.30);
             ctx.shadowBlur = 0;
 
-            // emblem diamond under the title
-            const ey = H * 0.34 + 36, es = 18;
+            // emblem diamond
+            const ey = H * 0.30 + 36, es = 18;
             ctx.fillStyle = '#ffd84d';
             ctx.beginPath();
-            ctx.moveTo(W / 2, ey - es); ctx.lineTo(W / 2 + es * 0.7, ey);
-            ctx.lineTo(W / 2, ey + es); ctx.lineTo(W / 2 - es * 0.7, ey);
+            ctx.moveTo(W/2, ey-es); ctx.lineTo(W/2+es*0.7, ey);
+            ctx.lineTo(W/2, ey+es); ctx.lineTo(W/2-es*0.7, ey);
             ctx.closePath(); ctx.fill();
             ctx.fillStyle = '#d23541';
             ctx.beginPath();
-            ctx.moveTo(W / 2, ey - es * 0.5); ctx.lineTo(W / 2 + es * 0.35, ey);
-            ctx.lineTo(W / 2, ey + es * 0.5); ctx.lineTo(W / 2 - es * 0.35, ey);
+            ctx.moveTo(W/2, ey-es*0.5); ctx.lineTo(W/2+es*0.35, ey);
+            ctx.lineTo(W/2, ey+es*0.5); ctx.lineTo(W/2-es*0.35, ey);
             ctx.closePath(); ctx.fill();
 
             // tagline
             ctx.fillStyle = '#cdd6f0';
             ctx.font = '20px Arial';
-            ctx.fillText('A super-powered flight & combat prototype', W / 2, H * 0.50);
+            ctx.fillText('A super-powered flight & combat adventure', W/2, H*0.46);
+
+            // level select label
+            ctx.fillStyle = '#9fb6ff';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText('SELECT LEVEL', W/2, H*0.57);
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.font = '13px Arial';
+            ctx.fillText('← 1 / 2 →  or click a button', W/2, H*0.62);
+
+            // level buttons
+            const btnY = H*0.66, btnW = 140, btnH = 52;
+            const btn1x = W/2 - 160, btn2x = W/2 + 20;
+            const sel1 = titleSelectedLevel === 1, sel2 = titleSelectedLevel === 2;
+
+            // button 1
+            ctx.fillStyle = sel1 ? 'rgba(50,100,220,0.75)' : 'rgba(20,30,60,0.55)';
+            ctx.strokeStyle = sel1 ? '#7fb0ff' : '#3a4f7a';
+            ctx.lineWidth = sel1 ? 2.5 : 1.5;
+            ctx.beginPath(); ctx.roundRect(btn1x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = sel1 ? '#ffffff' : '#7a90b0';
+            ctx.font = sel1 ? 'bold 20px Arial' : '18px Arial';
+            ctx.fillText('LEVEL 1', btn1x + btnW/2, btnY + 22);
+            ctx.fillStyle = sel1 ? '#b0c8ff' : '#4a5a7a';
+            ctx.font = '12px Arial';
+            ctx.fillText('City of Heroes', btn1x + btnW/2, btnY + 41);
+
+            // button 2
+            ctx.fillStyle = sel2 ? 'rgba(160,50,30,0.75)' : 'rgba(30,20,15,0.55)';
+            ctx.strokeStyle = sel2 ? '#ff8060' : '#5a3a2a';
+            ctx.lineWidth = sel2 ? 2.5 : 1.5;
+            ctx.beginPath(); ctx.roundRect(btn2x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = sel2 ? '#ffffff' : '#8a7060';
+            ctx.font = sel2 ? 'bold 20px Arial' : '18px Arial';
+            ctx.fillText('LEVEL 2', btn2x + btnW/2, btnY + 22);
+            ctx.fillStyle = sel2 ? '#ffc0a0' : '#5a4030';
+            ctx.font = '12px Arial';
+            ctx.fillText('The Badlands', btn2x + btnW/2, btnY + 41);
 
             // pulsing prompt
             const a = 0.55 + Math.sin(titlePulse) * 0.45;
             ctx.globalAlpha = a;
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 24px Arial';
-            ctx.fillText('Press ENTER or Click to Start', W / 2, H * 0.66);
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('Press ENTER or click a button to continue', W/2, H*0.87);
             ctx.globalAlpha = 1;
 
-            ctx.fillStyle = '#7a8a9c';
-            ctx.font = '13px Arial';
-            ctx.fillText('Prototype build  \u00B7  best with a keyboard', W / 2, H * 0.92);
+            ctx.fillStyle = '#4a5a6c';
+            ctx.font = '12px Arial';
+            ctx.fillText('Prototype build  ·  best with a keyboard', W/2, H*0.94);
             ctx.restore();
         }
 
         function drawHowToScreen() {
-            drawManhattan();
-            ctx.fillStyle = 'rgba(6,8,16,0.78)';
+            if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
+            ctx.fillStyle = 'rgba(6,8,16,0.82)';
             ctx.fillRect(0, 0, W, H);
 
             ctx.save();
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#7fb0ff';
-            ctx.font = 'bold 38px Arial Black, Arial';
-            ctx.fillText('HOW TO PLAY', W / 2, 64);
+
+            const lvlColor = titleSelectedLevel === 2 ? '#ff8060' : '#7fb0ff';
+            ctx.fillStyle = lvlColor;
+            ctx.font = 'bold 26px Arial Black, Arial';
+            ctx.fillText('HOW TO PLAY' + (titleSelectedLevel === 2 ? '  —  LEVEL 2: THE BADLANDS' : '  —  LEVEL 1: CITY OF HEROES'), W/2, 44);
 
             ctx.textAlign = 'left';
-            const colL = W * 0.10, colR = W * 0.55;
-            let y = 120;
-            const lh = 30;
+            const lh = 24, lhS = 20;
+            const colL = W*0.05, colM = W*0.37, colR = W*0.69;
 
             function row(x, key, desc, yy) {
                 ctx.fillStyle = '#ffd84d';
-                ctx.font = 'bold 17px Consolas, monospace';
+                ctx.font = 'bold 13px Consolas, monospace';
                 ctx.fillText(key, x, yy);
                 ctx.fillStyle = '#dfe6f5';
-                ctx.font = '16px Arial';
-                ctx.fillText(desc, x + 110, yy);
+                ctx.font = '13px Arial';
+                ctx.fillText(desc, x + 90, yy);
             }
-            function header(x, txt, yy) {
-                ctx.fillStyle = '#9fb6ff';
-                ctx.font = 'bold 18px Arial';
+            function hdr(x, txt, yy, color) {
+                ctx.fillStyle = color || '#9fb6ff';
+                ctx.font = 'bold 14px Arial';
                 ctx.fillText(txt, x, yy);
             }
 
-            // left column — movement & flight
-            header(colL, 'MOVE & FLY', y); y += lh;
-            row(colL, 'A / D', 'Walk left / right', y); y += lh;
-            row(colL, 'Space', 'Take off into flight', y); y += lh;
-            row(colL, 'W / S', 'Fly up / down', y); y += lh;
-            row(colL, 'A / D', 'Strafe while flying', y); y += lh;
-            row(colL, 'Shift', 'Dash (burst of speed)', y); y += lh;
-            row(colL, 'G', 'Land from flight', y); y += lh + 8;
-            header(colL, 'IDENTITY', y); y += lh;
-            row(colL, 'Q', 'Swap super / civilian', y); y += lh;
+            // LEFT COLUMN
+            let y = 72;
+            hdr(colL, 'MOVE & FLY', y); y += lh;
+            row(colL, 'A / D',   'Walk left / right', y); y += lhS;
+            row(colL, 'SPACE',   'Take off into flight', y); y += lhS;
+            row(colL, 'W / S',   'Fly up / down', y); y += lhS;
+            row(colL, 'SHIFT',   'Dash (ignores gravity)', y); y += lhS;
+            row(colL, 'G',       'Land / cancel flight', y); y += lh;
+            hdr(colL, 'COMBAT', y); y += lh;
+            row(colL, 'J',       'Punch — close-range lunge', y); y += lhS;
+            row(colL, 'K',       'Laser eyes — ranged beam', y); y += lhS;
+            row(colL, 'L',       'Freeze breath — stuns enemies', y); y += lhS;
+            row(colL, 'V',       'Grab / throw nearest enemy', y); y += lhS;
+            row(colL, 'V + W/S', 'Throw upward / body-slam down', y); y += lh;
+            hdr(colL, 'LASER BARRIERS', y, '#ff8060'); y += lh;
+            row(colL, 'J/K/L',  'Hit barrier 3x to destroy it', y); y += lhS;
+            row(colL, '',        'Activate after each clue found', y); y += lhS;
+            row(colL, '',        'Dash will NOT pass through', y);
 
-            // right column — combat & world
-            let y2 = 120;
-            header(colR, 'FIGHT', y2); y2 += lh;
-            row(colR, 'J', 'Punch (close range)', y2); y2 += lh;
-            row(colR, 'K', 'Laser eyes (ranged)', y2); y2 += lh;
-            row(colR, 'L', 'Freeze breath (stun)', y2); y2 += lh + 8;
-            header(colR, 'WORLD', y2); y2 += lh;
-            row(colR, 'M', 'Open / close the map', y2); y2 += lh;
-            row(colR, 'H', 'Hide / show controls', y2); y2 += lh;
-            row(colR, 'T', 'Toggle dog: AI / Player 2', y2); y2 += lh;
-            row(colR, 'R', 'Tell the dog to land', y2); y2 += lh;
-            row(colR, 'Enter', 'Enter / exit The Weekly Planet', y2); y2 += lh;
-            row(colR, 'F', 'Drop off civilian (safe zone)', y2); y2 += lh;
+            // MIDDLE COLUMN
+            let y2 = 72;
+            hdr(colM, 'CLUES & STORY', y2); y2 += lh;
+            row(colM, 'F',      'Read clue / desk note', y2); y2 += lhS;
+            row(colM, 'N',      'Open case-file (review clues)', y2); y2 += lhS;
+            row(colM, 'P',      'Ask Lois for intel (Level 1)', y2); y2 += lhS;
+            row(colM, 'B',      'Ask Dark Wing for intel (Level 2)', y2); y2 += lh;
+            hdr(colM, 'CIVILIANS', y2); y2 += lh;
+            row(colM, 'walk near', 'Auto-pick up quest civilian', y2); y2 += lhS;
+            row(colM, 'E',       'Set down (enter combat mode)', y2); y2 += lhS;
+            row(colM, 'F',       'Drop off in safe zone', y2); y2 += lh;
+            hdr(colM, 'DINERS & SHOPS', y2); y2 += lh;
+            row(colM, 'ENTER',  'Walk inside a diner or shop', y2); y2 += lhS;
+            row(colM, 'F',      'Order food at the counter', y2); y2 += lhS;
+            row(colM, 'ENTER',  'Leave and return to city', y2); y2 += lh;
+            hdr(colM, 'WEEKLY PLANET', y2); y2 += lh;
+            row(colM, 'ENTER',  'Enter the building', y2); y2 += lhS;
+            row(colM, 'F',      'Read note / talk to Lois', y2); y2 += lhS;
+            row(colM, 'F',      'Drop off rescued civilians', y2);
 
-            // objective hint box
-            const boxY = Math.max(y, y2) + 18;
-            ctx.fillStyle = 'rgba(40,60,110,0.5)';
-            ctx.fillRect(W * 0.10, boxY, W * 0.80, 70);
-            ctx.strokeStyle = '#3a4f8a'; ctx.lineWidth = 1;
-            ctx.strokeRect(W * 0.10, boxY, W * 0.80, 70);
-            ctx.fillStyle = '#ffd24d';
-            ctx.font = 'bold 16px Arial';
-            ctx.fillText('GOAL', W * 0.10 + 16, boxY + 26);
-            ctx.fillStyle = '#dfe6f5';
-            ctx.font = '15px Arial';
-            ctx.fillText('Carry civilians to THE WEEKLY PLANET, press ENTER to go inside, then F at the', W * 0.10 + 16, boxY + 46);
-            ctx.fillText('safe zone to rescue them. Smash emitters & clear districts to reach the Warlord.', W * 0.10 + 16, boxY + 64);
+            // RIGHT COLUMN
+            let y3 = 72;
+            hdr(colR, 'THE HOUND', y3); y3 += lh;
+            row(colR, 'T',      'Toggle: AI partner / Player 2', y3); y3 += lhS;
+            row(colR, 'R',      'Tell hound to land', y3); y3 += lhS;
+            row(colR, '',       'Drags & shoves nearby enemies', y3); y3 += lhS;
+            row(colR, '',       'Flies over laser barriers', y3); y3 += lh;
+            const wingColor = titleSelectedLevel === 2 ? '#e0c020' : '#7a8a9c';
+            hdr(colR, 'DARK WING (Level 2)', y3, wingColor); y3 += lh;
+            row(colR, 'B',      'Get clue intel from Dark Wing', y3); y3 += lhS;
+            row(colR, '',       'Attacks nearby enemies (2 dmg)', y3); y3 += lhS;
+            row(colR, '',       'Follows active clue across map', y3); y3 += lh;
+            hdr(colR, 'WORLD', y3); y3 += lh;
+            row(colR, 'M',      'Open / close the map', y3); y3 += lhS;
+            row(colR, 'Q',      'Swap hero / civilian identity', y3); y3 += lhS;
+            row(colR, 'H',      'Show / hide control panel', y3); y3 += lh;
+            hdr(colR, 'OBJECTIVE', y3, '#ffd84d'); y3 += lh;
+            if (titleSelectedLevel === 2) {
+                row(colR, '', 'Find 5 clues revealing Lex Luthor', y3); y3 += lhS;
+                row(colR, '', 'Survive the 30-man final siege', y3); y3 += lhS;
+                row(colR, '', 'Defeat Lex Luthor with Dark Wing', y3);
+            } else {
+                row(colR, '', 'Read clues to unlock quests', y3); y3 += lhS;
+                row(colR, '', 'Rescue civilians, smash emitters', y3); y3 += lhS;
+                row(colR, '', 'Defeat the Warlord in Uptown', y3);
+            }
 
             // prompt
             ctx.textAlign = 'center';
@@ -6321,12 +6401,11 @@
             const a = 0.55 + Math.sin(titlePulse) * 0.45;
             ctx.globalAlpha = a;
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 22px Arial';
-            ctx.fillText('Press ENTER or Click to Play', W / 2, H - 28);
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('Press ENTER or click to begin', W/2, H - 22);
             ctx.globalAlpha = 1;
             ctx.restore();
         }
-
         // ---------- INTERIOR: update, AI, draw ----------
         // Keep the hero/hound inside the room. Flight still works, but the room has
         // its own floor/ceiling/walls. We override city collision by re-clamping here.
