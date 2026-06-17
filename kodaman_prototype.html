@@ -3466,21 +3466,21 @@
                     const fr = 1 - e.laserTimer / LASER_EFFECT;  // 0→1 over effect duration
                     const iR = 10 + Math.sin(Date.now() * 0.04) * 4;
                     ctx.shadowColor = '#ff6040'; ctx.shadowBlur = 24;
-                    const ig = ctx.createRadialGradient(end, impY, 0, end, impY, iR * 2.8);
+                    const ig = ctx.createRadialGradient(endX, impY, 0, endX, impY, iR * 2.8);
                     ig.addColorStop(0, 'rgba(255,255,200,0.96)');
                     ig.addColorStop(0.35, 'rgba(255,120,50,0.80)');
                     ig.addColorStop(1, 'rgba(255,40,10,0)');
                     ctx.fillStyle = ig;
-                    ctx.beginPath(); ctx.arc(end, impY, iR * 2.8, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(endX, impY, iR * 2.8, 0, Math.PI * 2); ctx.fill();
                     ctx.fillStyle = 'rgba(255,255,255,0.92)';
-                    ctx.beginPath(); ctx.arc(end, impY, iR * 0.55, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(endX, impY, iR * 0.55, 0, Math.PI * 2); ctx.fill();
                     // Cross flare lines
                     ctx.strokeStyle = 'rgba(255,220,180,0.70)'; ctx.lineWidth = 1.5;
                     for (let fl = 0; fl < 4; fl++) {
                         const fa = fl * Math.PI / 4;
                         ctx.beginPath();
-                        ctx.moveTo(end + Math.cos(fa) * iR * 0.5, impY + Math.sin(fa) * iR * 0.5);
-                        ctx.lineTo(end + Math.cos(fa) * iR * 2.2, impY + Math.sin(fa) * iR * 2.2);
+                        ctx.moveTo(endX + Math.cos(fa) * iR * 0.5, impY + Math.sin(fa) * iR * 0.5);
+                        ctx.lineTo(endX + Math.cos(fa) * iR * 2.2, impY + Math.sin(fa) * iR * 2.2);
                         ctx.stroke();
                     }
                     ctx.shadowBlur = 0;
