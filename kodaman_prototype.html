@@ -652,6 +652,40 @@
         let caseFileOpen = false;   // N: review all case-file clues found so far
         let grabbedEnemy = null;   // enemy currently held by the hero
 
+        // ---------- FACTORY INTERIOR (Level 2 final clue) ----------
+        const FACTORY = { w: 5200, floorY: 840, ceilingY: 60 };
+        const FACTORY_PLATFORMS = [
+            // Level 1 catwalks y=620
+            { x: 100,  y: 620, w: 380, h: 12 }, { x: 600,  y: 620, w: 360, h: 12 },
+            { x: 1100, y: 620, w: 370, h: 12 }, { x: 1620, y: 620, w: 360, h: 12 },
+            { x: 2150, y: 620, w: 380, h: 12 }, { x: 2700, y: 620, w: 360, h: 12 },
+            { x: 3250, y: 620, w: 370, h: 12 }, { x: 3800, y: 620, w: 350, h: 12 },
+            // Level 2 catwalks y=400
+            { x: 200,  y: 400, w: 350, h: 12 }, { x: 780,  y: 400, w: 360, h: 12 },
+            { x: 1400, y: 400, w: 355, h: 12 }, { x: 2050, y: 400, w: 350, h: 12 },
+            { x: 2750, y: 400, w: 360, h: 12 }, { x: 3450, y: 400, w: 355, h: 12 },
+            { x: 4100, y: 400, w: 350, h: 12 },
+            // Level 3 upper gantry y=200
+            { x: 300,  y: 200, w: 380, h: 12 }, { x: 950,  y: 200, w: 360, h: 12 },
+            { x: 1650, y: 200, w: 370, h: 12 }, { x: 2350, y: 200, w: 360, h: 12 },
+            { x: 3000, y: 200, w: 380, h: 12 }, { x: 3700, y: 200, w: 355, h: 12 },
+            { x: 4350, y: 200, w: 360, h: 12 },
+        ];
+        let factoryScene = null;
+        let factoryPhase = 'idle';
+        let factoryIntroStep = 0;
+        let factoryIntroTimer = 0;
+        let lexEscaped = false;
+
+        const powerGirl = {
+            x: 4800, y: FACTORY.floorY, vx: 0, vy: 0, w: 36, h: 74,
+            facing: -1, onGround: true, flightActive: false,
+            phase: 0, active: false, captured: true,
+            hp: 20, maxHp: 20,
+            _attackCD: 0, _targetEnemy: null,
+            _punchTimer: 0, _kickTimer: 0, fightMode: false
+        };
+
         // ---------- DINING INTERIORS (diners & shops) ----------
         // A small shared room template, reskinned per building type. Holds a
         // reference to the actual building so eatCooldown stays per-building.
@@ -715,6 +749,232 @@
         function updateDiningScene() {
             clampToDining(hero);
             clampToDining(hound);
+        }
+
+        // ── Factory enter / exit ─────────────────────────────────────────
+        function enterFactory() {
+            factoryScene = {
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy,
+                    hf: hero.facing, hfly: hero.flightActive,
+                    dx: hound.x, dy: hound.y, dvx: hound.vx, dvy: hound.vy, df: hound.facing
+                }
+            };
+            hero.x = 120; hero.y = FACTORY.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 200; hound.y = FACTORY.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            scene = 'factory';
+            factoryPhase = 'intro'; factoryIntroStep = 0; factoryIntroTimer = 220;
+            lexEscaped = false;
+            platforms.splice(0, platforms.length, ...FACTORY_PLATFORMS);
+            camera.x = 0; camera.y = 0;
+            darkWing.x = 70; darkWing._targetX = 70;
+            darkWing.y = FACTORY.floorY; darkWing._onGround = true; darkWing.vy = 0;
+            darkWing._swinging = false; darkWing._gliding = false;
+            // reset Power Girl to captured state at far end
+            powerGirl.x = 4800; powerGirl.y = FACTORY.floorY;
+            powerGirl.active = false; powerGirl.captured = true;
+            powerGirl.hp = 20; powerGirl.vx = 0; powerGirl.vy = 0;
+            titleCard = { text: 'LEXCORP CENTRAL — RESTRICTED', sub: 'Entering the heart of LexCorp…', timer: 200 };
+        }
+
+        function exitFactory() {
+            if (!factoryScene) return;
+            const s = factoryScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = 0; hero.vy = 0;
+            hero.facing = s.hf; hero.flightActive = false; hero.onGround = true;
+            hound.x = s.dx; hound.y = s.dy; hound.vx = 0; hound.vy = 0;
+            hound.facing = s.df; hound.flightActive = false; hound.onGround = true;
+            scene = 'city';
+            platforms.splice(0, platforms.length, ...L2_PLATFORMS);
+            factoryScene = null; factoryPhase = 'idle';
+            darkWing.fightMode = false; darkWing.zoneCombat = false;
+            titleCard = { text: 'MISSION COMPLETE', sub: 'Power Girl is free. The Badlands belong to you now.', timer: 240 };
+        }
+
+        // ── Factory update ───────────────────────────────────────────────
+        function updateFactory() {
+            // Intro sequence — Lex dialogue cards
+            if (factoryPhase === 'intro') {
+                factoryIntroTimer--;
+                if (factoryIntroTimer <= 0) {
+                    factoryIntroStep++;
+                    factoryIntroTimer = 210;
+                    if (factoryIntroStep === 1) {
+                        titleCard = { text: 'LEX LUTHOR', sub: '"Did you really think you\'d stop me? I\'ve been ten steps ahead from the start."', timer: 210 };
+                    } else if (factoryIntroStep === 2) {
+                        titleCard = { text: 'LEX LUTHOR', sub: '"I have someone here you might recognize… Power Girl. She\'s been waiting for you."', timer: 210 };
+                    } else if (factoryIntroStep === 3) {
+                        titleCard = { text: 'LEX LUTHOR', sub: '"My men will handle you both. Enjoy your little reunion." *releases henchmen*', timer: 210 };
+                    } else if (factoryIntroStep >= 4) {
+                        spawnFactoryHenchmen();
+                        factoryPhase = 'battle';
+                        darkWing.fightMode = true;
+                        darkWing._gadgetCD = 0; darkWing._dodgeTimer = 0; darkWing._blockTimer = 0;
+                        titleCard = { text: '30 HENCHMEN', sub: 'Defeat all of Lex\'s forces. Dark Wing has your back.', timer: 240 };
+                    }
+                }
+            }
+
+            // Battle — detect all henchmen defeated
+            if (factoryPhase === 'battle') {
+                const alive = enemies.filter(e => e.alive).length;
+                if (alive === 0 && !lexEscaped) {
+                    lexEscaped = true;
+                    factoryPhase = 'escape';
+                    titleCard = { text: 'LEX ESCAPES', sub: '"You won the battle… but not the war." The helicopter lifts off into the night.', timer: 280 };
+                    setTimeout(function() { freePowerGirl(); factoryPhase = 'rescued'; }, 3500);
+                }
+            }
+
+            if (factoryPhase === 'rescued') {
+                updatePowerGirl();
+            }
+
+            // Clamp hero to factory
+            if (hero.x < 0) { hero.x = 0; if (hero.vx < 0) hero.vx = 0; }
+            if (hero.x + hero.w > FACTORY.w) { hero.x = FACTORY.w - hero.w; if (hero.vx > 0) hero.vx = 0; }
+            if (hero.y < FACTORY.ceilingY) { hero.y = FACTORY.ceilingY; if (hero.vy < 0) hero.vy = 0; }
+            if (hero.y + hero.h > FACTORY.floorY) { hero.y = FACTORY.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+            // Clamp hound
+            if (hound.x < 0) { hound.x = 0; if (hound.vx < 0) hound.vx = 0; }
+            if (hound.x + hound.w > FACTORY.w) { hound.x = FACTORY.w - hound.w; if (hound.vx > 0) hound.vx = 0; }
+            if (hound.y + hound.h > FACTORY.floorY) { hound.y = FACTORY.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+
+            // Camera follows hero inside factory
+            camera.x = Math.max(0, Math.min(hero.x - W / 2, FACTORY.w - W));
+        }
+
+        // ── Factory henchmen spawn ───────────────────────────────────────
+        function spawnFactoryHenchmen() {
+            enemies.splice(0);
+            // 10 brutes on the floor
+            for (let i = 0; i < 10; i++) {
+                const ex = 280 + i * 440 + Math.random() * 100;
+                enemies.push({
+                    x: ex, y: FACTORY.floorY - 56,
+                    w: 52, h: 56, vx: (Math.random() < 0.5 ? -1 : 1) * 1.4, vy: 0,
+                    minX: ex - 180, maxX: ex + 180,
+                    alive: true, hp: 4, maxHp: 4, frozen: 0,
+                    type: 'brute', dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'factory'
+                });
+            }
+            // 10 genius on Level 1 catwalks
+            for (let i = 0; i < 10; i++) {
+                const plat = FACTORY_PLATFORMS[i % 8];
+                const ex = plat.x + 30 + Math.random() * (plat.w - 60);
+                enemies.push({
+                    x: ex, y: plat.y - 50,
+                    w: 38, h: 50, vx: (Math.random() < 0.5 ? -1 : 1) * 1.3, vy: 0,
+                    minX: plat.x + 10, maxX: plat.x + plat.w - 10,
+                    alive: true, hp: 3, maxHp: 3, frozen: 0,
+                    type: 'genius', dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'factory'
+                });
+            }
+            // 10 energy floating at upper levels
+            for (let i = 0; i < 10; i++) {
+                const ex = 350 + i * 460 + Math.random() * 80;
+                const ey = 180 + Math.random() * 320;
+                enemies.push({
+                    x: ex, y: ey, w: 44, h: 44,
+                    vx: (Math.random() < 0.5 ? -1 : 1) * 1.6,
+                    vy: (Math.random() < 0.5 ? -0.7 : 0.7),
+                    minX: ex - 140, maxX: ex + 140,
+                    minY: ey - 130, maxY: ey + 130,
+                    alive: true, hp: 3, maxHp: 3, frozen: 0,
+                    type: 'energy', dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'factory'
+                });
+            }
+        }
+
+        function freePowerGirl() {
+            powerGirl.captured = false;
+            powerGirl.active = true;
+            powerGirl.fightMode = false;
+            powerGirl.x = 4780; powerGirl.y = FACTORY.floorY - powerGirl.h;
+            titleCard = { text: 'POWER GIRL FREED!', sub: 'She\'s joining the fight! Level 2 is yours to explore.', timer: 360 };
+        }
+
+        // ── Power Girl combat AI ─────────────────────────────────────────
+        function updatePowerGirl() {
+            if (!powerGirl.active || powerGirl.captured) return;
+            powerGirl.phase += 0.06;
+            if (powerGirl._attackCD > 0) powerGirl._attackCD--;
+            if (powerGirl._punchTimer > 0) powerGirl._punchTimer--;
+            if (powerGirl._kickTimer  > 0) powerGirl._kickTimer--;
+
+            // Gravity
+            if (!powerGirl.flightActive) {
+                powerGirl.vy = Math.min(powerGirl.vy + 0.5, 14);
+            }
+
+            // Target closest alive enemy
+            let closest = null, closestDist = Infinity;
+            for (const en of enemies) {
+                if (!en.alive) continue;
+                const d = Math.hypot(en.x - powerGirl.x, en.y - powerGirl.y);
+                if (d < closestDist) { closestDist = d; closest = en; }
+            }
+            powerGirl._targetEnemy = closest;
+
+            if (closest) {
+                powerGirl.fightMode = true;
+                const dx = (closest.x + closest.w / 2) - (powerGirl.x + powerGirl.w / 2);
+                const dy = (closest.y + closest.h / 2) - (powerGirl.y + powerGirl.h / 2);
+                const dist = Math.hypot(dx, dy);
+                powerGirl.facing = dx > 0 ? 1 : -1;
+
+                // Fly up to reach aerial enemies
+                if (closest.y < powerGirl.y - 120) {
+                    powerGirl.flightActive = true;
+                    powerGirl.vy = Math.max(powerGirl.vy - 0.8, -4);
+                } else if (powerGirl.onGround) {
+                    powerGirl.flightActive = false;
+                }
+
+                // Chase horizontally
+                if (dist > 70) powerGirl.vx = Math.sign(dx) * 2.8;
+                else powerGirl.vx *= 0.7;
+
+                // Melee
+                if (dist < 90 && powerGirl._attackCD <= 0) {
+                    tryHitEnemy(closest, 2, 7, 'punch', powerGirl);
+                    powerGirl._attackCD = 45;
+                    powerGirl._punchTimer = 18;
+                }
+            } else {
+                powerGirl.fightMode = false;
+                powerGirl.flightActive = false;
+                powerGirl.vx *= 0.85;
+                powerGirl.vy = Math.min(powerGirl.vy + 0.5, 14);
+            }
+
+            powerGirl.x += powerGirl.vx;
+            powerGirl.y += powerGirl.vy;
+
+            // Landing on floor
+            const flr = scene === 'factory' ? FACTORY.floorY : GROUND_Y;
+            if (powerGirl.y + powerGirl.h >= flr) {
+                powerGirl.y = flr - powerGirl.h; powerGirl.vy = 0;
+                powerGirl.onGround = true; powerGirl.flightActive = false;
+            } else {
+                powerGirl.onGround = false;
+            }
+            // Landing on platforms
+            for (const p of platforms) {
+                if (powerGirl.vy >= 0 &&
+                    powerGirl.x + powerGirl.w > p.x && powerGirl.x < p.x + p.w) {
+                    const prevBottom = powerGirl.y + powerGirl.h - powerGirl.vy;
+                    if (prevBottom <= p.y + 6 && powerGirl.y + powerGirl.h >= p.y) {
+                        powerGirl.y = p.y - powerGirl.h; powerGirl.vy = 0;
+                        powerGirl.onGround = true; break;
+                    }
+                }
+            }
+            // Clamp
+            const maxX = scene === 'factory' ? FACTORY.w - powerGirl.w : WORLD_WIDTH - powerGirl.w;
+            powerGirl.x = Math.max(0, Math.min(powerGirl.x, maxX));
         }
 
         function drawDiningScene() {
@@ -4757,7 +5017,14 @@
         // ---------- DRAW ----------
         function draw() {
             const frameNow = Date.now();
-            if (currentLevel === 2) drawGrungeCity(); else drawManhattan();
+            if (scene === 'factory') {
+                ctx.fillStyle = '#14141e';
+                ctx.fillRect(0, 0, W, H);
+            } else if (currentLevel === 2) {
+                drawGrungeCity();
+            } else {
+                drawManhattan();
+            }
 
             ctx.save();
             // screen shake offset (decays in updateHitFX)
@@ -4765,6 +5032,7 @@
             const shy = screenShake ? (Math.random() - 0.5) * screenShake : 0;
             ctx.translate(-camera.x + shx, -camera.y + shy);
 
+            if (scene !== 'factory') {
             // ground / street
             ctx.fillStyle = '#2c3340';
             let cursor = 0;
@@ -5080,11 +5348,15 @@
                 }
             }
 
+            } // end if scene !== 'factory' (ground/street block)
+
+            if (scene === 'factory') drawFactory();
+
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
 
             // ---- Level 2 grunge set-pieces + Dark Wing NPC ----
-            if (currentLevel === 2) {
+            if (currentLevel === 2 && scene !== 'factory') {
                 drawGrungeSetPieces();
                 if (clues.length > 0) {   // level 2 clues are loaded
                     const lx = darkWing.x;
@@ -5435,6 +5707,55 @@
 
             // impact animations on top
             drawHitFX();
+
+            // Factory: draw Dark Wing and Power Girl (DW draw block skipped above for factory)
+            if (scene === 'factory') {
+                // Dark Wing — minimal stand-in draw using existing variables
+                const lx = darkWing.x;
+                const bob = Math.sin(darkWing.phase) * 1.2;
+                const dy_dw = darkWing.y;
+                ctx.save();
+                ctx.translate(lx * darkWing.faceDir < 0 ? 0 : 0, 0);
+                // reuse the full DW draw by temporarily setting GROUND_Y ref
+                // draw inline minimal DW silhouette
+                ctx.fillStyle = '#1a1a2e';
+                // legs
+                ctx.fillRect(lx - 9, dy_dw - 28, 8, 28);
+                ctx.fillRect(lx + 1, dy_dw - 28, 8, 28);
+                // boots
+                ctx.fillStyle = '#111';
+                ctx.fillRect(lx - 10, dy_dw - 8, 10, 8);
+                ctx.fillRect(lx + 1, dy_dw - 8, 10, 8);
+                // cape
+                ctx.fillStyle = 'rgba(20,20,50,0.85)';
+                ctx.beginPath();
+                ctx.moveTo(lx, dy_dw - 62);
+                ctx.lineTo(lx - darkWing.faceDir * 34, dy_dw - 10);
+                ctx.lineTo(lx - darkWing.faceDir * 12, dy_dw - 28);
+                ctx.closePath(); ctx.fill();
+                // torso
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(lx - 11, dy_dw - 62, 22, 34);
+                // head
+                ctx.fillStyle = '#222240';
+                ctx.beginPath(); ctx.arc(lx, dy_dw - 70 + bob, 12, 0, Math.PI * 2); ctx.fill();
+                // cowl ears
+                ctx.fillStyle = '#111';
+                ctx.beginPath();
+                ctx.moveTo(lx - 6, dy_dw - 79 + bob); ctx.lineTo(lx - 10, dy_dw - 90 + bob); ctx.lineTo(lx - 2, dy_dw - 79 + bob); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(lx + 6, dy_dw - 79 + bob); ctx.lineTo(lx + 10, dy_dw - 90 + bob); ctx.lineTo(lx + 2, dy_dw - 79 + bob); ctx.fill();
+                // HP bar
+                if (darkWing.hp < darkWing.maxHp) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(lx - 18, dy_dw - 102 + bob, 36, 5);
+                    ctx.fillStyle = '#4cf'; ctx.fillRect(lx - 18, dy_dw - 102 + bob, 36 * darkWing.hp / darkWing.maxHp, 5);
+                }
+                ctx.restore();
+                // Power Girl
+                if (powerGirl.active && !powerGirl.captured) {
+                    drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
+                }
+            }
 
             ctx.restore();
 
@@ -5944,7 +6265,7 @@
                 darkWing.zoneCombat = false;
                 activeClueIndex++;
                 if (activeClueIndex >= clues.length) {
-                    if (currentLevel === 2) spawnFinalBattle(); else spawnBoss();
+                    if (currentLevel === 2) enterFactory(); else spawnBoss();
                 } else {
                     const nextCl = clues[activeClueIndex];
                     const zoneName = nextCl.zone ? nextCl.zone.label : 'the city';
@@ -6612,6 +6933,284 @@
                     ctx.fillRect(sx + 60, sy + 80, 14, 20);
                     ctx.fillStyle = '#0e0a04';
                 }
+            }
+        }
+
+        // ── Factory interior draw ────────────────────────────────────────
+        function drawFactory() {
+            const FF = FACTORY.floorY, FC = FACTORY.ceilingY, FW = FACTORY.w;
+
+            // Background wall
+            ctx.fillStyle = '#14141e';
+            ctx.fillRect(0, FC, FW, FF - FC + 80);
+
+            // Ceiling beam
+            ctx.fillStyle = '#202030';
+            ctx.fillRect(0, FC, FW, 32);
+
+            // Overhead pipes running the length of the factory
+            ctx.strokeStyle = '#2a2a40'; ctx.lineWidth = 12;
+            ctx.beginPath(); ctx.moveTo(0, FC + 50); ctx.lineTo(FW, FC + 50); ctx.stroke();
+            ctx.strokeStyle = '#1e1e32'; ctx.lineWidth = 7;
+            ctx.beginPath(); ctx.moveTo(0, FC + 66); ctx.lineTo(FW, FC + 66); ctx.stroke();
+
+            // Hanging lights every 340px
+            for (let lx = 220; lx < FW; lx += 340) {
+                // Chain
+                ctx.strokeStyle = '#383848'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(lx, FC + 32); ctx.lineTo(lx, FC + 82); ctx.stroke();
+                // Fixture
+                ctx.fillStyle = '#2e2e46';
+                ctx.fillRect(lx - 24, FC + 82, 48, 16);
+                // Bulb glow
+                ctx.fillStyle = '#fffce8';
+                ctx.beginPath(); ctx.arc(lx, FC + 98, 5, 0, Math.PI * 2); ctx.fill();
+                // Cone of light
+                const grd = ctx.createRadialGradient(lx, FC + 98, 4, lx, FC + 200, 180);
+                grd.addColorStop(0, 'rgba(255,245,180,0.14)');
+                grd.addColorStop(1, 'rgba(255,245,180,0)');
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.moveTo(lx - 22, FC + 98); ctx.lineTo(lx + 22, FC + 98);
+                ctx.lineTo(lx + 130, FF); ctx.lineTo(lx - 130, FF);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // Support columns every 650px with warning stripes
+            for (let sx = 0; sx < FW + 50; sx += 650) {
+                ctx.fillStyle = '#222234';
+                ctx.fillRect(sx, FC, 26, FF - FC);
+                ctx.fillStyle = '#f5c518';
+                for (let sy = FC; sy < FF; sy += 52) {
+                    ctx.fillRect(sx, sy, 26, 14);
+                }
+                ctx.fillStyle = '#14141e';
+                for (let sy = FC + 14; sy < FF; sy += 52) {
+                    ctx.fillRect(sx, sy, 26, 22);
+                }
+            }
+
+            // Wall conduits lower section
+            ctx.strokeStyle = '#2c2c44'; ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(0, FF - 40); ctx.lineTo(FW, FF - 40); ctx.stroke();
+            ctx.strokeStyle = '#242436'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(0, FF - 58); ctx.lineTo(FW, FF - 58); ctx.stroke();
+
+            // Floor machinery (generators, tanks)
+            for (let mx = 380; mx < FW - 200; mx += 520) {
+                ctx.fillStyle = '#20203a';
+                ctx.fillRect(mx, FF - 110, 88, 110);
+                ctx.fillStyle = '#181828';
+                ctx.fillRect(mx + 10, FF - 92, 68, 72);
+                // Gauge
+                ctx.strokeStyle = '#404058'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(mx + 44, FF - 58, 15, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = '#e05020'; ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(mx + 44, FF - 58);
+                ctx.lineTo(mx + 44 + Math.cos(-0.7) * 11, FF - 58 + Math.sin(-0.7) * 11);
+                ctx.stroke();
+                // Red warning light on top
+                const pulse = 0.4 + Math.sin(Date.now() * 0.005 + mx) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = '#ff3010';
+                ctx.beginPath(); ctx.arc(mx + 44, FF - 114, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // Grated metal floor
+            ctx.fillStyle = '#242438';
+            ctx.fillRect(0, FF, FW, 80);
+            ctx.strokeStyle = '#181826'; ctx.lineWidth = 1;
+            for (let gx = 0; gx < FW; gx += 36) {
+                ctx.beginPath(); ctx.moveTo(gx, FF); ctx.lineTo(gx, FF + 80); ctx.stroke();
+            }
+            for (let gy = 0; gy < 80; gy += 18) {
+                ctx.beginPath(); ctx.moveTo(0, FF + gy); ctx.lineTo(FW, FF + gy); ctx.stroke();
+            }
+
+            // FACTORY_PLATFORMS — catwalks with railings
+            for (const p of FACTORY_PLATFORMS) {
+                // Catwalk body
+                ctx.fillStyle = '#2a2a42';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                // Grate texture on catwalk
+                ctx.strokeStyle = '#1e1e34'; ctx.lineWidth = 1;
+                for (let gx = p.x; gx < p.x + p.w; gx += 18) {
+                    ctx.beginPath(); ctx.moveTo(gx, p.y); ctx.lineTo(gx, p.y + p.h); ctx.stroke();
+                }
+                // Yellow warning edge stripe
+                ctx.fillStyle = '#f5c518';
+                for (let wx = p.x; wx < p.x + p.w; wx += 22) {
+                    ctx.fillRect(wx, p.y, 11, 3);
+                }
+                // Railing posts
+                ctx.fillStyle = '#404060';
+                const postSpacing = Math.floor(p.w / 4);
+                for (let pi = 0; pi <= 4; pi++) {
+                    ctx.fillRect(p.x + pi * postSpacing - 2, p.y - 30, 4, 30);
+                }
+                // Railing bar
+                ctx.fillStyle = '#525272';
+                ctx.fillRect(p.x, p.y - 32, p.w, 4);
+            }
+
+            // LexCorp signage every 900px
+            for (let sx = 600; sx < FW; sx += 900) {
+                const sy = FF - 240;
+                ctx.strokeStyle = '#cc2020'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.arc(sx, sy, 34, 0, Math.PI * 2); ctx.stroke();
+                ctx.fillStyle = '#cc2020';
+                ctx.font = 'bold 34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('L', sx, sy);
+                ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+            }
+
+            // Lex Luthor — visible during intro at far right
+            if (factoryPhase === 'intro' || factoryPhase === 'escape') {
+                const lx = 4380, ly = FF;
+                ctx.fillStyle = '#4a2080';
+                ctx.fillRect(lx - 16, ly - 88, 32, 52);
+                // Lapels
+                ctx.fillStyle = '#3a8030';
+                ctx.fillRect(lx - 12, ly - 88, 10, 28);
+                ctx.fillRect(lx + 2, ly - 88, 10, 28);
+                // Legs
+                ctx.fillStyle = '#3a1a70';
+                ctx.fillRect(lx - 14, ly - 36, 12, 36);
+                ctx.fillRect(lx + 2, ly - 36, 12, 36);
+                // Head (bald)
+                ctx.fillStyle = '#e8b870';
+                ctx.beginPath(); ctx.ellipse(lx, ly - 100, 13, 15, 0, 0, Math.PI * 2); ctx.fill();
+                // Eyes
+                ctx.fillStyle = '#200050';
+                ctx.fillRect(lx - 7, ly - 106, 4, 3);
+                ctx.fillRect(lx + 3, ly - 106, 4, 3);
+                // Label
+                ctx.fillStyle = '#cc2020';
+                ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+                if (factoryPhase === 'escape') {
+                    ctx.fillStyle = 'rgba(200,200,50,0.85)'; ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText('ESCAPING…', lx, ly - 118);
+                } else {
+                    ctx.fillText('LEX LUTHOR', lx, ly - 118);
+                }
+                ctx.textAlign = 'left';
+            }
+
+            // Power Girl — captured with chains when still restrained
+            if (powerGirl.captured) {
+                const px = powerGirl.x, py = powerGirl.y;
+                // Anchor column to the left
+                const colX = Math.round(px / 650) * 650;
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(colX + 26, py - 54); ctx.lineTo(px - 2, py - 54); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(colX + 26, py - 20); ctx.lineTo(px - 2, py - 20); ctx.stroke();
+                // Chain links
+                ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+                for (let cx2 = colX + 30; cx2 < px - 4; cx2 += 14) {
+                    ctx.beginPath(); ctx.ellipse(cx2, py - 54, 5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(cx2, py - 20, 5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+                }
+                drawPowerGirlAt(px, py, true);
+            } else if (powerGirl.active) {
+                drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
+            }
+        }
+
+        // ── Power Girl draw ──────────────────────────────────────────────
+        function drawPowerGirlAt(wx, wy, isCaptured) {
+            // wx/wy are world coords (canvas already translated by camera)
+            const fd = powerGirl.facing;
+            const bob = Math.sin(powerGirl.phase * 2) * 1.5;
+            const feetY = wy;
+            const cx = wx + powerGirl.w / 2;
+
+            ctx.save();
+
+            // Cape (behind body)
+            ctx.fillStyle = '#cc1a1a';
+            if (powerGirl.flightActive) {
+                ctx.beginPath();
+                ctx.moveTo(cx - fd * 4, feetY - 60 + bob);
+                ctx.lineTo(cx - fd * 4, feetY - 46 + bob);
+                ctx.lineTo(cx - fd * 46, feetY - 42 + bob);
+                ctx.lineTo(cx - fd * 50, feetY - 54 + bob);
+                ctx.closePath(); ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(cx - fd * 4, feetY - 60 + bob);
+                ctx.lineTo(cx - fd * 4, feetY - 6 + bob);
+                ctx.quadraticCurveTo(cx - fd * 20, feetY - 2, cx - fd * 24, feetY - 10 + bob);
+                ctx.lineTo(cx - fd * 26, feetY - 56 + bob);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // Legs — blue
+            ctx.fillStyle = '#1a44cc';
+            ctx.fillRect(cx - 14, feetY - 34 + bob, 12, 34);
+            ctx.fillRect(cx + 2,  feetY - 34 + bob, 12, 34);
+            // Boots — red
+            ctx.fillStyle = '#cc1a1a';
+            ctx.fillRect(cx - 15, feetY - 15 + bob, 13, 15);
+            ctx.fillRect(cx + 2,  feetY - 15 + bob, 13, 15);
+
+            // Torso — blue
+            ctx.fillStyle = '#1a44cc';
+            ctx.fillRect(cx - 16, feetY - 72 + bob, 32, 40);
+
+            // White oval chest emblem
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.ellipse(cx, feetY - 53 + bob, 9, 12, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#d4a017';
+            ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('P', cx, feetY - 53 + bob);
+            ctx.textBaseline = 'alphabetic';
+
+            // Arms
+            const punchExt = powerGirl._punchTimer > 0 ? (powerGirl._punchTimer / 18) * 14 : 0;
+            ctx.fillStyle = '#1a44cc';
+            // Front arm
+            ctx.fillRect(cx + fd * 14, feetY - 68 + bob, fd * (12 + punchExt), 9);
+            // Back arm
+            ctx.fillRect(cx - fd * 26, feetY - 68 + bob, fd * 12, 9);
+
+            // Neck + head
+            ctx.fillStyle = '#f0c090';
+            ctx.fillRect(cx - 5, feetY - 74 + bob, 10, 10);
+            ctx.beginPath(); ctx.ellipse(cx, feetY - 82 + bob, 12, 13, 0, 0, Math.PI * 2); ctx.fill();
+
+            // Blonde hair — golden bob
+            ctx.fillStyle = '#f0c030';
+            ctx.beginPath(); ctx.ellipse(cx, feetY - 86 + bob, 13, 9, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillRect(cx - 13, feetY - 88 + bob, 26, 8);
+            if (powerGirl.flightActive) {
+                // Hair streams back
+                ctx.beginPath();
+                ctx.moveTo(cx - fd * 10, feetY - 86 + bob);
+                ctx.lineTo(cx - fd * 34, feetY - 80 + bob);
+                ctx.lineTo(cx - fd * 28, feetY - 74 + bob);
+                ctx.lineTo(cx - fd * 8, feetY - 78 + bob);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // Eyes
+            ctx.fillStyle = '#3a2010';
+            ctx.fillRect(cx - 5 + fd, feetY - 84 + bob, 3, 2);
+            ctx.fillRect(cx + 2 + fd, feetY - 84 + bob, 3, 2);
+
+            ctx.restore();
+
+            // HP bar in combat
+            if (!isCaptured && powerGirl.fightMode) {
+                ctx.fillStyle = '#400'; ctx.fillRect(wx - 4, wy - 92, 44, 5);
+                ctx.fillStyle = '#22cc44'; ctx.fillRect(wx - 4, wy - 92, 44 * (powerGirl.hp / powerGirl.maxHp), 5);
+            }
+            // Name label when idle
+            if (!isCaptured && !powerGirl.fightMode) {
+                ctx.fillStyle = 'rgba(120,210,255,0.85)'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('POWER GIRL', wx + powerGirl.w / 2, wy - 97);
+                ctx.textAlign = 'left';
             }
         }
 
@@ -7616,6 +8215,23 @@
 
             if (enterCooldown > 0) enterCooldown--;
 
+            // ---- FACTORY INTERIOR: LexCorp final battle ----
+            if (scene === 'factory') {
+                const pin = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                updateEnemies();
+                updateDarkWing();
+                updateFactory();
+                updateHitFX();
+
+                draw(); // draw() detects scene==='factory' and handles background/floor swap
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             // ---- DINING INTERIOR: diner / shop room ----
             if (diningScene) {
                 const pin = computeP1Input();
@@ -7654,6 +8270,7 @@
             updateAmbientNPCs();
             updateCityLois();
             updateDarkWing();
+            updatePowerGirl();
             updateWorldState();
             updateHitFX();
             updateCamera();
