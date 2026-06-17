@@ -2454,7 +2454,24 @@
         // unless they're being carried or already rescued.
         function updateCivilians() {
             for (const c of civilians) {
-                if (c.rescued || c.carried) continue;
+                // Draw rescued civilians that were dropped in the city (safeDropped)
+                // with a calm happy pose instead of skipping them entirely
+                if (c.carried) continue;
+                if (c.rescued && !c.safeDropped) continue;
+                if (c.rescued && c.safeDropped) {
+                    // happy standing civilian — green tint, wave animation
+                    const wavePhase = Math.sin(Date.now() * 0.006 + c.x) * 0.5;
+                    ctx.save();
+                    ctx.globalAlpha = 0.92;
+                    drawCivilianFigure(c, c.x + c.w / 2, civTopY, 1.05, wavePhase, false);
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#4cfc4c';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.fillText('✓ SAFE', c.x + c.w / 2, civTopY - 18);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                    continue;
+                }
                 c.roamPhase = (c.roamPhase || 0) + 1;
 
                 // Idle pause: stand still briefly (natural behaviour)
@@ -6047,43 +6064,45 @@
             if (!darkWing.fightMode) {
                 // ── zone combat: stay at zone and fight until quest resolves ─
                 if (darkWing.zoneCombat) {
-                    const zx = questZone ? questZone.x : darkWing._targetX;
-                    const zdx = zx - darkWing.x;
-                    if (Math.abs(zdx) > 40) {
-                        darkWing.x += Math.sign(zdx) * 2.2;
-                        darkWing.faceDir = Math.sign(zdx);
-                    }
                     darkWing.phase += 0.05;
-                    if (darkWing._attackCD > 0) { darkWing._attackCD--; }
-                    else {
-                        // Attack any enemy within 180px of the zone center
-                        let target = null, tDist = Infinity;
-                        for (const en of enemies) {
-                            if (!en.alive) continue;
-                            const d = Math.abs((en.x + en.w / 2) - zx);
-                            if (d < 180 && d < tDist) { tDist = d; target = en; }
+                    if (darkWing._attackCD > 0) darkWing._attackCD--;
+                    if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
+
+                    // Pick closest alive enemy anywhere on screen (no radius limit)
+                    let target = null, tDist = Infinity;
+                    for (const en of enemies) {
+                        if (!en.alive) continue;
+                        const d = Math.abs((en.x + en.w / 2) - darkWing.x);
+                        if (d < tDist) { tDist = d; target = en; }
+                    }
+
+                    if (target) {
+                        const enMid = target.x + target.w / 2;
+                        const enDist = Math.abs(enMid - darkWing.x);
+                        darkWing.faceDir = enMid < darkWing.x ? -1 : 1;
+
+                        // Always move toward target — no competing zone-anchor
+                        if (enDist > 90) {
+                            darkWing.x += Math.sign(enMid - darkWing.x) * 3.2;
                         }
-                        if (target) {
-                            const enDist = Math.abs((target.x + target.w/2) - darkWing.x);
-                            darkWing.faceDir = (target.x + target.w/2) < darkWing.x ? -1 : 1;
-                            if (enDist < 95) {
+
+                        if (darkWing._attackCD <= 0) {
+                            if (enDist < 90) {
+                                // melee combo
                                 const r = Math.random();
                                 const dmg = r < 0.5 ? 2 : 3;
                                 const ky  = r < 0.5 ? 6  : 9;
                                 if (r >= 0.5) target.vx = darkWing.faceDir * 4;
                                 tryHitEnemy(target, dmg, ky, 'punch', darkWing);
-                                darkWing._attackCD = r < 0.5 ? 30 : 45;
-                            } else if (enDist < 280 && darkWing._gadgetCD <= 0) {
-                                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
-                                darkWing._gadgetCD = 55;
-                                darkWing._attackCD = 20;
-                            } else {
-                                // chase the target
-                                darkWing.x += Math.sign(target.x - darkWing.x) * 2.5;
+                                darkWing._attackCD = r < 0.5 ? 28 : 42;
+                            } else if (enDist < 300 && darkWing._gadgetCD <= 0) {
+                                // batarang at range
+                                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 55, dmg: 3, type: 'batarang' });
+                                darkWing._gadgetCD = 50;
+                                darkWing._attackCD = 18;
                             }
                         }
                     }
-                    if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
                     return;
                 }
                 // ── clue-following mode ──────────────────────────────────
