@@ -447,6 +447,7 @@
             _targetX: clues[0].x - 55,
         };
         function updateCityLois() {
+            if (currentLevel !== 1) return;    // Lois is level-1 only; Dark Wing handles level 2
             if (!interior.note.read) return;   // she only appears after the briefing
             const cl = clues[activeClueIndex];
             if (!cl) return;
@@ -4863,8 +4864,8 @@
                 ctx.restore();
             }
 
-            // ---- LOIS LANE in the city — stands near the active clue ----
-            if (interior.note.read && clues[activeClueIndex]) {
+            // ---- LOIS LANE in the city — level 1 only ----
+            if (currentLevel === 1 && interior.note.read && clues[activeClueIndex]) {
                 const lx = cityLois.x, ly = cityLois.y;
                 const bob = Math.sin(cityLois.phase) * 1.2;
                 ctx.save();
@@ -5691,7 +5692,7 @@
         ];
         const l2Clues = [
             {
-                x: 900, found: false, questType: 'rescue',
+                x: 900, found: false, questType: 'rescue', district: 'ruins',
                 civName: 'Stranded Worker', trapTypes: ['brute', 'brute'], lines: [
                     'BADLANDS FILE — CLUE 1 OF 5',
                     'A torn business card in the rubble, barely legible: "...LEXCORP INDUSTRIES".',
@@ -5699,7 +5700,7 @@
                 ]
             },
             {
-                x: 3400, found: false, questType: 'lockdown',
+                x: 3400, found: false, questType: 'lockdown', district: 'ruins',
                 civName: 'Security Guard', trapTypes: ['brute', 'genius'], lines: [
                     'BADLANDS FILE — CLUE 2 OF 5',
                     'A hidden ledger: weapons purchases, reactor parts, mercenary contracts. Every line signed with a stylized "L".',
@@ -5707,7 +5708,7 @@
                 ]
             },
             {
-                x: 6300, found: false, questType: 'cargo', isObject: true,
+                x: 6300, found: false, questType: 'cargo', isObject: true, district: 'industrial',
                 civName: 'Stolen Reactor Core', trapTypes: ['genius', 'genius', 'energy'], lines: [
                     'BADLANDS FILE — CLUE 3 OF 5',
                     'Surveillance image: a bald man in a power suit, calm as stone, directing a crew unloading reactor components.',
@@ -5715,7 +5716,7 @@
                 ]
             },
             {
-                x: 10000, found: false, questType: 'chase', isVehicle: true,
+                x: 10000, found: false, questType: 'chase', isVehicle: true, district: 'badlands',
                 civName: 'Armored Convoy', trapTypes: ['genius', 'energy', 'energy', 'energy'], lines: [
                     'BADLANDS FILE — CLUE 4 OF 5',
                     'LexCorp markings on every vehicle. The convoy is carrying something — or someone.',
@@ -5723,7 +5724,7 @@
                 ]
             },
             {
-                x: 14200, found: false, questType: 'rescue',
+                x: 14200, found: false, questType: 'rescue', district: 'badlands',
                 civName: 'Captured Informant', trapTypes: ['genius', 'genius', 'energy', 'energy'], lines: [
                     'BADLANDS FILE — CLUE 5 OF 5',
                     'The informant gasps: "He\'s in the central tower — Lex Luthor. He never escaped to hide. He escaped to FINISH what he started against the man who can fly."',
@@ -5970,62 +5971,205 @@
 
         // ── Grunge set-pieces drawn in draw() when currentLevel===2 ───────────
         function drawGrungeSetPieces() {
-            const dumpsters = [
-                300, 1450, 2200, 3100, 4000, 5300, 7100, 8400, 9900, 11500, 13000, 14800
-            ];
+            const st = Date.now() * 0.001;
+
+            // ── Cracked road surface patches ─────────────────────────────────
+            const crackX = [450, 1200, 2700, 3900, 5100, 7400, 8900, 10600, 12300, 14000];
+            ctx.strokeStyle = '#0e0e0a'; ctx.lineWidth = 2;
+            for (const cx of crackX) {
+                ctx.beginPath();
+                ctx.moveTo(cx, GROUND_Y);
+                ctx.lineTo(cx + 14, GROUND_Y + 6);
+                ctx.lineTo(cx + 22, GROUND_Y + 2);
+                ctx.lineTo(cx + 30, GROUND_Y + 8);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(cx + 8, GROUND_Y);
+                ctx.lineTo(cx + 4, GROUND_Y + 10);
+                ctx.stroke();
+            }
+
+            // ── Dumpsters ────────────────────────────────────────────────────
+            const dumpsters = [300, 1450, 2200, 3100, 4000, 5300, 7100, 8400, 9900, 11500, 13000, 14800];
             for (const dx of dumpsters) {
-                // dumpster body
                 ctx.fillStyle = '#2a3a2a';
                 ctx.fillRect(dx, GROUND_Y - 42, 52, 42);
-                // lid (slightly open, angled)
                 ctx.save();
                 ctx.translate(dx + 26, GROUND_Y - 42);
                 ctx.rotate(-0.12);
                 ctx.fillStyle = '#1a2a1a';
                 ctx.fillRect(-28, -8, 56, 8);
                 ctx.restore();
-                // graffiti tag stripe
-                ctx.fillStyle = `hsl(${(dx * 7) % 360},70%,45%)`;
+                ctx.fillStyle = `hsl(${(dx * 7) % 360},60%,38%)`;
                 ctx.fillRect(dx + 6, GROUND_Y - 30, 18, 6);
             }
-            // oil drums at gap edges
+
+            // ── Oil pump jacks (industrial zone: x 4500–9500) ────────────────
+            const pumpX = [4900, 5800, 6700, 7600, 8500];
+            for (const px of pumpX) {
+                const angle = Math.sin(st * 1.2 + px * 0.01) * 0.35;
+                ctx.save();
+                // base frame
+                ctx.fillStyle = '#1e1e14';
+                ctx.fillRect(px - 18, GROUND_Y - 60, 36, 60);
+                // pivot beam
+                ctx.translate(px, GROUND_Y - 60);
+                ctx.rotate(angle);
+                ctx.fillStyle = '#2a2a1a';
+                ctx.fillRect(-40, -8, 80, 10);
+                // counterweight (far end)
+                ctx.fillStyle = '#1a1a10';
+                ctx.fillRect(-50, -18, 20, 20);
+                // horse head (near end, dips)
+                ctx.fillStyle = '#2a2a18';
+                ctx.fillRect(28, -14, 14, 18);
+                ctx.restore();
+                // pump rod
+                const rodTop = GROUND_Y - 60 + Math.sin(st * 1.2 + px * 0.01) * 16;
+                ctx.strokeStyle = '#181810'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(px + 35, rodTop); ctx.lineTo(px + 35, GROUND_Y); ctx.stroke();
+            }
+
+            // ── Abandoned car wrecks ──────────────────────────────────────────
+            const wrecks = [850, 2600, 4400, 7900, 10800, 13500];
+            for (const wx of wrecks) {
+                // body
+                ctx.fillStyle = `hsl(${(wx * 13) % 360},18%,16%)`;
+                ctx.fillRect(wx, GROUND_Y - 32, 70, 32);
+                // roof
+                ctx.fillRect(wx + 12, GROUND_Y - 52, 44, 20);
+                // smashed windshield lines
+                ctx.strokeStyle = 'rgba(80,80,70,0.6)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(wx + 14, GROUND_Y - 52); ctx.lineTo(wx + 24, GROUND_Y - 32); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(wx + 22, GROUND_Y - 52); ctx.lineTo(wx + 18, GROUND_Y - 32); ctx.stroke();
+                // flat tyre silhouettes
+                ctx.fillStyle = '#111';
+                ctx.beginPath(); ctx.arc(wx + 12, GROUND_Y, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(wx + 58, GROUND_Y, 10, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // ── Oil slicks near gaps / pit edges ─────────────────────────────
+            const slicks = [530, 2330, 5750, 9200];
+            for (const slx of slicks) {
+                const shimmer = 0.12 + Math.sin(st * 1.8 + slx) * 0.06;
+                ctx.save();
+                ctx.globalAlpha = shimmer;
+                const sg = ctx.createLinearGradient(slx - 40, GROUND_Y, slx + 60, GROUND_Y + 8);
+                sg.addColorStop(0, '#400080'); sg.addColorStop(0.4, '#00c080'); sg.addColorStop(1, '#804000');
+                ctx.fillStyle = sg;
+                ctx.beginPath(); ctx.ellipse(slx + 10, GROUND_Y + 3, 55, 6, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+
+            // ── Toxic waste barrels (badlands: x 9500+) ──────────────────────
+            const toxicX = [9800, 10500, 11800, 12600, 13400, 14600];
+            for (const tx of toxicX) {
+                ctx.fillStyle = '#1a2a10';
+                ctx.fillRect(tx, GROUND_Y - 36, 28, 36);
+                ctx.fillRect(tx - 2, GROUND_Y - 40, 32, 6);
+                ctx.fillRect(tx - 2, GROUND_Y - 20, 32, 5);
+                // biohazard glow
+                const glow = 0.18 + Math.sin(st * 2 + tx * 0.05) * 0.1;
+                ctx.save();
+                ctx.globalAlpha = glow;
+                ctx.fillStyle = '#60ff00';
+                ctx.beginPath(); ctx.arc(tx + 14, GROUND_Y - 18, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                // ☢ label
+                ctx.fillStyle = 'rgba(100,255,0,0.5)'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('☢', tx + 14, GROUND_Y - 14);
+            }
+
+            // ── Smoke stacks ─────────────────────────────────────────────────
+            const stacks = [1800, 5600, 8800, 12000];
+            for (const sx of stacks) {
+                ctx.fillStyle = '#181818';
+                ctx.fillRect(sx - 10, GROUND_Y - 240, 20, 240);
+                ctx.fillStyle = '#141414';
+                ctx.fillRect(sx - 14, GROUND_Y - 255, 28, 20);
+                for (let p = 0; p < 5; p++) {
+                    const py = GROUND_Y - 260 - ((st * 28 + p * 20) % 90);
+                    const pr = 9 + p * 4;
+                    ctx.globalAlpha = Math.max(0, 0.28 - p * 0.05);
+                    ctx.fillStyle = '#333';
+                    ctx.beginPath(); ctx.arc(sx + Math.sin(st * 0.8 + p) * 8, py, pr, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // ── Oil drums ────────────────────────────────────────────────────
             const drumX = [540, 2350, 5700, 9150];
             for (const ox of drumX) {
                 ctx.fillStyle = '#1a1a10';
                 ctx.beginPath(); ctx.arc(ox, GROUND_Y - 18, 16, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#ffaa00';
+                ctx.fillStyle = '#c08000';
                 ctx.beginPath(); ctx.arc(ox, GROUND_Y - 18, 6, 0, Math.PI * 2); ctx.fill();
             }
-            // smoke stacks
-            const stacks = [1800, 5600, 8800, 12000];
-            const st = Date.now() * 0.001;
-            for (const sx of stacks) {
-                ctx.fillStyle = '#181818';
-                ctx.fillRect(sx - 10, GROUND_Y - 220, 20, 220);
-                ctx.fillStyle = '#141414';
-                ctx.fillRect(sx - 14, GROUND_Y - 235, 28, 20);
-                // animated smoke puffs
-                for (let p = 0; p < 4; p++) {
-                    const py = GROUND_Y - 240 - ((st * 30 + p * 18) % 80);
-                    const pr = 8 + p * 3;
-                    const pa = 0.3 - p * 0.06;
-                    ctx.globalAlpha = pa;
-                    ctx.fillStyle = '#404040';
-                    ctx.beginPath(); ctx.arc(sx + Math.sin(st + p) * 6, py, pr, 0, Math.PI * 2); ctx.fill();
-                }
-                ctx.globalAlpha = 1;
-            }
-            // broken fences
+
+            // ── Chain-link fences (replaced broken wood fences) ───────────────
             const fenceX = [700, 2100, 3800, 6500, 9600, 11000];
-            ctx.fillStyle = '#2a1a0a';
             for (const fx of fenceX) {
-                for (let fp = 0; fp < 5; fp++) {
-                    const skip = fp === 2;  // missing plank for that ruined look
-                    if (skip) continue;
-                    ctx.fillRect(fx + fp * 22, GROUND_Y - 48, 10, 48);
+                // posts
+                ctx.fillStyle = '#303030';
+                ctx.fillRect(fx, GROUND_Y - 55, 4, 55);
+                ctx.fillRect(fx + 108, GROUND_Y - 55, 4, 55);
+                // top rail
+                ctx.fillStyle = '#282828'; ctx.fillRect(fx, GROUND_Y - 55, 112, 4);
+                // chain-link diamond pattern
+                ctx.strokeStyle = 'rgba(100,100,80,0.55)'; ctx.lineWidth = 1;
+                for (let fi = 0; fi < 7; fi++) {
+                    const fxi = fx + fi * 16;
+                    ctx.beginPath();
+                    ctx.moveTo(fxi, GROUND_Y - 55);
+                    ctx.lineTo(fxi + 8, GROUND_Y - 35);
+                    ctx.lineTo(fxi, GROUND_Y - 15);
+                    ctx.moveTo(fxi + 8, GROUND_Y - 55);
+                    ctx.lineTo(fxi, GROUND_Y - 35);
+                    ctx.lineTo(fxi + 8, GROUND_Y - 15);
+                    ctx.stroke();
                 }
-                ctx.fillRect(fx, GROUND_Y - 38, 110, 5);
-                ctx.fillRect(fx, GROUND_Y - 20, 110, 5);
+                // barbed wire on top
+                ctx.strokeStyle = 'rgba(140,120,80,0.7)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(fx, GROUND_Y - 58); ctx.lineTo(fx + 112, GROUND_Y - 58); ctx.stroke();
+            }
+
+            // ── Wall graffiti on building facades ────────────────────────────
+            const tags = [
+                { x: 200,  color: '#e03060', text: 'LEXCORP LIES' },
+                { x: 1260, color: '#30a0e0', text: 'NO WAY OUT'   },
+                { x: 2950, color: '#e08020', text: 'DANGER'       },
+                { x: 5000, color: '#40d060', text: '⚠ RESTRICTED' },
+                { x: 7450, color: '#c020c0', text: 'ABANDON HOPE' },
+                { x: 10300,color: '#e04020', text: 'LEXCORP ZONE' },
+                { x: 12850,color: '#20c0a0', text: 'RUN'          },
+            ];
+            for (const tag of tags) {
+                ctx.save();
+                ctx.globalAlpha = 0.55;
+                ctx.fillStyle = tag.color;
+                ctx.font = 'bold italic 14px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(tag.text, tag.x, GROUND_Y - 55);
+                ctx.restore();
+            }
+
+            // ── Ground-level fire pits (badlands) ────────────────────────────
+            const fires = [9700, 11200, 12800, 14300, 15800];
+            for (const fix of fires) {
+                // embers
+                const flicker = 0.6 + Math.sin(st * 6 + fix) * 0.4;
+                ctx.save();
+                ctx.globalAlpha = 0.7 * flicker;
+                const fg = ctx.createRadialGradient(fix, GROUND_Y - 12, 2, fix, GROUND_Y - 12, 30);
+                fg.addColorStop(0, '#ffee80');
+                fg.addColorStop(0.4, '#ff6010');
+                fg.addColorStop(1, 'rgba(200,30,0,0)');
+                ctx.fillStyle = fg;
+                ctx.beginPath(); ctx.arc(fix, GROUND_Y - 12, 30, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+                // debris ring
+                ctx.fillStyle = '#1a1410';
+                ctx.fillRect(fix - 18, GROUND_Y - 4, 36, 4);
             }
         }
 
