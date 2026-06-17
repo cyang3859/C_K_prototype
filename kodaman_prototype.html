@@ -140,7 +140,7 @@
             . Punch &nbsp; , Laser &nbsp; ' Freeze &nbsp; R: land Hound
             <div class="grp">M: map &nbsp; N: case file &nbsp; T: P1/P2 &nbsp; H: hide panel &nbsp; F1: help</div>
         </div>
-        <div id="ctrlHint" style="display:none;">H: show controls</div>
+        <div id="ctrlHint" style="display:none;"></div>
     </div>
 
     <script>
@@ -231,9 +231,23 @@
 
         // Solid rooftops — only the Weekly Planet roof remains as a real landing surface.
         // All floating mid-air ledges have been removed; the hero uses flight to traverse.
-        const platforms = [
-            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },   // Weekly Planet roof
+        const L1_PLATFORMS = [
+            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },
         ];
+        // Level 2 rooftops derived from tall l2Buildings below
+        const L2_PLATFORMS = [
+            { x: 4800,  y: 680, w: 180, h: 16 },   // LEXCORP DEPOT A
+            { x: 6200,  y: 660, w: 160, h: 16 },   // REFINERY BLOCK 3
+            { x: 8600,  y: 620, w: 170, h: 16 },   // FUEL STORAGE
+            { x: 10200, y: 650, w: 150, h: 16 },   // BLACKSITE EAST
+            { x: 12800, y: 700, w: 165, h: 16 },   // STRIPPED PARTS
+            { x: 15500, y: 580, w: 200, h: 16 },   // LEXCORP CENTRAL (tallest)
+            // mid-height ledges for grapple traversal
+            { x: 2900,  y: 740, w: 160, h: 12 },
+            { x: 7400,  y: 760, w: 140, h: 12 },
+            { x: 1200,  y: 760, w: 155, h: 12 },
+        ];
+        let platforms = [...L1_PLATFORMS];
 
         // Power orbs.
         const orbs = [
@@ -638,6 +652,41 @@
         let caseFileOpen = false;   // N: review all case-file clues found so far
         let grabbedEnemy = null;   // enemy currently held by the hero
 
+        // ---------- FACTORY INTERIOR (Level 2 final clue) ----------
+        const FACTORY = { w: 5200, floorY: 840, ceilingY: 60 };
+        const FACTORY_PLATFORMS = [
+            // Level 1 catwalks y=620
+            { x: 100,  y: 620, w: 380, h: 12 }, { x: 600,  y: 620, w: 360, h: 12 },
+            { x: 1100, y: 620, w: 370, h: 12 }, { x: 1620, y: 620, w: 360, h: 12 },
+            { x: 2150, y: 620, w: 380, h: 12 }, { x: 2700, y: 620, w: 360, h: 12 },
+            { x: 3250, y: 620, w: 370, h: 12 }, { x: 3800, y: 620, w: 350, h: 12 },
+            // Level 2 catwalks y=400
+            { x: 200,  y: 400, w: 350, h: 12 }, { x: 780,  y: 400, w: 360, h: 12 },
+            { x: 1400, y: 400, w: 355, h: 12 }, { x: 2050, y: 400, w: 350, h: 12 },
+            { x: 2750, y: 400, w: 360, h: 12 }, { x: 3450, y: 400, w: 355, h: 12 },
+            { x: 4100, y: 400, w: 350, h: 12 },
+            // Level 3 upper gantry y=200
+            { x: 300,  y: 200, w: 380, h: 12 }, { x: 950,  y: 200, w: 360, h: 12 },
+            { x: 1650, y: 200, w: 370, h: 12 }, { x: 2350, y: 200, w: 360, h: 12 },
+            { x: 3000, y: 200, w: 380, h: 12 }, { x: 3700, y: 200, w: 355, h: 12 },
+            { x: 4350, y: 200, w: 360, h: 12 },
+        ];
+        let factoryScene = null;
+        let factoryPhase = 'idle';
+        let factoryIntroStep = 0;
+        let factoryIntroTimer = 0;
+        let lexEscaped = false;
+        let factoryEntryUnlocked = false;
+
+        const powerGirl = {
+            x: 4800, y: FACTORY.floorY, vx: 0, vy: 0, w: 36, h: 74,
+            facing: -1, onGround: true, flightActive: false,
+            phase: 0, active: false, captured: true,
+            hp: 20, maxHp: 20,
+            _attackCD: 0, _targetEnemy: null,
+            _punchTimer: 0, _kickTimer: 0, fightMode: false
+        };
+
         // ---------- DINING INTERIORS (diners & shops) ----------
         // A small shared room template, reskinned per building type. Holds a
         // reference to the actual building so eatCooldown stays per-building.
@@ -701,6 +750,231 @@
         function updateDiningScene() {
             clampToDining(hero);
             clampToDining(hound);
+        }
+
+        // ── Factory enter / exit ─────────────────────────────────────────
+        function enterFactory() {
+            factoryScene = {
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy,
+                    hf: hero.facing, hfly: hero.flightActive,
+                    dx: hound.x, dy: hound.y, dvx: hound.vx, dvy: hound.vy, df: hound.facing
+                }
+            };
+            hero.x = 120; hero.y = FACTORY.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 200; hound.y = FACTORY.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            scene = 'factory';
+            factoryPhase = 'intro'; factoryIntroStep = 0; factoryIntroTimer = 220;
+            lexEscaped = false;
+            platforms.splice(0, platforms.length, ...FACTORY_PLATFORMS);
+            camera.x = 0; camera.y = Math.max(0, FACTORY.floorY + 80 - H);
+            darkWing.x = 70; darkWing._targetX = 70;
+            darkWing.y = FACTORY.floorY; darkWing._onGround = true; darkWing.vy = 0;
+            darkWing._swinging = false; darkWing._gliding = false;
+            // reset Power Girl to captured state at far end
+            powerGirl.x = 4800; powerGirl.y = FACTORY.floorY;
+            powerGirl.active = false; powerGirl.captured = true;
+            powerGirl.hp = 20; powerGirl.vx = 0; powerGirl.vy = 0;
+            titleCard = { text: 'LEXCORP CENTRAL — RESTRICTED', sub: 'Entering the heart of LexCorp…', timer: 200 };
+        }
+
+        function exitFactory() {
+            if (!factoryScene) return;
+            const s = factoryScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = 0; hero.vy = 0;
+            hero.facing = s.hf; hero.flightActive = false; hero.onGround = true;
+            hound.x = s.dx; hound.y = s.dy; hound.vx = 0; hound.vy = 0;
+            hound.facing = s.df; hound.flightActive = false; hound.onGround = true;
+            scene = 'city';
+            platforms.splice(0, platforms.length, ...L2_PLATFORMS);
+            factoryScene = null; factoryPhase = 'idle';
+            darkWing.fightMode = false; darkWing.zoneCombat = false;
+            titleCard = { text: 'MISSION COMPLETE', sub: 'Power Girl is free. The Badlands belong to you now.', timer: 240 };
+            setTimeout(() => startLevel3(), 5000);
+        }
+
+        // ── Factory update ───────────────────────────────────────────────
+        function updateFactory() {
+            // Intro sequence — Lex dialogue cards
+            if (factoryPhase === 'intro') {
+                factoryIntroTimer--;
+                if (factoryIntroTimer <= 0) {
+                    factoryIntroStep++;
+                    factoryIntroTimer = 210;
+                    if (factoryIntroStep === 1) {
+                        titleCard = { text: 'LEX LUTHOR', sub: '"Did you really think you\'d stop me? I\'ve been ten steps ahead from the start."', timer: 210 };
+                    } else if (factoryIntroStep === 2) {
+                        titleCard = { text: 'LEX LUTHOR', sub: '"I have someone here you might recognize… Power Girl. She\'s been waiting for you."', timer: 210 };
+                    } else if (factoryIntroStep === 3) {
+                        titleCard = { text: 'LEX LUTHOR', sub: '"My men will handle you both. Enjoy your little reunion." *releases henchmen*', timer: 210 };
+                    } else if (factoryIntroStep >= 4) {
+                        spawnFactoryHenchmen();
+                        factoryPhase = 'battle';
+                        darkWing.fightMode = true;
+                        darkWing._gadgetCD = 0; darkWing._dodgeTimer = 0; darkWing._blockTimer = 0;
+                        titleCard = { text: '30 HENCHMEN', sub: 'Defeat all of Lex\'s forces. Dark Wing has your back.', timer: 240 };
+                    }
+                }
+            }
+
+            // Battle — detect all henchmen defeated
+            if (factoryPhase === 'battle') {
+                const alive = enemies.filter(e => e.alive).length;
+                if (alive === 0 && !lexEscaped) {
+                    lexEscaped = true;
+                    factoryPhase = 'escape';
+                    titleCard = { text: 'LEX ESCAPES', sub: '"You won the battle… but not the war." The helicopter lifts off into the night.', timer: 280 };
+                    setTimeout(function() { freePowerGirl(); factoryPhase = 'rescued'; }, 3500);
+                }
+            }
+
+            if (factoryPhase === 'rescued') {
+                updatePowerGirl();
+            }
+
+            // Clamp hero to factory
+            if (hero.x < 0) { hero.x = 0; if (hero.vx < 0) hero.vx = 0; }
+            if (hero.x + hero.w > FACTORY.w) { hero.x = FACTORY.w - hero.w; if (hero.vx > 0) hero.vx = 0; }
+            if (hero.y < FACTORY.ceilingY) { hero.y = FACTORY.ceilingY; if (hero.vy < 0) hero.vy = 0; }
+            if (hero.y + hero.h > FACTORY.floorY) { hero.y = FACTORY.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+            // Clamp hound
+            if (hound.x < 0) { hound.x = 0; if (hound.vx < 0) hound.vx = 0; }
+            if (hound.x + hound.w > FACTORY.w) { hound.x = FACTORY.w - hound.w; if (hound.vx > 0) hound.vx = 0; }
+            if (hound.y + hound.h > FACTORY.floorY) { hound.y = FACTORY.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+
+        } // updateCamera() handles factory camera each frame
+
+        // ── Factory henchmen spawn ───────────────────────────────────────
+        function spawnFactoryHenchmen() {
+            enemies.splice(0);
+            // 10 brutes on the floor
+            for (let i = 0; i < 10; i++) {
+                const ex = 280 + i * 440 + Math.random() * 100;
+                enemies.push({
+                    x: ex, y: FACTORY.floorY - 56,
+                    w: 52, h: 56, vx: (Math.random() < 0.5 ? -1 : 1) * 1.4, vy: 0,
+                    minX: ex - 180, maxX: ex + 180,
+                    alive: true, hp: 4, maxHp: 4, frozen: 0,
+                    type: 'brute', dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'factory'
+                });
+            }
+            // 10 genius on Level 1 catwalks
+            for (let i = 0; i < 10; i++) {
+                const plat = FACTORY_PLATFORMS[i % 8];
+                const ex = plat.x + 30 + Math.random() * (plat.w - 60);
+                enemies.push({
+                    x: ex, y: plat.y - 50,
+                    w: 38, h: 50, vx: (Math.random() < 0.5 ? -1 : 1) * 1.3, vy: 0,
+                    minX: plat.x + 10, maxX: plat.x + plat.w - 10,
+                    alive: true, hp: 3, maxHp: 3, frozen: 0,
+                    type: 'genius', dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'factory'
+                });
+            }
+            // 10 energy floating at upper levels
+            for (let i = 0; i < 10; i++) {
+                const ex = 350 + i * 460 + Math.random() * 80;
+                const ey = 180 + Math.random() * 320;
+                enemies.push({
+                    x: ex, y: ey, w: 44, h: 44,
+                    vx: (Math.random() < 0.5 ? -1 : 1) * 1.6,
+                    vy: (Math.random() < 0.5 ? -0.7 : 0.7),
+                    minX: ex - 140, maxX: ex + 140,
+                    minY: ey - 130, maxY: ey + 130,
+                    alive: true, hp: 3, maxHp: 3, frozen: 0,
+                    type: 'energy', dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'factory'
+                });
+            }
+        }
+
+        function freePowerGirl() {
+            powerGirl.captured = false;
+            powerGirl.active = true;
+            powerGirl.fightMode = false;
+            powerGirl.x = 4780; powerGirl.y = FACTORY.floorY - powerGirl.h;
+            titleCard = { text: 'POWER GIRL FREED!', sub: 'She\'s joining the fight! Level 2 is yours to explore.', timer: 360 };
+        }
+
+        // ── Power Girl combat AI ─────────────────────────────────────────
+        function updatePowerGirl() {
+            if (!powerGirl.active || powerGirl.captured) return;
+            powerGirl.phase += 0.06;
+            if (powerGirl._attackCD > 0) powerGirl._attackCD--;
+            if (powerGirl._punchTimer > 0) powerGirl._punchTimer--;
+            if (powerGirl._kickTimer  > 0) powerGirl._kickTimer--;
+
+            // Gravity
+            if (!powerGirl.flightActive) {
+                powerGirl.vy = Math.min(powerGirl.vy + 0.5, 14);
+            }
+
+            // Target closest alive enemy
+            let closest = null, closestDist = Infinity;
+            for (const en of enemies) {
+                if (!en.alive) continue;
+                const d = Math.hypot(en.x - powerGirl.x, en.y - powerGirl.y);
+                if (d < closestDist) { closestDist = d; closest = en; }
+            }
+            powerGirl._targetEnemy = closest;
+
+            if (closest) {
+                powerGirl.fightMode = true;
+                const dx = (closest.x + closest.w / 2) - (powerGirl.x + powerGirl.w / 2);
+                const dy = (closest.y + closest.h / 2) - (powerGirl.y + powerGirl.h / 2);
+                const dist = Math.hypot(dx, dy);
+                powerGirl.facing = dx > 0 ? 1 : -1;
+
+                // Fly up to reach aerial enemies
+                if (closest.y < powerGirl.y - 120) {
+                    powerGirl.flightActive = true;
+                    powerGirl.vy = Math.max(powerGirl.vy - 0.8, -4);
+                } else if (powerGirl.onGround) {
+                    powerGirl.flightActive = false;
+                }
+
+                // Chase horizontally
+                if (dist > 70) powerGirl.vx = Math.sign(dx) * 2.8;
+                else powerGirl.vx *= 0.7;
+
+                // Melee
+                if (dist < 90 && powerGirl._attackCD <= 0) {
+                    tryHitEnemy(closest, 2, 7, 'punch', powerGirl);
+                    powerGirl._attackCD = 45;
+                    powerGirl._punchTimer = 18;
+                }
+            } else {
+                powerGirl.fightMode = false;
+                powerGirl.flightActive = false;
+                powerGirl.vx *= 0.85;
+                powerGirl.vy = Math.min(powerGirl.vy + 0.5, 14);
+            }
+
+            powerGirl.x += powerGirl.vx;
+            powerGirl.y += powerGirl.vy;
+
+            // Landing on floor
+            const flr = scene === 'factory' ? FACTORY.floorY : GROUND_Y;
+            if (powerGirl.y + powerGirl.h >= flr) {
+                powerGirl.y = flr - powerGirl.h; powerGirl.vy = 0;
+                powerGirl.onGround = true; powerGirl.flightActive = false;
+            } else {
+                powerGirl.onGround = false;
+            }
+            // Landing on platforms
+            for (const p of platforms) {
+                if (powerGirl.vy >= 0 &&
+                    powerGirl.x + powerGirl.w > p.x && powerGirl.x < p.x + p.w) {
+                    const prevBottom = powerGirl.y + powerGirl.h - powerGirl.vy;
+                    if (prevBottom <= p.y + 6 && powerGirl.y + powerGirl.h >= p.y) {
+                        powerGirl.y = p.y - powerGirl.h; powerGirl.vy = 0;
+                        powerGirl.onGround = true; break;
+                    }
+                }
+            }
+            // Clamp
+            const maxX = scene === 'factory' ? FACTORY.w - powerGirl.w : WORLD_WIDTH - powerGirl.w;
+            powerGirl.x = Math.max(0, Math.min(powerGirl.x, maxX));
         }
 
         function drawDiningScene() {
@@ -1151,7 +1425,7 @@
                 jumpHeldPrev: false,
                 landHeldPrev: false,
                 forceLand: false,
-                punchCD: 0, laserCD: 0, freezeCD: 0,
+                punchCD: 0, laserCD: 0, freezeCD: 0, _laserTarget: null,
                 punchTimer: 0, laserTimer: 0, freezeTimer: 0,
                 capePhase: 0,        // animates the cape
                 hitTimer: 0,         // invincibility frames after taking a hit
@@ -1294,15 +1568,31 @@
             }
             // ---- front-end screens intercept input ----
             if (gameScreen === 'title') {
-                if (e.code === 'Digit1' || e.code === 'ArrowLeft')  { titleSelectedLevel = 1; e.preventDefault(); }
-                if (e.code === 'Digit2' || e.code === 'ArrowRight') { titleSelectedLevel = 2; e.preventDefault(); }
+                if (e.code === 'Digit1') { titleSelectedLevel = 1; e.preventDefault(); }
+                if (e.code === 'Digit2') { titleSelectedLevel = 2; e.preventDefault(); }
+                if (e.code === 'Digit3') { titleSelectedLevel = 3; e.preventDefault(); }
+                if (e.code === 'ArrowLeft') {
+                    if (titleSelectedLevel === 3) {
+                        const order = ['darkwing','powergirl','both'];
+                        l3Companion = order[(order.indexOf(l3Companion) + 2) % 3];
+                    } else titleSelectedLevel = Math.max(1, titleSelectedLevel - 1);
+                    e.preventDefault();
+                }
+                if (e.code === 'ArrowRight') {
+                    if (titleSelectedLevel === 3) {
+                        const order = ['darkwing','powergirl','both'];
+                        l3Companion = order[(order.indexOf(l3Companion) + 1) % 3];
+                    } else titleSelectedLevel = Math.min(3, titleSelectedLevel + 1);
+                    e.preventDefault();
+                }
                 if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
                 return;
             }
             if (gameScreen === 'howto') {
                 if (e.code === 'Enter' || e.code === 'Space') {
                     gameScreen = 'playing'; startMusic();
-                    if (titleSelectedLevel === 2) startLevel2();
+                    if (titleSelectedLevel === 3) startLevel3();
+                    else if (titleSelectedLevel === 2) startLevel2();
                     e.preventDefault();
                 }
                 return;
@@ -1334,6 +1624,21 @@
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
             // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
             if (e.code === 'Enter' && enterCooldown <= 0) {
+                if (scene === 'city' && factoryEntryUnlocked) {
+                    const FACTORY_DOOR_X = 15580;
+                    if (Math.abs((hero.x + hero.w / 2) - FACTORY_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                        enterFactory(); e.preventDefault();
+                    }
+                }
+                if (scene === 'city' && templeEntryUnlocked) {
+                    const TEMPLE_DOOR_X = 14810;
+                    if (Math.abs((hero.x + hero.w / 2) - TEMPLE_DOOR_X) < 120 && (hero.y + hero.h) >= L3_GROUND_Y - 50) {
+                        enterTemple(); e.preventDefault();
+                    }
+                }
+                if (scene === 'temple' && templePhase === 'victory') {
+                    if (enterCooldown <= 0) { exitTemple(); e.preventDefault(); }
+                }
                 if (scene === 'city') {
                     let handled = false;
                     for (const b of rescueBuildings) {
@@ -1472,7 +1777,6 @@
             if (e.code === 'KeyH') {
                 controlsVisible = !controlsVisible;
                 document.getElementById('controls').classList.toggle('hidden', !controlsVisible);
-                document.getElementById('ctrlHint').style.display = controlsVisible ? 'none' : 'block';
             }
             // prevent page scroll on arrows/space
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -1485,13 +1789,29 @@
                 const rect = canvas.getBoundingClientRect();
                 const mx = (ev.clientX - rect.left) * (W / rect.width);
                 const my = (ev.clientY - rect.top) * (H / rect.height);
-                const btn1x = W / 2 - 160, btn2x = W / 2 + 20, btnY = H * 0.72, btnW = 140, btnH = 52;
-                if (mx >= btn1x && mx <= btn1x + btnW && my >= btnY && my <= btnY + btnH) { titleSelectedLevel = 1; gameScreen = 'howto'; }
-                else if (mx >= btn2x && mx <= btn2x + btnW && my >= btnY && my <= btnY + btnH) { titleSelectedLevel = 2; gameScreen = 'howto'; }
-                else gameScreen = 'howto';
+                const btnW2 = 130, btnH2 = 50, btnGap2 = 16;
+                const totalW2 = btnW2 * 3 + btnGap2 * 2;
+                const btn1x2 = W/2 - totalW2/2, btn2x2 = btn1x2 + btnW2 + btnGap2, btn3x2 = btn2x2 + btnW2 + btnGap2;
+                const btnY2 = H * 0.61;
+                if (mx >= btn1x2 && mx <= btn1x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 1; gameScreen = 'howto'; }
+                else if (mx >= btn2x2 && mx <= btn2x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 2; gameScreen = 'howto'; }
+                else if (mx >= btn3x2 && mx <= btn3x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 3; gameScreen = 'howto'; }
+                else if (titleSelectedLevel === 3) {
+                    // companion picker click
+                    const cpBtnW2 = 150, cpBtnH2 = 44, cpGap2 = 12;
+                    const cpTotal2 = cpBtnW2 * 3 + cpGap2 * 2;
+                    const cp1x2 = W/2 - cpTotal2/2, cp2x2 = cp1x2 + cpBtnW2 + cpGap2, cp3x2 = cp2x2 + cpBtnW2 + cpGap2;
+                    const cpBtnY2 = btnY2 + btnH2 + 26;
+                    if (my >= cpBtnY2 && my <= cpBtnY2 + cpBtnH2) {
+                        if (mx >= cp1x2 && mx <= cp1x2 + cpBtnW2) l3Companion = 'darkwing';
+                        else if (mx >= cp2x2 && mx <= cp2x2 + cpBtnW2) l3Companion = 'powergirl';
+                        else if (mx >= cp3x2 && mx <= cp3x2 + cpBtnW2) l3Companion = 'both';
+                    } else gameScreen = 'howto';
+                } else gameScreen = 'howto';
             } else if (gameScreen === 'howto') {
                 gameScreen = 'playing'; startMusic();
-                if (titleSelectedLevel === 2) startLevel2();
+                if (titleSelectedLevel === 3) startLevel3();
+                else if (titleSelectedLevel === 2) startLevel2();
             }
         });
 
@@ -1738,38 +2058,59 @@
             e.laserTimer = LASER_EFFECT;
             e.lunge = -1.5 * e.facing;
             const dir = e.facing;
-            const srcX = e.x + e.w * 0.5;
-            const beamY = e.y + e.h * 0.05;
-            const beamH = e.h * 0.50;
+            const srcX  = e.x + e.w * 0.5;
+            const srcY  = e.y + e.h * 0.35;   // eye-level origin
 
-            // Find the CLOSEST enemy along the beam and stop there
-            let stopX = dir === 1 ? WORLD_WIDTH : 0;
+            // ── Maintain existing lock if target still alive and in front ──
             let hitEn = null;
-            for (const en of enemies) {
-                if (!en.alive) continue;
-                if (en.y + en.h <= beamY || en.y >= beamY + beamH) continue;  // vertical miss
-                const enEdge = dir === 1 ? en.x : en.x + en.w;             // near edge
-                const inFront = dir === 1 ? enEdge > srcX : enEdge < srcX;
-                if (!inFront) continue;
-                const closer = dir === 1 ? enEdge < stopX : enEdge > stopX;
-                if (closer) { stopX = enEdge; hitEn = en; }
-            }
-            if (hitEn) {
-                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
-                // If the hit killed the enemy, don't visually stop the beam there —
-                // let it pierce through to full length
-                if (!hitEn.alive) { stopX = dir === 1 ? WORLD_WIDTH : 0; hitEn = null; }
+            if (e._laserTarget && e._laserTarget.alive) {
+                const ltMid = e._laserTarget.x + e._laserTarget.w / 2;
+                if (dir === 1 ? ltMid > srcX : ltMid < srcX) {
+                    hitEn = e._laserTarget;
+                } else {
+                    e._laserTarget = null;
+                }
             }
 
-            // Emitters + hazard towers also block/take beam damage
-            const emBox = dir === 1
-                ? { x: srcX, y: beamY, w: stopX - srcX, h: beamH }
-                : { x: stopX, y: beamY, w: srcX - stopX, h: beamH };
+            // ── Acquire: closest alive enemy in facing direction (any Y) ──
+            if (!hitEn) {
+                let bestDist = Infinity;
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    const enMid = en.x + en.w / 2;
+                    if (dir === 1 ? enMid <= srcX : enMid >= srcX) continue;
+                    const d = Math.abs(enMid - srcX);
+                    if (d < bestDist) { bestDist = d; hitEn = en; }
+                }
+                if (hitEn) e._laserTarget = hitEn;
+            }
+
+            // ── Beam endpoint ─────────────────────────────────────────────
+            let stopX = dir === 1 ? srcX + 2200 : srcX - 2200;
+            let stopY  = srcY;
+            if (hitEn) {
+                stopX = hitEn.x + hitEn.w / 2;
+                stopY = hitEn.y + hitEn.h / 2;
+                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
+                if (!hitEn.alive) {
+                    stopX = dir === 1 ? srcX + 2200 : srcX - 2200;
+                    stopY  = srcY;
+                    hitEn  = null;
+                    e._laserTarget = null;
+                }
+            }
+
+            // Damage emitters along straight path
+            const minX = Math.min(srcX, stopX), maxX = Math.max(srcX, stopX);
+            const minY = Math.min(srcY, stopY) - 8, maxY = Math.max(srcY, stopY) + 8;
+            const emBox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
             damageEmitters(emBox, LASER_DMG);
             if (e === hero) damageHazards(emBox, 1);
 
-            e._laserStopX = stopX;    // used by draw to terminate the beam visually
-            e._laserHit = !!hitEn;  // flag: beam hit something real (not a kill)
+            e._laserStopX = stopX;
+            e._laserStopY = stopY;
+            e._laserSrcY  = srcY;
+            e._laserHit   = !!hitEn;
         }
         function doFreeze(e) {
             e.freezeTimer = FREEZE_EFFECT;
@@ -2050,7 +2391,7 @@
             else if (e.punchTimer > 0) e.punchTimer--;
 
             if (input.laser) { if (e.laserCD === 0) { doLaser(e); e.laserCD = LASER_CD; } e.laserTimer = LASER_EFFECT; }
-            else if (e.laserTimer > 0) e.laserTimer--;
+            else { if (e.laserTimer > 0) e.laserTimer--; e._laserTarget = null; }
 
             if (input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
@@ -2145,7 +2486,6 @@
                         tryHitEnemy(hTarget, 2, 10, 'punch', hound);
                         spawnImpact(hTarget.x + hTarget.w / 2, hTarget.y, 'punch', false);
                         hound._grabCooldown = 80;
-                        titleCard = { text: 'SCATTER!', sub: '', timer: 60 };
                     }
                 }
                 if ((hound._grabCooldown || 0) > 0) hound._grabCooldown--;
@@ -2454,7 +2794,10 @@
         // unless they're being carried or already rescued.
         function updateCivilians() {
             for (const c of civilians) {
-                if (c.rescued || c.carried) continue;
+                if (c.carried) continue;
+                if (c.rescued && !c.safeDropped) continue;
+                // safeDropped civs just stand still — no roaming logic needed
+                if (c.rescued && c.safeDropped) continue;
                 c.roamPhase = (c.roamPhase || 0) + 1;
 
                 // Idle pause: stand still briefly (natural behaviour)
@@ -2579,8 +2922,16 @@
             const ty = hero.y * 0.85 + hound.y * 0.15 + hero.h / 2;
             let dx = tx - W / 2;
             let dy = ty - H / 2;
-            dx = Math.max(0, Math.min(WORLD_WIDTH - W, dx));
-            dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
+            if (scene === 'factory') {
+                dx = Math.max(0, Math.min(FACTORY.w - W, dx));
+                dy = Math.max(0, Math.min(FACTORY.floorY + 80 - H, dy));
+            } else if (scene === 'temple') {
+                dx = Math.max(0, Math.min(TEMPLE_SCENE.w - W, dx));
+                dy = Math.max(0, Math.min(TEMPLE_SCENE.floorY + 80 - H, dy));
+            } else {
+                dx = Math.max(0, Math.min((currentLevel === 3 ? L3_WORLD_WIDTH : WORLD_WIDTH) - W, dx));
+                dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
+            }
             camera.x += (dx - camera.x) * 0.1;
             camera.y += (dy - camera.y) * 0.1;
         }
@@ -3063,25 +3414,52 @@
             const [mx, my] = e._fx.mouth;
             const [fx, fy] = e._fx.fist;
 
-            // LASER — beams terminate at first enemy hit, with impact burst
+            // LASER — lock-on tracking beam that follows target anywhere on screen
             if (e.laserTimer > 0) {
-                const defaultEnd = dir === 1 ? exA + 2200 : exA - 2200;
-                const end = (e._laserStopX !== undefined) ? e._laserStopX : defaultEnd;
-                const impY = (eyA + eyB) / 2;
+                const srcMidY = e._laserSrcY || (eyA + eyB) / 2;
+                const endX  = e._laserStopX !== undefined ? e._laserStopX : (dir === 1 ? exA + 2200 : exA - 2200);
+                const endY  = e._laserStopY !== undefined ? e._laserStopY : srcMidY;
+                // Beam goes from both eyes converging on the same target point
+                const impY = endY;
+
+                // Lock-on reticle
+                if (e._laserTarget && e._laserTarget.alive) {
+                    const lt = e._laserTarget;
+                    const rtX = lt.x + lt.w / 2, rtY = lt.y + lt.h / 2;
+                    const rtR = Math.max(lt.w, lt.h) * 0.65 + Math.sin(Date.now() * 0.012) * 3;
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255,60,20,0.9)'; ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 4]);
+                    ctx.beginPath(); ctx.arc(rtX, rtY, rtR, 0, Math.PI * 2); ctx.stroke();
+                    ctx.setLineDash([]);
+                    const bk = rtR * 0.38;
+                    for (const [cx2, cy2, sx2, sy2] of [
+                        [rtX - rtR, rtY - rtR, 1, 1],[rtX + rtR, rtY - rtR, -1, 1],
+                        [rtX - rtR, rtY + rtR, 1, -1],[rtX + rtR, rtY + rtR, -1, -1]
+                    ]) {
+                        ctx.beginPath(); ctx.moveTo(cx2 + sx2 * bk, cy2); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2, cy2 + sy2 * bk); ctx.stroke();
+                    }
+                    // Crosshair lines
+                    ctx.strokeStyle = 'rgba(255,80,40,0.5)'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(rtX - rtR * 1.3, rtY); ctx.lineTo(rtX + rtR * 1.3, rtY); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(rtX, rtY - rtR * 1.3); ctx.lineTo(rtX, rtY + rtR * 1.3); ctx.stroke();
+                    ctx.restore();
+                }
 
                 ctx.save();
-                // Beam body
-                ctx.shadowColor = '#ff4030'; ctx.shadowBlur = 16;
-                ctx.strokeStyle = 'rgba(255,80,60,0.9)'; ctx.lineWidth = 5;
-                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, eyA); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, eyB); ctx.stroke();
+                // Outer glow beam
+                ctx.shadowColor = '#ff4030'; ctx.shadowBlur = 18;
+                ctx.strokeStyle = 'rgba(255,80,60,0.85)'; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(endX, endY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(endX, endY); ctx.stroke();
                 ctx.shadowBlur = 0;
-                ctx.strokeStyle = 'rgba(255,235,210,0.95)'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, eyA); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, eyB); ctx.stroke();
-                // Eye glow origin
-                ctx.fillStyle = 'rgba(255,210,160,0.8)';
-                ctx.beginPath(); ctx.arc(exA + dir * 4, impY, 4, 0, Math.PI * 2); ctx.fill();
+                // Inner bright core
+                ctx.strokeStyle = 'rgba(255,240,220,0.95)'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(endX, endY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(endX, endY); ctx.stroke();
+                // Eye origin glow
+                ctx.fillStyle = 'rgba(255,210,160,0.85)';
+                ctx.beginPath(); ctx.arc(exA + dir * 4, srcMidY, 4, 0, Math.PI * 2); ctx.fill();
 
                 // Impact burst at the beam terminus (only when hitting an enemy)
                 if (e._laserHit) {
@@ -3629,7 +4007,7 @@
                     : k === 'laser' ? 'ZAPPED!'
                         : en.type === 'brute' ? 'ARGH!'
                             : en.type === 'genius' ? 'ERROR!'
-                                : en.type === 'energy' ? 'SCATTER!'
+                                : en.type === 'energy' ? 'FZZZT!'
                                     : en.type === 'robber' ? 'OOF!'
                                         : 'IMPACT!';
                 ctx.save();
@@ -4124,6 +4502,267 @@
                     ctx.fillRect(ti, -3, 16, 6);
                 }
                 ctx.restore();
+            }
+
+            else if (type === 'ruin') {
+                // ── JUNGLE RUIN: mossy stone block with vines and broken top ──
+                const rg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                rg.addColorStop(0, '#1a2a0e'); rg.addColorStop(1, '#0e1808');
+                ctx.fillStyle = rg; ctx.fillRect(x, top, w, h);
+                // Stone block seams
+                ctx.strokeStyle = '#0a1006'; ctx.lineWidth = 1.5;
+                for (let by = top + 32; by < GROUND_Y; by += 32) {
+                    ctx.beginPath(); ctx.moveTo(x, by); ctx.lineTo(x + w, by); ctx.stroke();
+                    const off = ((by - top) / 32 % 2) * 24;
+                    for (let bx = x + off; bx < x + w; bx += 48) {
+                        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, by + 32); ctx.stroke();
+                    }
+                }
+                // Moss patches
+                ctx.fillStyle = 'rgba(20,80,10,0.4)';
+                for (let mi = 0; mi < 4; mi++) {
+                    ctx.fillRect(x + (mi * 37) % (w - 20), top + 20 + mi * 45, 18 + mi * 6, 10);
+                }
+                // Vine strands
+                ctx.strokeStyle = 'rgba(30,100,10,0.7)'; ctx.lineWidth = 2;
+                for (let vi = 0; vi < 3; vi++) {
+                    const vx = x + 20 + vi * (w / 3);
+                    ctx.beginPath(); ctx.moveTo(vx, top);
+                    for (let vy = top; vy < GROUND_Y; vy += 20) {
+                        ctx.lineTo(vx + Math.sin(vy * 0.2 + vi) * 6, vy + 20);
+                    }
+                    ctx.stroke();
+                }
+                // Broken/jagged rooftop
+                ctx.fillStyle = '#0e1808';
+                ctx.beginPath(); ctx.moveTo(x, top);
+                for (let jx = x; jx < x + w; jx += 16) {
+                    ctx.lineTo(jx + 8, top - (Math.sin(jx * 0.4) > 0.3 ? 14 : 0));
+                    ctx.lineTo(jx + 16, top);
+                }
+                ctx.lineTo(x + w, top - 30); ctx.lineTo(x + w, top);
+                ctx.closePath(); ctx.fill();
+                // Rooftop landing surface highlight
+                ctx.fillStyle = '#2a4018';
+                ctx.fillRect(x, top - 2, w, 4);
+                // Name carving
+                ctx.fillStyle = '#ccaa44'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + 20);
+                // Arch doorway
+                ctx.fillStyle = '#061004';
+                const dw2 = 32, dh2 = 52;
+                ctx.fillRect(x + w / 2 - dw2 / 2, GROUND_Y - dh2, dw2, dh2);
+                ctx.beginPath(); ctx.arc(x + w / 2, GROUND_Y - dh2, dw2 / 2, Math.PI, 0); ctx.fill();
+            }
+            else if (type === 'temple') {
+                // ── ANCIENT TEMPLE: grand stone stepped pyramid face ──
+                const tg2 = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                tg2.addColorStop(0, '#2a1808'); tg2.addColorStop(1, '#160c04');
+                ctx.fillStyle = tg2; ctx.fillRect(x, top, w, h);
+                // Stepped sides
+                const steps = 4;
+                const stepH = h / (steps + 1);
+                for (let si = 0; si < steps; si++) {
+                    const inset = (si + 1) * 8;
+                    ctx.fillStyle = `rgba(0,0,0,${0.15 * (si + 1)})`;
+                    ctx.fillRect(x, top + si * stepH, w, stepH);
+                    // Step ledge highlight
+                    ctx.fillStyle = '#3a2010';
+                    ctx.fillRect(x - inset, top + (si + 1) * stepH - 4, w + inset * 2, 6);
+                }
+                // Stone seams
+                ctx.strokeStyle = '#100804'; ctx.lineWidth = 1;
+                for (let by = top + 20; by < GROUND_Y; by += 28) {
+                    ctx.beginPath(); ctx.moveTo(x, by); ctx.lineTo(x + w, by); ctx.stroke();
+                }
+                // Ares war rune carvings
+                ctx.fillStyle = '#cc2200'; ctx.font = '16px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('⚔', x + w / 2, top + 40);
+                ctx.fillText('⚔', x + w / 2, top + h / 2);
+                // Gold trim
+                ctx.fillStyle = '#886600';
+                ctx.fillRect(x, top, w, 5);
+                ctx.fillRect(x, top - 8, w, 10);  // parapet cap
+                // Rooftop landing highlight
+                ctx.fillStyle = '#4a3020';
+                ctx.fillRect(x - 4, top - 8, w + 8, 4);
+                // Torches at door
+                for (const tx2 of [x + 10, x + w - 18]) {
+                    const fl = 0.7 + Math.sin(Date.now() * 0.007 + tx2) * 0.3;
+                    ctx.fillStyle = '#ff8820'; ctx.globalAlpha = fl;
+                    ctx.beginPath(); ctx.arc(tx2, GROUND_Y - 60, 8, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = '#442200'; ctx.fillRect(tx2 - 3, GROUND_Y - 70, 6, 12);
+                }
+                // Grand door
+                ctx.fillStyle = '#080400';
+                ctx.fillRect(x + w / 2 - 20, GROUND_Y - 70, 40, 70);
+                ctx.beginPath(); ctx.arc(x + w / 2, GROUND_Y - 70, 20, Math.PI, 0); ctx.fill();
+                ctx.fillStyle = '#cc2200'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + h * 0.7);
+            }
+            else if (type === 'warehouse') {
+                // ── INDUSTRIAL WAREHOUSE: tall concrete block, LexCorp signage ──
+                // Main body — concrete slab
+                const wg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                wg.addColorStop(0, '#2a2a32');
+                wg.addColorStop(0.5, '#1e1e26');
+                wg.addColorStop(1, '#14141c');
+                ctx.fillStyle = wg;
+                ctx.fillRect(x, top, w, h);
+
+                // Horizontal panel seams every 60px
+                ctx.strokeStyle = '#0e0e14'; ctx.lineWidth = 2;
+                for (let sy = top + 60; sy < GROUND_Y - 10; sy += 60) {
+                    ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + w, sy); ctx.stroke();
+                }
+
+                // Vertical corner reinforcement columns
+                ctx.fillStyle = '#323240';
+                ctx.fillRect(x, top, 10, h);
+                ctx.fillRect(x + w - 10, top, 10, h);
+                ctx.fillRect(x + w / 2 - 5, top, 10, h);
+
+                // Corrugated metal shading strips
+                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                for (let ci = 0; ci < Math.floor(w / 14); ci++) {
+                    if (ci % 2 === 0) ctx.fillRect(x + ci * 14, top, 7, h);
+                }
+
+                // Grimy windows — narrow industrial slits
+                ctx.fillStyle = '#0a0e18';
+                const wRows = Math.max(2, Math.floor(h / 80));
+                const wCols = Math.max(2, Math.floor((w - 24) / 40));
+                for (let r = 0; r < wRows; r++) {
+                    for (let c = 0; c < wCols; c++) {
+                        const wx2 = x + 12 + c * Math.floor((w - 24) / wCols);
+                        const wy2 = top + 28 + r * 70;
+                        ctx.fillRect(wx2, wy2, 20, 32);
+                        // occasional dim orange glow inside
+                        if ((c + r) % 3 === 0) {
+                            ctx.fillStyle = 'rgba(200,80,10,0.12)';
+                            ctx.fillRect(wx2 + 2, wy2 + 2, 16, 28);
+                            ctx.fillStyle = '#0a0e18';
+                        }
+                        // window bars
+                        ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.moveTo(wx2 + 10, wy2); ctx.lineTo(wx2 + 10, wy2 + 32); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(wx2, wy2 + 16); ctx.lineTo(wx2 + 20, wy2 + 16); ctx.stroke();
+                    }
+                }
+
+                // LexCorp name plate + red "L" logo
+                const plateY = top + Math.floor(h * 0.55);
+                ctx.fillStyle = '#0a0008';
+                ctx.fillRect(x + 8, plateY, w - 16, 28);
+                // Red stripe accent
+                ctx.fillStyle = '#cc1111';
+                ctx.fillRect(x + 8, plateY, 4, 28);
+                ctx.fillStyle = '#cc2222';
+                ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2 + 4, plateY + 18);
+
+                // Rooftop parapet — raised edge so the flat top reads as a landing surface
+                ctx.fillStyle = '#3a3a48';
+                ctx.fillRect(x - 4, top - 10, w + 8, 12);          // parapet wall
+                ctx.fillStyle = '#4a4a58';
+                ctx.fillRect(x - 4, top - 10, w + 8, 3);           // top highlight
+                // Rooftop hazard stripes at parapet edge
+                ctx.fillStyle = '#cc2200';
+                for (let si = 0; si < Math.floor((w + 8) / 16); si++) {
+                    if (si % 2 === 0) ctx.fillRect(x - 4 + si * 16, top - 10, 8, 4);
+                }
+
+                // Rooftop vent stacks
+                const vents = [x + 20, x + w - 30, x + w / 2];
+                for (const vx of vents) {
+                    ctx.fillStyle = '#252530';
+                    ctx.fillRect(vx, top - 28, 14, 20);
+                    ctx.fillStyle = '#1a1a24';
+                    ctx.fillRect(vx - 4, top - 30, 22, 6);   // cap
+                    // smoke puff
+                    const sp = (Date.now() * 0.0004 + vx * 0.01) % 1;
+                    ctx.globalAlpha = (1 - sp) * 0.35;
+                    ctx.fillStyle = '#4a4a50';
+                    ctx.beginPath(); ctx.arc(vx + 7, top - 30 - sp * 40, 6 + sp * 8, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+
+                // Loading bay door at ground level
+                ctx.fillStyle = '#0e0e14';
+                ctx.fillRect(x + w / 2 - 22, GROUND_Y - 58, 44, 58);
+                ctx.strokeStyle = '#333340'; ctx.lineWidth = 2;
+                for (let gi = 0; gi < 4; gi++) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + w / 2 - 22, GROUND_Y - 58 + gi * 14);
+                    ctx.lineTo(x + w / 2 + 22, GROUND_Y - 58 + gi * 14);
+                    ctx.stroke();
+                }
+                // Door warning stripe
+                ctx.fillStyle = '#cc8800';
+                ctx.fillRect(x + w / 2 - 22, GROUND_Y - 60, 44, 4);
+            }
+            else if (type === 'pawnshop') {
+                // ── BADLANDS PAWNSHOP: squat brick front, barred windows, neon sign ──
+                const pg3 = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                pg3.addColorStop(0, '#2e2018');
+                pg3.addColorStop(1, '#1a1208');
+                ctx.fillStyle = pg3;
+                ctx.fillRect(x, top, w, h);
+
+                // Brick texture rows
+                ctx.strokeStyle = '#150e06'; ctx.lineWidth = 1;
+                for (let by2 = top + 8; by2 < GROUND_Y; by2 += 14) {
+                    ctx.beginPath(); ctx.moveTo(x, by2); ctx.lineTo(x + w, by2); ctx.stroke();
+                    const offset = ((by2 - top) / 14 % 2 === 0) ? 0 : 18;
+                    for (let bx2 = x + offset; bx2 < x + w; bx2 += 36) {
+                        ctx.beginPath(); ctx.moveTo(bx2, by2); ctx.lineTo(bx2, by2 + 14); ctx.stroke();
+                    }
+                }
+
+                // Barred windows
+                const numW = Math.max(1, Math.floor((w - 20) / 50));
+                for (let wi2 = 0; wi2 < numW; wi2++) {
+                    const bwx = x + 10 + wi2 * Math.floor((w - 20) / numW);
+                    const bwy = top + 24;
+                    ctx.fillStyle = '#080c14';
+                    ctx.fillRect(bwx, bwy, 34, 44);
+                    ctx.strokeStyle = '#666655'; ctx.lineWidth = 2;
+                    for (let bi2 = 0; bi2 < 4; bi2++) {
+                        ctx.beginPath(); ctx.moveTo(bwx + bi2 * 8 + 4, bwy); ctx.lineTo(bwx + bi2 * 8 + 4, bwy + 44); ctx.stroke();
+                    }
+                    ctx.beginPath(); ctx.moveTo(bwx, bwy + 22); ctx.lineTo(bwx + 34, bwy + 22); ctx.stroke();
+                }
+
+                // Rooftop parapet
+                ctx.fillStyle = '#3a2a18';
+                ctx.fillRect(x - 3, top - 8, w + 6, 10);
+                ctx.fillStyle = '#4a3a24';
+                ctx.fillRect(x - 3, top - 8, w + 6, 3);
+                // Battlements (crenellations)
+                for (let ci2 = 0; ci2 < Math.floor((w + 6) / 18); ci2++) {
+                    if (ci2 % 2 === 0) {
+                        ctx.fillStyle = '#3a2a18';
+                        ctx.fillRect(x - 3 + ci2 * 18, top - 18, 10, 10);
+                    }
+                }
+
+                // Neon sign — buzzing "PAWN" in sickly green
+                const neonOn = Math.sin(Date.now() * 0.008) > -0.9;
+                ctx.fillStyle = '#0a1a0a';
+                ctx.fillRect(x + 6, top + h * 0.5 - 4, w - 12, 22);
+                ctx.fillStyle = neonOn ? '#22ee44' : '#0a3a14';
+                ctx.shadowColor = neonOn ? '#22ee44' : 'transparent';
+                ctx.shadowBlur = neonOn ? 10 : 0;
+                ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + h * 0.5 + 12);
+                ctx.shadowBlur = 0;
+
+                // Door
+                ctx.fillStyle = '#0e0806';
+                ctx.fillRect(x + w / 2 - 16, GROUND_Y - 52, 32, 52);
+                ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x + w / 2, GROUND_Y - 52); ctx.lineTo(x + w / 2, GROUND_Y); ctx.stroke();
             }
 
             // Shared: "grab a bite" prompt for diners/shops when the hero is near
@@ -4742,7 +5381,19 @@
         // ---------- DRAW ----------
         function draw() {
             const frameNow = Date.now();
-            if (currentLevel === 2) drawGrungeCity(); else drawManhattan();
+            if (scene === 'factory') {
+                ctx.fillStyle = '#14141e';
+                ctx.fillRect(0, 0, W, H);
+            } else if (scene === 'temple') {
+                ctx.fillStyle = '#120a06';
+                ctx.fillRect(0, 0, W, H);
+            } else if (currentLevel === 3) {
+                drawJungle();
+            } else if (currentLevel === 2) {
+                drawGrungeCity();
+            } else {
+                drawManhattan();
+            }
 
             ctx.save();
             // screen shake offset (decays in updateHitFX)
@@ -4750,6 +5401,7 @@
             const shy = screenShake ? (Math.random() - 0.5) * screenShake : 0;
             ctx.translate(-camera.x + shx, -camera.y + shy);
 
+            if (scene !== 'factory' && scene !== 'temple') {
             // ground / street
             ctx.fillStyle = '#2c3340';
             let cursor = 0;
@@ -4976,7 +5628,22 @@
             const civFigH = 42 * civS + 1;
             const civTopY = GROUND_Y - civFigH;
             for (const c of civilians) {
-                if (c.rescued || c.carried) continue;
+                if (c.carried) continue;
+                if (c.rescued && !c.safeDropped) continue;
+                // safeDropped: draw with calm pose + green SAFE label
+                if (c.rescued && c.safeDropped) {
+                    const wavePhase = Math.sin(Date.now() * 0.006 + c.x) * 0.5;
+                    ctx.save();
+                    ctx.globalAlpha = 0.92;
+                    drawCivilianFigure(c, c.x + c.w / 2, civTopY, 1.05, wavePhase, false);
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#4cfc4c';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.fillText('✓ SAFE', c.x + c.w / 2, civTopY - 18);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                    continue;
+                }
                 const threat = c.threatLevel || 0;
                 // Cornered: rapid arm-wave; threatened: arm swing while fleeing; calm: relaxed
                 const walkPhase = threat === 2
@@ -5050,11 +5717,45 @@
                 }
             }
 
+            } // end if scene !== 'factory'/'temple' (ground/street block)
+
+            if (scene === 'factory') drawFactory();
+            if (scene === 'temple') drawTemple();
+
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
 
             // ---- Level 2 grunge set-pieces + Dark Wing NPC ----
-            if (currentLevel === 2) {
+            if (currentLevel === 3 && scene !== 'temple') {
+                // Level 3: draw Wonder Woman
+                drawWonderWomanAt(wonderWoman.x, wonderWoman.y);
+                // Draw companion allies if selected
+                if (darkWing._l3Active && darkWing.x > -100) {
+                    // Minimal DW draw for L3 (reuse silhouette style)
+                    const lx3 = darkWing.x, dy3 = darkWing.y, bob3 = Math.sin(darkWing.phase) * 1.2;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(20,20,50,0.85)';
+                    ctx.beginPath(); ctx.moveTo(lx3, dy3 - 62);
+                    ctx.lineTo(lx3 - darkWing.faceDir * 34, dy3 - 10);
+                    ctx.lineTo(lx3 - darkWing.faceDir * 12, dy3 - 28); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(lx3 - 11, dy3 - 62, 22, 34);
+                    ctx.fillRect(lx3 - 9, dy3 - 28, 8, 28); ctx.fillRect(lx3 + 1, dy3 - 28, 8, 28);
+                    ctx.fillStyle = '#111'; ctx.fillRect(lx3 - 10, dy3 - 8, 10, 8); ctx.fillRect(lx3 + 1, dy3 - 8, 10, 8);
+                    ctx.fillStyle = '#222240'; ctx.beginPath(); ctx.arc(lx3, dy3 - 70 + bob3, 12, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#111';
+                    ctx.beginPath(); ctx.moveTo(lx3 - 6, dy3 - 79 + bob3); ctx.lineTo(lx3 - 10, dy3 - 90 + bob3); ctx.lineTo(lx3 - 2, dy3 - 79 + bob3); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(lx3 + 6, dy3 - 79 + bob3); ctx.lineTo(lx3 + 10, dy3 - 90 + bob3); ctx.lineTo(lx3 + 2, dy3 - 79 + bob3); ctx.fill();
+                    if (darkWing.hp < darkWing.maxHp) {
+                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(lx3 - 18, dy3 - 102 + bob3, 36, 5);
+                        ctx.fillStyle = '#4cf'; ctx.fillRect(lx3 - 18, dy3 - 102 + bob3, 36 * darkWing.hp / darkWing.maxHp, 5);
+                    }
+                    ctx.restore();
+                }
+                if (powerGirl.active && !powerGirl.captured && powerGirl.x > -100) {
+                    drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
+                }
+            }
+            if (currentLevel === 2 && scene !== 'factory' && scene !== 'temple') {
                 drawGrungeSetPieces();
                 if (clues.length > 0) {   // level 2 clues are loaded
                     const lx = darkWing.x;
@@ -5146,63 +5847,175 @@
                         ctx.restore();
                     } else {
                     // ── ON FOOT: normal Dark Wing character ──────────────────
-                    const sw = Math.abs(darkWing._targetX - darkWing.x) > 12 ? Math.sin(darkWing.phase * 3) * 5 : 0;
+                    // ── tick animation timers ─────────────────────────────
+                    if (darkWing._punchTimer > 0) darkWing._punchTimer--;
+                    if (darkWing._kickTimer  > 0) darkWing._kickTimer--;
+                    if (darkWing._throwTimer > 0) darkWing._throwTimer--;
+                    if (darkWing._grappleAnimTimer > 0) darkWing._grappleAnimTimer--;
+                    if (darkWing._smokeAnimTimer   > 0) darkWing._smokeAnimTimer--;
+
+                    const dy = darkWing.y; // feet Y (may be above GROUND_Y on rooftops)
+                    const fd = darkWing.faceDir;
+                    const isMoving = Math.abs(darkWing._targetX - darkWing.x) > 12
+                                  || darkWing.zoneCombat || darkWing.fightMode
+                                  || !darkWing._onGround;
+                    const walkSwing = isMoving ? Math.sin(darkWing.phase * 3) : 0;
+
+                    // Draw grapple rope when swinging
+                    if (darkWing._swinging || darkWing._grappleAnimTimer > 0) {
+                        const ropeAlpha = darkWing._swinging ? 0.9 : darkWing._grappleAnimTimer / 22;
+                        ctx.save();
+                        ctx.globalAlpha = ropeAlpha;
+                        ctx.strokeStyle = '#c8a040'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+                        ctx.beginPath();
+                        ctx.moveTo(lx + fd * 12, dy - 45);
+                        ctx.lineTo(darkWing._anchorX, darkWing._anchorY);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        // anchor grapple hook
+                        ctx.fillStyle = '#c8a040';
+                        ctx.beginPath(); ctx.arc(darkWing._anchorX, darkWing._anchorY, 4, 0, Math.PI * 2); ctx.fill();
+                        ctx.restore();
+                    }
+
+                    // shoulder offsets from lx
+                    const frontShX = fd > 0 ? 13 : -13;
+                    const backShX  = fd > 0 ? -13 : 13;
+                    const shY = dy - 58 + bob;
+
+                    // arm endpoint deltas from shoulder (elbow, hand)
+                    let feX = fd * (-walkSwing * 3), feY = 10;
+                    let fhX = fd * (-walkSwing * 5), fhY = 20;
+                    let beX = fd * ( walkSwing * 3), beY = 10;
+                    let bhX = fd * ( walkSwing * 5), bhY = 20;
+
+                    if (darkWing._punchTimer > 0) {
+                        const pt = darkWing._punchTimer / 18;
+                        feX = fd * (14 - 6 * pt); feY = 4;
+                        fhX = fd * (26 - 8 * pt); fhY = 2;
+                        beX = -fd * 3; beY = 8; bhX = -fd * 4; bhY = 16;
+                    } else if (darkWing._kickTimer > 0) {
+                        feX = fd * 6;  feY = 4;  fhX = fd * 10; fhY = -4;
+                        beX = -fd * 8; beY = 6;  bhX = -fd * 14; bhY = 2;
+                    } else if (darkWing._throwTimer > 0) {
+                        const tt = darkWing._throwTimer / 26;
+                        feX = fd * (8 + 8 * (1 - tt));  feY = -8 + 14 * (1 - tt);
+                        fhX = fd * (14 + 10 * (1 - tt)); fhY = -18 + 30 * (1 - tt);
+                        beX = -fd * 4; beY = 6; bhX = -fd * 6; bhY = 14;
+                    } else if (darkWing._grappleAnimTimer > 0) {
+                        const gt = Math.min(darkWing._grappleAnimTimer, 20) / 20;
+                        feX = fd * 12 * gt; feY = 2 + 6 * (1 - gt);
+                        fhX = fd * 22 * gt; fhY = -2 + 14 * (1 - gt);
+                        beX = -fd * 2; beY = 10; bhX = -fd * 4; bhY = 20;
+                    } else if (darkWing._smokeAnimTimer > 0) {
+                        const st = darkWing._smokeAnimTimer / 30;
+                        feX = fd * 8 * st;  feY = 10; fhX = fd * 14 * st;  fhY = 18;
+                        beX = -fd * 8 * st; beY = 10; bhX = -fd * 14 * st; bhY = 18;
+                    } else if (darkWing.blocking) {
+                        feX = fd * 8;  feY = -2; fhX = fd * 4;  fhY = -12;
+                        beX = fd * 4;  beY =  2; bhX = fd * 2;  bhY =  -8;
+                    }
+
+                    // draw one arm segment as a thick line
+                    const dwSeg = (x1, y1, x2, y2, w, col) => {
+                        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                    };
+
+                    // ── BACK ARM (behind body) ────────────────────────────
+                    const bsX = lx + backShX;
+                    dwSeg(bsX, shY, bsX + beX, shY + beY, 6, '#1c1c2a');
+                    dwSeg(bsX + beX, shY + beY, bsX + bhX, shY + bhY, 5, '#111');
+
+                    // ── LEGS ─────────────────────────────────────────────
+                    const frontLegX = fd > 0 ? lx + 1 : lx - 8;
+                    const backLegX  = fd > 0 ? lx - 8 : lx + 1;
+                    const frontLegTopY = darkWing._kickTimer > 0
+                        ? dy - 28 - 4 * (Math.min(darkWing._kickTimer, 18) / 18)
+                        : dy - 22 - Math.max(0,  walkSwing * 5);
+                    const backLegTopY  = darkWing._kickTimer > 0
+                        ? dy - 20
+                        : dy - 22 - Math.max(0, -walkSwing * 5);
+
+                    // back leg
                     ctx.fillStyle = '#181818';
-                    ctx.fillRect(lx - 8, GROUND_Y - 22 - Math.max(0, sw), 7, 22);
-                    ctx.fillRect(lx + 1, GROUND_Y - 22 - Math.max(0, -sw), 7, 22);
-                    // boots
+                    ctx.fillRect(backLegX, backLegTopY, 7, 22);
                     ctx.fillStyle = '#0a0a0a';
-                    ctx.fillRect(lx - 10, GROUND_Y - 5, 11, 5);
-                    ctx.fillRect(lx + 1, GROUND_Y - 5, 11, 5);
-                    // body / suit
+                    ctx.fillRect(backLegX - 2, dy - 5, 11, 5);
+
+                    // ── BODY / BELT / BAT SYMBOL / CAPE ──────────────────
                     ctx.fillStyle = '#1c1c2a';
-                    ctx.fillRect(lx - 13, GROUND_Y - 60 + bob, 26, 38);
-                    // yellow utility belt
+                    ctx.fillRect(lx - 13, dy - 60 + bob, 26, 38);
                     ctx.fillStyle = '#e0c020';
-                    ctx.fillRect(lx - 13, GROUND_Y - 28 + bob, 26, 6);
-                    // bat symbol on chest
+                    ctx.fillRect(lx - 13, dy - 28 + bob, 26, 6);
                     ctx.fillStyle = '#e0c020';
                     ctx.beginPath();
-                    ctx.moveTo(lx, GROUND_Y - 52 + bob);
-                    ctx.bezierCurveTo(lx - 10, GROUND_Y - 58 + bob, lx - 14, GROUND_Y - 48 + bob, lx, GROUND_Y - 44 + bob);
-                    ctx.bezierCurveTo(lx + 14, GROUND_Y - 48 + bob, lx + 10, GROUND_Y - 58 + bob, lx, GROUND_Y - 52 + bob);
+                    ctx.moveTo(lx, dy - 52 + bob);
+                    ctx.bezierCurveTo(lx - 10, dy - 58 + bob, lx - 14, dy - 48 + bob, lx, dy - 44 + bob);
+                    ctx.bezierCurveTo(lx + 14, dy - 48 + bob, lx + 10, dy - 58 + bob, lx, dy - 52 + bob);
                     ctx.fill();
-                    // scalloped cape
+                    // Cape — wider when gliding
+                    const capeSpread = darkWing._gliding ? 44 : 26;
+                    const capeLen    = darkWing._gliding ? 8  : 14;
                     ctx.fillStyle = '#0e0e1a';
                     ctx.beginPath();
-                    ctx.moveTo(lx - 13, GROUND_Y - 60 + bob);
-                    ctx.lineTo(lx - 26, GROUND_Y - 30 + bob);
+                    ctx.moveTo(lx - 13, dy - 60 + bob);
+                    ctx.lineTo(lx - capeSpread, dy - 30 + bob);
                     for (let sc = 0; sc < 4; sc++) {
-                        const scx = lx - 26 + sc * 13;
-                        ctx.quadraticCurveTo(scx + 6, GROUND_Y - 14 + bob, scx + 13, GROUND_Y - 30 + bob);
+                        const scx = lx - capeSpread + sc * (capeSpread * 2 / 4);
+                        ctx.quadraticCurveTo(scx + capeSpread / 4, dy - capeLen + bob, scx + capeSpread / 2, dy - 30 + bob);
                     }
-                    ctx.lineTo(lx + 13, GROUND_Y - 60 + bob);
+                    ctx.lineTo(lx + 13, dy - 60 + bob);
                     ctx.closePath(); ctx.fill();
-                    // cowl / head
+
+                    // front leg (drawn over body base)
+                    if (darkWing._kickTimer > 0) {
+                        const kt = Math.min(darkWing._kickTimer, 18) / 18;
+                        const kx1 = frontLegX + 3, ky1 = frontLegTopY;
+                        ctx.strokeStyle = '#181818'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(kx1, ky1);
+                        ctx.lineTo(kx1 + fd * 18 * kt, dy - 4);
+                        ctx.stroke();
+                        ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 6;
+                        ctx.beginPath();
+                        ctx.moveTo(kx1 + fd * 16 * kt, dy - 6);
+                        ctx.lineTo(kx1 + fd * 22 * kt, dy - 2);
+                        ctx.stroke();
+                    } else {
+                        ctx.fillStyle = '#181818';
+                        ctx.fillRect(frontLegX, frontLegTopY, 7, 22);
+                        ctx.fillStyle = '#0a0a0a';
+                        ctx.fillRect(frontLegX - 2, dy - 5, 11, 5);
+                    }
+
+                    // ── FRONT ARM (in front of body) ──────────────────────
+                    const fsX = lx + frontShX;
+                    dwSeg(fsX, shY, fsX + feX, shY + feY, 6, '#1c1c2a');
+                    dwSeg(fsX + feX, shY + feY, fsX + fhX, shY + fhY, 5, '#111');
+
+                    // ── COWL / HEAD / EARS / EYES ─────────────────────────
                     ctx.fillStyle = '#1c1c2a';
-                    ctx.beginPath(); ctx.arc(lx, GROUND_Y - 72 + bob, 11, 0, Math.PI * 2); ctx.fill();
-                    // bat ears (two small triangles)
-                    ctx.fillStyle = '#1c1c2a';
+                    ctx.beginPath(); ctx.arc(lx, dy - 72 + bob, 11, 0, Math.PI * 2); ctx.fill();
                     ctx.beginPath();
-                    ctx.moveTo(lx - 8, GROUND_Y - 80 + bob);
-                    ctx.lineTo(lx - 4, GROUND_Y - 93 + bob);
-                    ctx.lineTo(lx - 1, GROUND_Y - 80 + bob);
+                    ctx.moveTo(lx - 8, dy - 80 + bob);
+                    ctx.lineTo(lx - 4, dy - 93 + bob);
+                    ctx.lineTo(lx - 1, dy - 80 + bob);
                     ctx.closePath(); ctx.fill();
                     ctx.beginPath();
-                    ctx.moveTo(lx + 1, GROUND_Y - 80 + bob);
-                    ctx.lineTo(lx + 4, GROUND_Y - 93 + bob);
-                    ctx.lineTo(lx + 8, GROUND_Y - 80 + bob);
+                    ctx.moveTo(lx + 1, dy - 80 + bob);
+                    ctx.lineTo(lx + 4, dy - 93 + bob);
+                    ctx.lineTo(lx + 8, dy - 80 + bob);
                     ctx.closePath(); ctx.fill();
-                    // white eye slits
                     ctx.fillStyle = '#ddeeff';
                     const ed = darkWing.faceDir * 2;
-                    ctx.fillRect(lx - 5 + ed, GROUND_Y - 74 + bob, 4, 2);
-                    ctx.fillRect(lx + 1 + ed, GROUND_Y - 74 + bob, 4, 2);
+                    ctx.fillRect(lx - 5 + ed, dy - 74 + bob, 4, 2);
+                    ctx.fillRect(lx + 1 + ed, dy - 74 + bob, 4, 2);
                     // greeting bubble / name
                     if (darkWing.greeting > 20) {
                         const cl = clues[activeClueIndex];
                         const hint = darkWing.fightMode ? 'Stay close — they\'re everywhere!' : (cl && !cl.found ? 'That clue is nearby.' : 'Keep moving.');
-                        const bw = 160, bh = 26, bx = lx - bw / 2, bby = GROUND_Y - 112 + bob;
+                        const bw = 160, bh = 26, bx = lx - bw / 2, bby = dy - 112 + bob;
                         ctx.fillStyle = 'rgba(10,10,20,0.92)';
                         ctx.strokeStyle = '#e0c020'; ctx.lineWidth = 1.5;
                         ctx.fillRect(bx, bby, bw, bh);
@@ -5213,28 +6026,36 @@
                         const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
                         ctx.globalAlpha = pulse;
                         ctx.fillStyle = '#e0c020'; ctx.font = 'bold 9px Arial';
-                        ctx.fillText('Press B for intel', lx, GROUND_Y - 125 + bob);
+                        ctx.fillText('Press B for intel', lx, dy - 125 + bob);
                         ctx.globalAlpha = 1;
                     } else {
                         ctx.fillStyle = 'rgba(180,200,255,0.4)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
-                        ctx.fillText('Dark Wing', lx, GROUND_Y - 100 + bob);
+                        ctx.fillText('Dark Wing', lx, dy - 100 + bob);
+                    }
+                    // glide indicator
+                    if (darkWing._gliding) {
+                        ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+                        ctx.fillStyle = '#a0c8ff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                        ctx.fillText('GLIDING', lx, dy - 106 + bob);
+                        ctx.globalAlpha = 1;
                     }
                     // block shield indicator
                     if (darkWing.blocking) {
                         ctx.fillStyle = 'rgba(220,200,50,0.45)';
-                        ctx.beginPath(); ctx.arc(lx, GROUND_Y - 55 + bob, 22, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(lx, dy - 55 + bob, 22, 0, Math.PI * 2); ctx.fill();
                     }
                     // hp bar in fight mode
                     if (darkWing.fightMode) {
-                        ctx.fillStyle = '#333'; ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36, 5);
+                        ctx.fillStyle = '#333'; ctx.fillRect(lx - 18, dy - 100 + bob, 36, 5);
                         ctx.fillStyle = '#4cfc4c';
-                        ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36 * (darkWing.hp / darkWing.maxHp), 5);
+                        ctx.fillRect(lx - 18, dy - 100 + bob, 36 * (darkWing.hp / darkWing.maxHp), 5);
                     }
                     ctx.restore();
                     } // end else (on-foot)
                     // draw gadget projectiles
                     for (const p of dwProjectiles) {
-                        const px = p.x - camX, py = p.y;
+                        // canvas is already translated by camera — use world coords directly
+                        const px = p.x, py = p.y;
                         ctx.save();
                         if (p.type === 'batarang') {
                             ctx.fillStyle = '#e0c020';
@@ -5245,9 +6066,9 @@
                             ctx.fillRect(-2, -7, 4, 14);
                             ctx.restore();
                         } else {
-                            // grapple hook
+                            // grapple hook — draw cable from Dark Wing to hook head
                             ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1.5;
-                            ctx.beginPath(); ctx.moveTo(lx - camX, GROUND_Y - 40); ctx.lineTo(px, py); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(lx, GROUND_Y - 40); ctx.lineTo(px, py); ctx.stroke();
                             ctx.fillStyle = '#ccc';
                             ctx.fillRect(px - 4, py - 4, 8, 8);
                         }
@@ -5285,6 +6106,56 @@
 
             // impact animations on top
             drawHitFX();
+
+            // Factory: draw Dark Wing and Power Girl (DW draw block skipped above for factory)
+            if (scene === 'factory' || scene === 'temple') {
+                // Dark Wing — minimal stand-in draw using existing variables
+                const lx = darkWing.x;
+                const bob = Math.sin(darkWing.phase) * 1.2;
+                const dy_dw = darkWing.y;
+                ctx.save();
+                ctx.translate(lx * darkWing.faceDir < 0 ? 0 : 0, 0);
+                // reuse the full DW draw by temporarily setting GROUND_Y ref
+                // draw inline minimal DW silhouette
+                ctx.fillStyle = '#1a1a2e';
+                // legs
+                ctx.fillRect(lx - 9, dy_dw - 28, 8, 28);
+                ctx.fillRect(lx + 1, dy_dw - 28, 8, 28);
+                // boots
+                ctx.fillStyle = '#111';
+                ctx.fillRect(lx - 10, dy_dw - 8, 10, 8);
+                ctx.fillRect(lx + 1, dy_dw - 8, 10, 8);
+                // cape
+                ctx.fillStyle = 'rgba(20,20,50,0.85)';
+                ctx.beginPath();
+                ctx.moveTo(lx, dy_dw - 62);
+                ctx.lineTo(lx - darkWing.faceDir * 34, dy_dw - 10);
+                ctx.lineTo(lx - darkWing.faceDir * 12, dy_dw - 28);
+                ctx.closePath(); ctx.fill();
+                // torso
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(lx - 11, dy_dw - 62, 22, 34);
+                // head
+                ctx.fillStyle = '#222240';
+                ctx.beginPath(); ctx.arc(lx, dy_dw - 70 + bob, 12, 0, Math.PI * 2); ctx.fill();
+                // cowl ears
+                ctx.fillStyle = '#111';
+                ctx.beginPath();
+                ctx.moveTo(lx - 6, dy_dw - 79 + bob); ctx.lineTo(lx - 10, dy_dw - 90 + bob); ctx.lineTo(lx - 2, dy_dw - 79 + bob); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(lx + 6, dy_dw - 79 + bob); ctx.lineTo(lx + 10, dy_dw - 90 + bob); ctx.lineTo(lx + 2, dy_dw - 79 + bob); ctx.fill();
+                // HP bar
+                if (darkWing.hp < darkWing.maxHp) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(lx - 18, dy_dw - 102 + bob, 36, 5);
+                    ctx.fillStyle = '#4cf'; ctx.fillRect(lx - 18, dy_dw - 102 + bob, 36 * darkWing.hp / darkWing.maxHp, 5);
+                }
+                ctx.restore();
+                // Power Girl
+                if (powerGirl.active && !powerGirl.captured) {
+                    drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
+                }
+                if (currentLevel === 3) drawWonderWomanAt(wonderWoman.x, wonderWoman.y);
+            }
 
             ctx.restore();
 
@@ -5794,7 +6665,13 @@
                 darkWing.zoneCombat = false;
                 activeClueIndex++;
                 if (activeClueIndex >= clues.length) {
-                    if (currentLevel === 2) spawnFinalBattle(); else spawnBoss();
+                    if (currentLevel === 2) {
+                        factoryEntryUnlocked = true;
+                        titleCard = { text: 'LEXCORP CENTRAL', sub: 'Dark Wing: "He\'s in the central tower. Move — LexCorp Central, west end of the Badlands."', timer: 320 };
+                    } else if (currentLevel === 3) {
+                        templeEntryUnlocked = true;
+                        titleCard = { text: 'ARES\' TEMPLE', sub: 'Wonder Woman: "The temple gate — move now. All of us, together."', timer: 320 };
+                    } else spawnBoss();
                 } else {
                     const nextCl = clues[activeClueIndex];
                     const zoneName = nextCl.zone ? nextCl.zone.label : 'the city';
@@ -5836,21 +6713,20 @@
             { x: 5900, w: 520 },
             { x: 9300, w: 260 },
         ];
-        const l2Platforms = [];
         const l2Buildings = [
             { x: 180,   w: 140, h: 170, type: 'pawnshop',  district: 'ruins',      name: 'PAWN KING' },
             { x: 560,   w: 130, h: 150, type: 'diner',     district: 'ruins',      name: 'RUSTY SPOON' },
-            { x: 1200,  w: 155, h: 190, type: 'warehouse', district: 'ruins',      name: 'ABANDONED DEPOT' },
+            { x: 1200,  w: 155, h: 240, type: 'warehouse', district: 'ruins',      name: 'ABANDONED DEPOT', rooftop: true },
             { x: 1950,  w: 120, h: 145, type: 'shop',      district: 'ruins',      name: 'IRON HORSE BAR' },
-            { x: 2900,  w: 160, h: 200, type: 'warehouse', district: 'ruins',      name: 'SCRAP & SALVAGE' },
+            { x: 2900,  w: 160, h: 260, type: 'warehouse', district: 'ruins',      name: 'SCRAP & SALVAGE', rooftop: true },
             { x: 3700,  w: 130, h: 160, type: 'pawnshop',  district: 'ruins',      name: 'CHEAP DEALS' },
-            { x: 4800,  w: 180, h: 220, type: 'warehouse', district: 'industrial', name: 'LEXCORP DEPOT A' },
-            { x: 6200,  w: 160, h: 195, type: 'warehouse', district: 'industrial', name: 'REFINERY BLOCK 3' },
-            { x: 7400,  w: 140, h: 175, type: 'diner',     district: 'industrial', name: "WORKER'S REST" },
-            { x: 8600,  w: 170, h: 210, type: 'warehouse', district: 'industrial', name: 'FUEL STORAGE' },
-            { x: 10200, w: 150, h: 185, type: 'warehouse', district: 'badlands',   name: 'BLACKSITE EAST' },
-            { x: 12800, w: 165, h: 200, type: 'pawnshop',  district: 'badlands',   name: 'STRIPPED PARTS' },
-            { x: 15500, w: 200, h: 260, type: 'warehouse', district: 'badlands',   name: 'LEXCORP CENTRAL' },
+            { x: 4800,  w: 180, h: 320, type: 'warehouse', district: 'industrial', name: 'LEXCORP DEPOT A',   rooftop: true },
+            { x: 6200,  w: 160, h: 340, type: 'warehouse', district: 'industrial', name: 'REFINERY BLOCK 3',  rooftop: true },
+            { x: 7400,  w: 140, h: 240, type: 'diner',     district: 'industrial', name: "WORKER'S REST",     rooftop: true },
+            { x: 8600,  w: 170, h: 380, type: 'warehouse', district: 'industrial', name: 'FUEL STORAGE',      rooftop: true },
+            { x: 10200, w: 150, h: 350, type: 'warehouse', district: 'badlands',   name: 'BLACKSITE EAST',    rooftop: true },
+            { x: 12800, w: 165, h: 300, type: 'pawnshop',  district: 'badlands',   name: 'STRIPPED PARTS',    rooftop: true },
+            { x: 15500, w: 200, h: 420, type: 'warehouse', district: 'badlands',   name: 'LEXCORP CENTRAL',   rooftop: true },
         ];
         const l2Hazards = [];  // laser barriers removed
         const l2Emitters = [
@@ -5932,7 +6808,7 @@
             buildings.splice(0, buildings.length, ...l2Buildings);
             hazards.splice(0, hazards.length, ...l2Hazards);
             orbs.splice(0, orbs.length, ...l2Orbs);
-            platforms.splice(0, platforms.length, ...l2Platforms);
+            platforms.splice(0, platforms.length, ...L2_PLATFORMS);
             emitters.splice(0, emitters.length, ...l2Emitters);
             clues.splice(0, clues.length, ...l2Clues);
             // reset quest state
@@ -5945,6 +6821,7 @@
             carriedCivilians = [];
             orbsCollected = 0;
             bossDefeated = false;
+            factoryEntryUnlocked = false;
             interior.note.read = true;   // story has started — clues are live immediately
             // reposition hero + hound at L2 start
             hero.x = 200; hero.y = GROUND_Y - hero.h;
@@ -5957,10 +6834,360 @@
             // init Dark Wing near the first clue
             darkWing.x = l2Clues[0].x - 70;
             darkWing._targetX = darkWing.x;
+            darkWing.y = GROUND_Y;
+            darkWing.vy = 0;
+            darkWing._onGround = true;
+            darkWing._gliding = false;
+            darkWing._swinging = false;
+            darkWing._anchorX = 0; darkWing._anchorY = 0;
+            darkWing._swingAngle = 0; darkWing._swingAngVel = 0; darkWing._ropeLen = 0;
             darkWing.fightMode = false;
             darkWing.driving = false;
             darkWing.zoneCombat = false;
             titleCard = { text: 'LEVEL 2 — THE BADLANDS', sub: 'Something worse is lurking in the shadows. Dark Wing is with you.', timer: 360 };
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        //  LEVEL 3 — THE AMAZON (jungle world, Wonder Woman ally, Ares + Lex boss)
+        // ══════════════════════════════════════════════════════════════════
+
+        const L3_WORLD_WIDTH = 18000;
+        const L3_GROUND_Y    = 1000;   // same canvas height as L1/L2
+
+        const L3_PLATFORMS = [
+            // Canopy tops — each sits on a tall jungle tree drawn in drawJungle()
+            { x: 900,   y: 700, w: 160, h: 14 },   // Ancient Ficus A
+            { x: 2200,  y: 660, w: 180, h: 14 },   // River Oak
+            { x: 4100,  y: 640, w: 170, h: 14 },   // Deep Canopy A
+            { x: 5900,  y: 620, w: 190, h: 14 },   // Deep Canopy B
+            { x: 7800,  y: 680, w: 160, h: 14 },   // Ruin Ledge A
+            { x: 9400,  y: 650, w: 175, h: 14 },   // Ruin Ledge B
+            { x: 11200, y: 630, w: 185, h: 14 },   // Temple Approach A
+            { x: 13000, y: 600, w: 200, h: 14 },   // Temple Approach B
+            { x: 14800, y: 580, w: 220, h: 14 },   // Temple Gate Top
+        ];
+
+        // River gaps (replace city alley gaps)
+        const l3Gaps = [
+            { x: 1500,  w: 320, type: 'river' },
+            { x: 3400,  w: 280, type: 'river' },
+            { x: 6800,  w: 350, type: 'river' },
+            { x: 10500, w: 300, type: 'river' },
+            { x: 13600, w: 260, type: 'river' },
+        ];
+
+        const l3Districts = [
+            { id: 'outskirts',  x: 0,     w: 3000,  name: 'Amazon Outskirts' },
+            { id: 'river',      x: 3000,  w: 4000,  name: 'River Crossing'   },
+            { id: 'deepjungle', x: 7000,  w: 4000,  name: 'Deep Jungle'      },
+            { id: 'ruins',      x: 11000, w: 4000,  name: 'Ancient Ruins'    },
+            { id: 'temple',     x: 15000, w: 3000,  name: 'Temple Approach'  },
+        ];
+
+        const l3Gateways = [];   // open world, no locked gates
+
+        const l3Buildings = []; // no overworld structures on L3 — jungle only
+
+        const l3Hazards  = [];
+        const l3Emitters = [];
+        const l3Orbs     = [
+            { x: 600,   y: 860, r: 14, taken: false, district: 'outskirts'  },
+            { x: 2800,  y: 860, r: 14, taken: false, district: 'outskirts'  },
+            { x: 5200,  y: 860, r: 14, taken: false, district: 'deepjungle' },
+            { x: 8400,  y: 860, r: 14, taken: false, district: 'ruins'      },
+            { x: 11800, y: 860, r: 14, taken: false, district: 'ruins'      },
+            { x: 14200, y: 860, r: 14, taken: false, district: 'temple'     },
+        ];
+
+        const l3Clues = [
+            {
+                x: 700, found: false, questType: 'rescue', district: 'outskirts',
+                civName: 'Corrupted Villager',
+                trapTypes: ['brute', 'brute'],
+                zone: { x: 1800, label: 'RIVER BANK', spread: 160 },
+                lines: [
+                    'AMAZON FILE — CLUE 1 OF 5',
+                    'A poisoned arrowhead, still warm — forged in divine fire, not mortal hands.',
+                    '"This is Ares\'s work," Wonder Woman says grimly. "The God of War has touched this forest. We follow the corruption inward."'
+                ]
+            },
+            {
+                x: 3200, found: false, questType: 'lockdown', district: 'river',
+                civName: 'River Guardian',
+                trapTypes: ['brute', 'genius'],
+                zone: { x: 4800, label: 'RIVER CROSSING', spread: 200 },
+                lines: [
+                    'AMAZON FILE — CLUE 2 OF 5',
+                    'The river guardian, barely conscious: "Men in armor... and one in a green suit... they passed at dawn, moving toward the deep jungle."',
+                    '"Lex Luthor," Wonder Woman says. "He has allied with Ares. Power and war — a dangerous combination."'
+                ]
+            },
+            {
+                x: 5600, found: false, questType: 'cargo', isObject: true, district: 'deepjungle',
+                civName: 'Stolen Amazonian Relic',
+                trapTypes: ['genius', 'genius', 'energy'],
+                zone: { x: 7200, label: 'CANOPY OUTPOST', spread: 240 },
+                lines: [
+                    'AMAZON FILE — CLUE 3 OF 5',
+                    'A stolen relic from Themyscira — its power is being drained to fuel something in the ruins ahead.',
+                    '"Lex is supplying Ares with science. Ares is supplying Lex with power," Wonder Woman says. "We break this pact tonight."'
+                ]
+            },
+            {
+                x: 9100, found: false, questType: 'chase', isVehicle: false, district: 'ruins',
+                civName: 'Corrupted Demigod',
+                trapTypes: ['genius', 'energy', 'energy', 'energy'],
+                zone: { x: 10800, label: 'WARRIOR CITADEL', spread: 280 },
+                lines: [
+                    'AMAZON FILE — CLUE 4 OF 5',
+                    'The demigod collapses, the corruption breaking. "The temple... they are performing the ritual at sunrise. It opens a gate."',
+                    '"A gate for what?" Wonder Woman\'s jaw sets. "It does not matter. We close it. Now."'
+                ]
+            },
+            {
+                x: 13500, found: false, questType: 'rescue', district: 'temple',
+                civName: 'Bound Amazon Warrior',
+                trapTypes: ['genius', 'genius', 'energy', 'energy'],
+                zone: { x: 15200, label: 'TEMPLE GATE', spread: 300 },
+                lines: [
+                    'AMAZON FILE — CLUE 5 OF 5',
+                    'The warrior warrior gasps: "Ares and Luthor are inside — the ritual begins at the altar. Thirty of Ares\'s corrupted warriors guard the halls."',
+                    '"Then we go in together," Wonder Woman says, lasso blazing gold. "All of us."'
+                ]
+            },
+        ];
+
+        // ── Wonder Woman object ───────────────────────────────────────────
+        const wonderWoman = {
+            x: 300, _targetX: 300,
+            y: L3_GROUND_Y, vy: 0,
+            faceDir: 1, phase: 0,
+            greeting: 0,
+            _attackCD: 0, _gadgetCD: 0,
+            _jumpCD: 0, _grappleCD: 0,
+            _dodgeTimer: 0, _blockTimer: 0,
+            blocking: false,
+            hp: 20, maxHp: 20,
+            fightMode: false,
+            zoneCombat: false,
+            driving: false,
+            _onGround: true, _gliding: false,
+            _swinging: false,
+            _anchorX: 0, _anchorY: 0,
+            _swingAngle: 0, _swingAngVel: 0, _ropeLen: 0,
+            _punchTimer: 0, _kickTimer: 0, _throwTimer: 0,
+            _lassoAnimTimer: 0, _slamTimer: 0,
+            _animSide: 1,
+            _targetEnemy: null,
+        };
+
+        // Projectiles for WW tiara / lasso throws
+        const wwProjectiles = [];
+
+        // ── Temple scene state ────────────────────────────────────────────
+        const TEMPLE_SCENE = { w: 5600, floorY: 840, ceilingY: 60 };
+        const TEMPLE_PLATFORMS = [
+            // Level 1 stone ledges y=640
+            { x: 80,   y: 640, w: 340, h: 14 }, { x: 560,  y: 640, w: 320, h: 14 },
+            { x: 1060, y: 640, w: 340, h: 14 }, { x: 1560, y: 640, w: 320, h: 14 },
+            { x: 2060, y: 640, w: 340, h: 14 }, { x: 2560, y: 640, w: 320, h: 14 },
+            { x: 3060, y: 640, w: 340, h: 14 }, { x: 3560, y: 640, w: 320, h: 14 },
+            // Level 2 elevated stone y=440
+            { x: 160,  y: 440, w: 300, h: 14 }, { x: 700,  y: 440, w: 320, h: 14 },
+            { x: 1260, y: 440, w: 300, h: 14 }, { x: 1800, y: 440, w: 320, h: 14 },
+            { x: 2360, y: 440, w: 300, h: 14 }, { x: 2900, y: 440, w: 320, h: 14 },
+            { x: 3460, y: 440, w: 300, h: 14 }, { x: 4000, y: 440, w: 320, h: 14 },
+            // Level 3 altar gantry y=240
+            { x: 300,  y: 240, w: 360, h: 14 }, { x: 900,  y: 240, w: 340, h: 14 },
+            { x: 1500, y: 240, w: 360, h: 14 }, { x: 2100, y: 240, w: 340, h: 14 },
+            { x: 2700, y: 240, w: 360, h: 14 }, { x: 3300, y: 240, w: 340, h: 14 },
+            { x: 3900, y: 240, w: 360, h: 14 },
+        ];
+
+        let templeScene = null;
+        let templePhase = 'idle';    // 'idle' | 'intro' | 'battle' | 'victory'
+        let templeIntroStep = 0;
+        let templeIntroTimer = 0;
+        let templeEntryUnlocked = false;
+
+        // ── enterTemple / exitTemple ──────────────────────────────────────
+        function enterTemple() {
+            templeScene = {
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy,
+                    hf: hero.facing, hfly: hero.flightActive,
+                    dx: hound.x, dy: hound.y, dvx: hound.vx, dvy: hound.vy, df: hound.facing
+                }
+            };
+            hero.x = 120; hero.y = TEMPLE_SCENE.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 200; hound.y = TEMPLE_SCENE.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            scene = 'temple';
+            templePhase = 'intro'; templeIntroStep = 0; templeIntroTimer = 220;
+            platforms.splice(0, platforms.length, ...TEMPLE_PLATFORMS);
+            camera.x = 0; camera.y = Math.max(0, TEMPLE_SCENE.floorY + 80 - H);
+            wonderWoman.x = 70; wonderWoman._targetX = 70;
+            wonderWoman.y = TEMPLE_SCENE.floorY; wonderWoman._onGround = true; wonderWoman.vy = 0;
+            wonderWoman._swinging = false; wonderWoman._gliding = false;
+            darkWing.x = 170; darkWing._targetX = 170;
+            darkWing.y = TEMPLE_SCENE.floorY; darkWing._onGround = true; darkWing.vy = 0;
+            darkWing._swinging = false; darkWing._gliding = false;
+            titleCard = { text: 'ARES\' TEMPLE — FINAL STAND', sub: 'The ritual begins. Ares and Luthor are inside. End this.', timer: 220 };
+        }
+
+        function exitTemple() {
+            if (!templeScene) return;
+            const s = templeScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = 0; hero.vy = 0;
+            hero.facing = s.hf; hero.flightActive = false; hero.onGround = true;
+            hound.x = s.dx; hound.y = s.dy; hound.vx = 0; hound.vy = 0;
+            hound.facing = s.df; hound.flightActive = false; hound.onGround = true;
+            scene = 'city';
+            platforms.splice(0, platforms.length, ...L3_PLATFORMS);
+            templeScene = null; templePhase = 'idle';
+            wonderWoman.fightMode = false; wonderWoman.zoneCombat = false;
+            darkWing.fightMode = false; darkWing.zoneCombat = false;
+            titleCard = { text: 'AMAZON FREED', sub: 'Ares is defeated. The forest breathes again. The war is over.', timer: 300 };
+        }
+
+        function updateTemple() {
+            // Intro: Ares + Lex dialogue
+            if (templePhase === 'intro') {
+                templeIntroTimer--;
+                if (templeIntroTimer <= 0) {
+                    templeIntroStep++;
+                    templeIntroTimer = 210;
+                    const steps = [
+                        { text: 'ARES SPEAKS', sub: '"You dare enter my temple, child of man? Your world will burn."' },
+                        { text: 'LEX LUTHOR', sub: '"I\'ve upgraded my suit for divine power. Even gods can have a patron, Wonder Woman."' },
+                        { text: 'WONDER WOMAN', sub: '"Ares — your war ends here. Luthor — justice doesn\'t care about your suit."' },
+                        { text: 'BATTLE BEGINS', sub: 'Thirty corrupted warriors flood the hall. Defeat them all.' },
+                    ];
+                    if (templeIntroStep < steps.length) {
+                        const s = steps[templeIntroStep];
+                        titleCard = { text: s.text, sub: s.sub, timer: 200 };
+                    } else {
+                        spawnTempleWarriors();
+                        templePhase = 'battle';
+                        wonderWoman.fightMode = true;
+                        darkWing.fightMode = true;
+                    }
+                }
+                return;
+            }
+
+            // Battle: monitor enemy count
+            if (templePhase === 'battle') {
+                if (enemies.filter(e => e.alive).length === 0) {
+                    templePhase = 'victory';
+                    titleCard = { text: 'VICTORY', sub: 'Ares is driven back. Luthor retreats into the shadows. The Amazon is free.', timer: 400 };
+                    setTimeout(() => exitTemple(), 5000);
+                }
+            }
+
+            // Boundary clamp
+            const clampFloor = TEMPLE_SCENE.floorY;
+            if (hero.y  + hero.h  > clampFloor) { hero.y  = clampFloor - hero.h;  hero.vy  = 0; hero.onGround  = true; }
+            if (hound.y + hound.h > clampFloor) { hound.y = clampFloor - hound.h; hound.vy = 0; hound.onGround = true; }
+        }
+
+        function spawnTempleWarriors() {
+            enemies.splice(0);
+            const FY = TEMPLE_SCENE.floorY;
+            // 10 brutes on floor
+            for (let i = 0; i < 10; i++) {
+                const ex = 300 + i * 460;
+                enemies.push({ x: ex, y: FY - 56, w: 44, h: 56, vx: 0, vy: 0,
+                    alive: true, hp: 4, maxHp: 4, frozen: 0, type: 'brute',
+                    dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'temple' });
+            }
+            // 10 archers on L1 ledges
+            const l1plats = TEMPLE_PLATFORMS.filter(p => p.y === 640);
+            for (let i = 0; i < Math.min(10, l1plats.length); i++) {
+                const p = l1plats[i];
+                enemies.push({ x: p.x + p.w / 2, y: p.y - 64, w: 36, h: 64, vx: 0, vy: 0,
+                    alive: true, hp: 3, maxHp: 3, frozen: 0, type: 'genius',
+                    dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'temple' });
+            }
+            // 10 energy spirits floating at height
+            for (let i = 0; i < 10; i++) {
+                const ey = 180 + Math.random() * 300;
+                const ex = 400 + i * 500 + Math.random() * 100;
+                enemies.push({ x: ex, y: ey, w: 44, h: 44, vx: (Math.random() < 0.5 ? -1 : 1) * 1.4,
+                    vy: (Math.random() < 0.5 ? -0.6 : 0.6), minY: ey - 120, maxY: ey + 120,
+                    minX: ex - 120, maxX: ex + 120,
+                    alive: true, hp: 3, maxHp: 3, frozen: 0, type: 'energy',
+                    dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'temple' });
+            }
+        }
+
+        // ── startLevel3 ───────────────────────────────────────────────────
+        function startLevel3() {
+            currentLevel = 3;
+            gaps.splice(0, gaps.length, ...l3Gaps);
+            districts.splice(0, districts.length, ...l3Districts);
+            gateways.splice(0, gateways.length, ...l3Gateways);
+            buildings.splice(0, buildings.length, ...l3Buildings);
+            hazards.splice(0, hazards.length, ...l3Hazards);
+            orbs.splice(0, orbs.length, ...l3Orbs);
+            platforms.splice(0, platforms.length, ...L3_PLATFORMS);
+            emitters.splice(0, emitters.length, ...l3Emitters);
+            clues.splice(0, clues.length, ...l3Clues);
+            activeClueIndex = 0;
+            cluesFound = 0;
+            pendingTrapCiv = null;
+            questZone = null;
+            enemies.splice(0);
+            civilians.splice(0);
+            carriedCivilians = [];
+            orbsCollected = 0;
+            bossDefeated = false;
+            templeEntryUnlocked = false;
+            factoryEntryUnlocked = false;
+            interior.note.read = true;
+            hero.x = 220; hero.y = L3_GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true;
+            hound.x = 130; hound.y = L3_GROUND_Y - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.flightActive = false; hound.onGround = true;
+            camera.x = 0; camera.y = 0;
+            currentDistrict = 'outskirts';
+            scene = 'city';
+            // Drop Wonder Woman in from the sky as intro
+            wonderWoman.x = l3Clues[0].x - 80;
+            wonderWoman._targetX = wonderWoman.x;
+            wonderWoman.y = 200;
+            wonderWoman.vy = 6;
+            wonderWoman._onGround = false;
+            wonderWoman.fightMode = false;
+            wonderWoman.zoneCombat = false;
+
+            // ── Activate previous-level companions based on title screen selection ──
+            // Dark Wing
+            const hasDW = (l3Companion === 'darkwing' || l3Companion === 'both');
+            darkWing.x = l3Clues[0].x - 140;
+            darkWing._targetX = darkWing.x;
+            darkWing.y = L3_GROUND_Y;
+            darkWing.vy = 0; darkWing._onGround = true;
+            darkWing._swinging = false; darkWing._gliding = false;
+            darkWing.fightMode = false; darkWing.zoneCombat = false;
+            darkWing.driving = false; darkWing._jumpCD = 0; darkWing._grappleCD = 0;
+            // Mark as active or parked off-screen
+            darkWing._l3Active = hasDW;
+            if (!hasDW) darkWing.x = -9999;   // park off-screen if not selected
+
+            // Power Girl
+            const hasPG = (l3Companion === 'powergirl' || l3Companion === 'both');
+            powerGirl.active = hasPG;
+            powerGirl.captured = false;
+            powerGirl.x = hasPG ? l3Clues[0].x - 200 : -9999;
+            powerGirl.y = L3_GROUND_Y;
+            powerGirl.vx = 0; powerGirl.vy = 0;
+            powerGirl.onGround = true; powerGirl.fightMode = hasPG;
+            powerGirl.hp = 20; powerGirl.maxHp = 20;
+
+            const compNames = { darkwing: 'Dark Wing', powergirl: 'Power Girl', both: 'Dark Wing & Power Girl' };
+            titleCard = { text: 'LEVEL 3 — THE AMAZON', sub: 'Wonder Woman: "Ares corrupts this forest. We fight together — now." Companions: ' + compNames[l3Companion], timer: 420 };
         }
 
         // ── Final battle: 30 henchmen + Lex Luthor boss ──────────────────────
@@ -6012,17 +7239,293 @@
             x: 200, _targetX: 200, y: 0, phase: 0, dir: 1, faceDir: 1,
             greeting: 0, _attackCD: 0, fightMode: false,
             _gadgetCD: 0, _dodgeTimer: 0, _blockTimer: 0,
-            _smokeCD: 0, _grappleCD: 0, _targetEnemy: null,
+            _smokeCD: 0, _grappleCD: 0, _jumpCD: 0, _targetEnemy: null,
             hp: 20, maxHp: 20, blocking: false,
             driving: false, _driveTrailX: 200,
-            zoneCombat: false
+            zoneCombat: false,
+            // vertical physics
+            y: GROUND_Y, vy: 0, _onGround: true,
+            _gliding: false,
+            _swinging: false, _anchorX: 0, _anchorY: 0,
+            _swingAngle: 0, _swingAngVel: 0, _ropeLen: 0,
+            // limb animation timers
+            _punchTimer: 0, _kickTimer: 0, _throwTimer: 0,
+            _grappleAnimTimer: 0, _smokeAnimTimer: 0,
+            _animSide: 1
         };
 
         // projectiles from Dark Wing gadgets
         const dwProjectiles = [];
 
-        function updateDarkWing() {
-            if (currentLevel !== 2) return;
+        function dwInitSwing() {
+            // Find the nearest rooftop platform in the direction DW is facing
+            let best = null, bestDist = Infinity;
+            for (const p of platforms) {
+                const cx = p.x + p.w / 2;
+                const dir = cx > darkWing.x ? 1 : -1;
+                const d = Math.abs(cx - darkWing.x);
+                if (dir === darkWing.faceDir && d < 650 && d < bestDist && p.y < GROUND_Y - 80) {
+                    bestDist = d; best = p;
+                }
+            }
+            if (!best) return;
+            darkWing._anchorX = best.x + best.w / 2;
+            darkWing._anchorY = best.y - 8;
+            const dx = darkWing.x - darkWing._anchorX;
+            const dy = darkWing.y - darkWing._anchorY;
+            darkWing._ropeLen = Math.min(Math.max(Math.hypot(dx, dy), 100), 420);
+            darkWing._swingAngle = Math.atan2(dx, dy);
+            darkWing._swingAngVel = darkWing.faceDir * 0.055;
+            darkWing._swinging = true;
+            darkWing._onGround = false;
+            darkWing._grappleCD = 260;
+            darkWing._grappleAnimTimer = 22;
+        }
+
+        function updateWonderWoman() {
+            if (currentLevel !== 3) return;
+
+            // ── Vertical physics (mirrors DW) ─────────────────────────────
+            if (wonderWoman._swinging) {
+                const g = 0.038;
+                wonderWoman._swingAngVel += -g * Math.sin(wonderWoman._swingAngle);
+                wonderWoman._swingAngVel *= 0.996;
+                wonderWoman._swingAngle  += wonderWoman._swingAngVel;
+                wonderWoman.x = wonderWoman._anchorX + Math.sin(wonderWoman._swingAngle) * wonderWoman._ropeLen;
+                wonderWoman.y = wonderWoman._anchorY + Math.cos(wonderWoman._swingAngle) * wonderWoman._ropeLen;
+                wonderWoman.faceDir = wonderWoman._swingAngVel > 0 ? 1 : -1;
+                wonderWoman.phase += 0.07;
+                if (Math.abs(wonderWoman._swingAngle) > 0.8 || wonderWoman.y > L3_GROUND_Y - 20) {
+                    wonderWoman._swinging = false;
+                    wonderWoman._gliding  = true;
+                    wonderWoman._onGround = false;
+                    wonderWoman.vy = wonderWoman._swingAngVel * wonderWoman._ropeLen * -0.25;
+                }
+                return;
+            }
+
+            const floorY = (scene === 'temple') ? TEMPLE_SCENE.floorY : L3_GROUND_Y;
+            if (!wonderWoman._onGround) {
+                const grav = wonderWoman._gliding ? 0.14 : 0.52;
+                wonderWoman.vy = Math.min(wonderWoman.vy + grav, wonderWoman._gliding ? 2.5 : 16);
+                wonderWoman.y += wonderWoman.vy;
+                if (wonderWoman.y >= floorY) {
+                    wonderWoman.y = floorY; wonderWoman.vy = 0;
+                    wonderWoman._onGround = true; wonderWoman._gliding = false;
+                }
+                for (const p of platforms) {
+                    if (wonderWoman.x > p.x && wonderWoman.x < p.x + p.w && wonderWoman.vy > 0) {
+                        const prevY = wonderWoman.y - wonderWoman.vy;
+                        if (prevY <= p.y + 4 && wonderWoman.y >= p.y) {
+                            wonderWoman.y = p.y; wonderWoman.vy = 0;
+                            wonderWoman._onGround = true; wonderWoman._gliding = false;
+                        }
+                    }
+                }
+            } else if (wonderWoman.y < floorY) {
+                let sup = false;
+                for (const p of platforms) {
+                    if (wonderWoman.x > p.x && wonderWoman.x < p.x + p.w && Math.abs(wonderWoman.y - p.y) < 6) {
+                        sup = true; break;
+                    }
+                }
+                if (!sup) { wonderWoman._onGround = false; wonderWoman.vy = 0; }
+            }
+
+            wonderWoman.phase += 0.05;
+            if (wonderWoman._attackCD  > 0) wonderWoman._attackCD--;
+            if (wonderWoman._gadgetCD  > 0) wonderWoman._gadgetCD--;
+            if (wonderWoman._jumpCD    > 0) wonderWoman._jumpCD--;
+            if (wonderWoman._grappleCD > 0) wonderWoman._grappleCD--;
+            if (wonderWoman._lassoAnimTimer > 0) wonderWoman._lassoAnimTimer--;
+            if (wonderWoman._punchTimer     > 0) wonderWoman._punchTimer--;
+            if (wonderWoman._kickTimer      > 0) wonderWoman._kickTimer--;
+            if (wonderWoman._throwTimer     > 0) wonderWoman._throwTimer--;
+            if (wonderWoman._slamTimer      > 0) wonderWoman._slamTimer--;
+
+            // Update lasso / tiara projectiles
+            for (let i = wwProjectiles.length - 1; i >= 0; i--) {
+                const p = wwProjectiles[i];
+                p.x += p.vx; p.y += p.vy; p.life--;
+                if (p.life <= 0) { wwProjectiles.splice(i, 1); continue; }
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    if (p.x > en.x && p.x < en.x + en.w && p.y > en.y && p.y < en.y + en.h) {
+                        tryHitEnemy(en, p.dmg, 7, 'punch', wonderWoman);
+                        spawnImpact(p.x, p.y, 'punch', false);
+                        wwProjectiles.splice(i, 1); break;
+                    }
+                }
+            }
+
+            // ── Combat AI: zone-combat, fight mode, or formation follow ────
+            const inCombat = wonderWoman.fightMode || wonderWoman.zoneCombat;
+
+            // Formation offset: WW stays ~110px behind hero, DW ~220px behind
+            const FORM_OFFSET = 110;
+
+            if (wonderWoman.zoneCombat) {
+                // Arrived at quest zone — fight until zone clears
+                let target = null, tDist = Infinity;
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    const d = Math.abs((en.x + en.w / 2) - wonderWoman.x);
+                    if (d < tDist) { tDist = d; target = en; }
+                }
+                if (!target) { wonderWoman.zoneCombat = false; } // return to formation when clear
+                if (target) {
+                    const enMid  = target.x + target.w / 2;
+                    const enDist = Math.abs(enMid - wonderWoman.x);
+                    wonderWoman.faceDir = enMid < wonderWoman.x ? -1 : 1;
+                    const enAbove = (target.y + target.h) < wonderWoman.y - 80;
+                    if (enAbove) {
+                        if (wonderWoman._onGround && wonderWoman._jumpCD <= 0 && enDist < 240) {
+                            wonderWoman.vy = -16; wonderWoman._onGround = false; wonderWoman._jumpCD = 80;
+                        } else if (wonderWoman._gadgetCD <= 0 && wonderWoman._attackCD <= 0 && enDist < 500) {
+                            const dy_aim = (target.y + target.h / 2) - (wonderWoman.y - 50);
+                            wwProjectiles.push({ x: wonderWoman.x, y: wonderWoman.y - 50, vx: wonderWoman.faceDir * 10, vy: dy_aim / Math.max(enDist,1) * 5, life: 70, dmg: 4, type: 'tiara' });
+                            wonderWoman._gadgetCD = 52; wonderWoman._attackCD = 18;
+                            wonderWoman._throwTimer = 20; wonderWoman._animSide = wonderWoman.faceDir;
+                        }
+                    }
+                    if (!enAbove && enDist > 85) wonderWoman.x += Math.sign(enMid - wonderWoman.x) * 4.5;
+                    if (wonderWoman._attackCD <= 0) {
+                        const vertClose = Math.abs((wonderWoman.y - 35) - (target.y + target.h / 2)) < 65;
+                        if (enDist < 85 && vertClose) {
+                            const r = Math.random();
+                            tryHitEnemy(target, r < 0.5 ? 3 : 4, 9, 'punch', wonderWoman);
+                            wonderWoman._attackCD = r < 0.5 ? 24 : 38;
+                            if (r < 0.5) { wonderWoman._punchTimer = 16; } else { wonderWoman._kickTimer = 20; }
+                            wonderWoman._animSide = wonderWoman.faceDir;
+                        } else if (enDist < 340 && wonderWoman._gadgetCD <= 0) {
+                            wwProjectiles.push({ x: wonderWoman.x, y: wonderWoman.y - 50, vx: wonderWoman.faceDir * 11, vy: -0.5, life: 55, dmg: 3, type: 'lasso' });
+                            wonderWoman._gadgetCD = 48; wonderWoman._attackCD = 16;
+                            wonderWoman._lassoAnimTimer = 22; wonderWoman._animSide = wonderWoman.faceDir;
+                        }
+                    }
+                }
+                return;
+            }
+
+            if (!inCombat) {
+                // Formation follow: stay FORM_OFFSET behind the hero
+                const heroMid = hero.x + hero.w / 2;
+                const wwTarget = heroMid - Math.sign(hero.facing || 1) * FORM_OFFSET;
+                const dx = wwTarget - wonderWoman.x;
+                if (Math.abs(dx) > 900) wonderWoman.x = wwTarget;
+                else if (Math.abs(dx) > 20) { wonderWoman.x += Math.sign(dx) * 2.0; wonderWoman.faceDir = Math.sign(dx); }
+                // Face the hero when very close
+                if (Math.abs(heroMid - wonderWoman.x) < 60) wonderWoman.faceDir = heroMid < wonderWoman.x ? -1 : 1;
+
+                // Engage nearby enemies passively
+                if (wonderWoman._attackCD <= 0) {
+                    for (const en of enemies) {
+                        if (!en.alive) continue;
+                        if (Math.abs((en.x + en.w / 2) - wonderWoman.x) < 120) {
+                            tryHitEnemy(en, 2, 7, 'punch', wonderWoman);
+                            wonderWoman._attackCD = 50;
+                            wonderWoman._punchTimer = 16; wonderWoman._animSide = wonderWoman.faceDir;
+                            break;
+                        }
+                    }
+                }
+
+                // Auto-activate zoneCombat when quest zone is active and WW is close
+                // Activate combat if near a quest zone OR near any live enemy
+                if (questZone && Math.abs(wonderWoman.x - questZone.x) < 700) {
+                    wonderWoman.zoneCombat = true;
+                    wonderWoman._targetX = questZone.x;
+                }
+                if (!wonderWoman.zoneCombat) {
+                    for (const en of enemies) {
+                        if (!en.alive) continue;
+                        if (Math.abs((en.x + en.w / 2) - wonderWoman.x) < 600) {
+                            wonderWoman.zoneCombat = true;
+                            break;
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Pick target
+            let best = null, bestDist = Infinity;
+            for (const en of enemies) {
+                if (!en.alive) continue;
+                const d = Math.abs((en.x + en.w / 2) - wonderWoman.x);
+                if (d < bestDist) { bestDist = d; best = en; }
+            }
+            wonderWoman._targetEnemy = best;
+            if (!best) return;
+
+            const enMid  = best.x + best.w / 2;
+            const enDist = Math.abs(enMid - wonderWoman.x);
+            wonderWoman.faceDir = enMid < wonderWoman.x ? -1 : 1;
+
+            // Reach elevated enemy
+            const enAbove = (best.y + best.h) < wonderWoman.y - 80;
+            if (enAbove) {
+                // WW can super-jump higher than DW
+                if (wonderWoman._onGround && wonderWoman._jumpCD <= 0 && enDist < 240) {
+                    wonderWoman.vy = -16; wonderWoman._onGround = false;
+                    wonderWoman._jumpCD = 80;
+                } else if (wonderWoman._gadgetCD <= 0 && wonderWoman._attackCD <= 0 && enDist < 500) {
+                    // Tiara toss — arcs toward enemy
+                    const dy_aim = (best.y + best.h / 2) - (wonderWoman.y - 50);
+                    const dist   = Math.max(enDist, 1);
+                    wwProjectiles.push({ x: wonderWoman.x, y: wonderWoman.y - 50,
+                        vx: wonderWoman.faceDir * 10, vy: dy_aim / dist * 5,
+                        life: 70, dmg: 4, type: 'tiara' });
+                    wonderWoman._gadgetCD = 52; wonderWoman._attackCD = 18;
+                    wonderWoman._throwTimer = 20; wonderWoman._animSide = wonderWoman.faceDir;
+                }
+            }
+
+            // Horizontal approach
+            if (!enAbove && enDist > 85) {
+                wonderWoman.x += Math.sign(enMid - wonderWoman.x) * 3.4;
+            }
+
+            if (wonderWoman._attackCD <= 0) {
+                const attackY   = wonderWoman.y - 35;
+                const enCenterY = best.y + best.h / 2;
+                const vertClose = Math.abs(attackY - enCenterY) < 65;
+
+                if (enDist < 85 && vertClose) {
+                    // Melee combo: punch or kick
+                    const r = Math.random();
+                    const dmg = r < 0.5 ? 3 : 4;
+                    if (r >= 0.5) best.vx = wonderWoman.faceDir * 5;
+                    tryHitEnemy(best, dmg, 9, 'punch', wonderWoman);
+                    wonderWoman._attackCD = r < 0.5 ? 24 : 38;
+                    if (r < 0.5) { wonderWoman._punchTimer = 16; wonderWoman._animSide = wonderWoman.faceDir; }
+                    else         { wonderWoman._kickTimer  = 20; wonderWoman._animSide = wonderWoman.faceDir; }
+
+                    // Occasionally follow up with ground slam AOE
+                    if (wonderWoman._onGround && Math.random() < 0.15 && wonderWoman._slamTimer <= 0) {
+                        for (const en of enemies) {
+                            if (!en.alive) continue;
+                            if (Math.abs((en.x + en.w / 2) - wonderWoman.x) < 120 && Math.abs(en.y - wonderWoman.y) < 80) {
+                                tryHitEnemy(en, 2, 6, 'punch', wonderWoman);
+                            }
+                        }
+                        wonderWoman._slamTimer = 90;
+                        spawnImpact(wonderWoman.x, wonderWoman.y, 'punch', false);
+                    }
+                } else if (enDist < 340 && wonderWoman._gadgetCD <= 0) {
+                    // Lasso throw at range
+                    wwProjectiles.push({ x: wonderWoman.x, y: wonderWoman.y - 50,
+                        vx: wonderWoman.faceDir * 11, vy: -0.5,
+                        life: 55, dmg: 3, type: 'lasso' });
+                    wonderWoman._gadgetCD = 48; wonderWoman._attackCD = 16;
+                    wonderWoman._lassoAnimTimer = 22; wonderWoman._animSide = wonderWoman.faceDir;
+                }
+            }
+        }
+
+                function updateDarkWing() {
+            if (currentLevel === 3 && !darkWing._l3Active) return;
+            if (currentLevel !== 2 && currentLevel !== 3) return;
             const cl = clues[activeClueIndex];
 
             // ── DRIVING MODE: Batmobile racing to the quest zone ────────────────
@@ -6044,50 +7547,141 @@
                 return;
             }
 
+            // ── VERTICAL PHYSICS ──────────────────────────────────────────────
+            if (darkWing._swinging) {
+                // Pendulum arc around grapple anchor
+                const g = 0.038;
+                darkWing._swingAngVel += -g * Math.sin(darkWing._swingAngle);
+                darkWing._swingAngVel *= 0.996;
+                darkWing._swingAngle += darkWing._swingAngVel;
+                darkWing.x = darkWing._anchorX + Math.sin(darkWing._swingAngle) * darkWing._ropeLen;
+                darkWing.y = darkWing._anchorY + Math.cos(darkWing._swingAngle) * darkWing._ropeLen;
+                darkWing.faceDir = darkWing._swingAngVel > 0 ? 1 : -1;
+                darkWing.phase += 0.07;
+                // Release past apex on the target side
+                if (Math.abs(darkWing._swingAngle) > 0.8 || darkWing.y > GROUND_Y - 20) {
+                    darkWing._swinging = false;
+                    darkWing._gliding = true;
+                    darkWing._onGround = false;
+                    darkWing.vy = darkWing._swingAngVel * darkWing._ropeLen * -0.25;
+                }
+                return;
+            }
+
+            if (!darkWing._onGround) {
+                const grav = darkWing._gliding ? 0.16 : 0.52;
+                darkWing.vy = Math.min(darkWing.vy + grav, darkWing._gliding ? 2.2 : 16);
+                darkWing.y += darkWing.vy;
+                // Land on GROUND_Y
+                if (darkWing.y >= GROUND_Y) {
+                    darkWing.y = GROUND_Y; darkWing.vy = 0;
+                    darkWing._onGround = true; darkWing._gliding = false;
+                }
+                // Land on rooftop platforms
+                for (const p of platforms) {
+                    if (darkWing.x > p.x && darkWing.x < p.x + p.w && darkWing.vy > 0) {
+                        const prevY = darkWing.y - darkWing.vy;
+                        if (prevY <= p.y + 4 && darkWing.y >= p.y) {
+                            darkWing.y = p.y; darkWing.vy = 0;
+                            darkWing._onGround = true; darkWing._gliding = false;
+                        }
+                    }
+                }
+            } else if (darkWing.y < GROUND_Y) {
+                // Check still supported by a platform
+                let supported = false;
+                for (const p of platforms) {
+                    if (darkWing.x > p.x && darkWing.x < p.x + p.w && Math.abs(darkWing.y - p.y) < 6) {
+                        supported = true; break;
+                    }
+                }
+                if (!supported) { darkWing._onGround = false; darkWing.vy = 0; }
+            }
+
             if (!darkWing.fightMode) {
                 // ── zone combat: stay at zone and fight until quest resolves ─
                 if (darkWing.zoneCombat) {
-                    const zx = questZone ? questZone.x : darkWing._targetX;
-                    const zdx = zx - darkWing.x;
-                    if (Math.abs(zdx) > 40) {
-                        darkWing.x += Math.sign(zdx) * 2.2;
-                        darkWing.faceDir = Math.sign(zdx);
-                    }
                     darkWing.phase += 0.05;
-                    if (darkWing._attackCD > 0) { darkWing._attackCD--; }
-                    else {
-                        // Attack any enemy within 180px of the zone center
-                        let target = null, tDist = Infinity;
-                        for (const en of enemies) {
-                            if (!en.alive) continue;
-                            const d = Math.abs((en.x + en.w / 2) - zx);
-                            if (d < 180 && d < tDist) { tDist = d; target = en; }
+                    if (darkWing._attackCD > 0) darkWing._attackCD--;
+                    if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
+                    if (darkWing._grappleCD > 0) darkWing._grappleCD--;
+                    if (darkWing._jumpCD    > 0) darkWing._jumpCD--;
+
+                    // Pick closest alive enemy anywhere on screen (no radius limit)
+                    let target = null, tDist = Infinity;
+                    for (const en of enemies) {
+                        if (!en.alive) continue;
+                        const d = Math.abs((en.x + en.w / 2) - darkWing.x);
+                        if (d < tDist) { tDist = d; target = en; }
+                    }
+
+                    if (target) {
+                        const enMid = target.x + target.w / 2;
+                        const enDist = Math.abs(enMid - darkWing.x);
+                        darkWing.faceDir = enMid < darkWing.x ? -1 : 1;
+
+                        // Reach elevated enemy: prefer grapple; jump only as fallback with cooldown
+                        const enAbove = (target.y + target.h) < darkWing.y - 80;
+                        if (enAbove) {
+                            if (darkWing._grappleCD <= 0 && darkWing._onGround) {
+                                dwInitSwing(); // swing up to their level
+                            } else if (darkWing._onGround && darkWing._jumpCD <= 0 && enDist < 180) {
+                                darkWing.vy = -13; darkWing._onGround = false;
+                                darkWing._jumpCD = 90; // wait before jumping again
+                            }
+                            // if enemy is too high/far to reach, throw batarang
+                            else if (darkWing._gadgetCD <= 0 && darkWing._attackCD <= 0 && enDist < 420) {
+                                const dy_aim = (target.y + target.h / 2) - (darkWing.y - 55);
+                                const dist = Math.max(enDist, 1);
+                                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: dy_aim / dist * 5, life: 65, dmg: 3, type: 'batarang' });
+                                darkWing._gadgetCD = 55; darkWing._attackCD = 20;
+                                darkWing._throwTimer = 24; darkWing._animSide = darkWing.faceDir;
+                            }
                         }
-                        if (target) {
-                            const enDist = Math.abs((target.x + target.w/2) - darkWing.x);
-                            darkWing.faceDir = (target.x + target.w/2) < darkWing.x ? -1 : 1;
-                            if (enDist < 95) {
+
+                        // Grapple to close large horizontal distance
+                        if (!enAbove && darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 320) {
+                            dwInitSwing();
+                        }
+
+                        // Move toward target (only on ground or gliding in)
+                        if (enDist > 90 && !darkWing._swinging) {
+                            darkWing.x += Math.sign(enMid - darkWing.x) * 3.2;
+                        }
+
+                        if (darkWing._attackCD <= 0) {
+                            const attackY = darkWing.y - 30; // approx DW center Y
+                            const enCenterY = target.y + target.h / 2;
+                            const vertClose = Math.abs(attackY - enCenterY) < 60;
+                            if (enDist < 90 && vertClose) {
+                                // melee combo
                                 const r = Math.random();
                                 const dmg = r < 0.5 ? 2 : 3;
                                 const ky  = r < 0.5 ? 6  : 9;
                                 if (r >= 0.5) target.vx = darkWing.faceDir * 4;
                                 tryHitEnemy(target, dmg, ky, 'punch', darkWing);
-                                darkWing._attackCD = r < 0.5 ? 30 : 45;
-                            } else if (enDist < 280 && darkWing._gadgetCD <= 0) {
-                                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
-                                darkWing._gadgetCD = 55;
-                                darkWing._attackCD = 20;
-                            } else {
-                                // chase the target
-                                darkWing.x += Math.sign(target.x - darkWing.x) * 2.5;
+                                darkWing._attackCD = r < 0.5 ? 28 : 42;
+                                if (r < 0.5) { darkWing._punchTimer = 18; darkWing._animSide = darkWing.faceDir; }
+                                else { darkWing._kickTimer = 22; darkWing._animSide = darkWing.faceDir; }
+                            } else if (enDist < 300 && darkWing._gadgetCD <= 0) {
+                                // batarang at range
+                                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 55, dmg: 3, type: 'batarang' });
+                                darkWing._gadgetCD = 50;
+                                darkWing._attackCD = 18;
+                                darkWing._throwTimer = 24; darkWing._animSide = darkWing.faceDir;
                             }
                         }
                     }
-                    if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
                     return;
                 }
-                // ── clue-following mode ──────────────────────────────────
-                darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
+                // ── clue-following / formation mode ─────────────────────────
+                if (currentLevel === 3) {
+                    // L3: form up 220px behind hero
+                    const heroMid3 = hero.x + hero.w / 2;
+                    darkWing._targetX = heroMid3 - Math.sign(hero.facing || 1) * 220;
+                } else {
+                    darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
+                }
                 const dx = darkWing._targetX - darkWing.x;
                 if (Math.abs(dx) > 900) {
                     darkWing.x = darkWing._targetX;
@@ -6100,6 +7694,10 @@
                 const near = Math.abs(heroMid - darkWing.x) < 90;
                 darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
                 if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
+                // On L3, auto-enter zoneCombat when quest zone active
+                if (currentLevel === 3 && questZone && Math.abs(darkWing.x - questZone.x) < 400) {
+                    darkWing.zoneCombat = true;
+                }
                 // basic attack nearby enemies even before fight mode
                 if (darkWing._attackCD > 0) { darkWing._attackCD--; return; }
                 for (const en of enemies) {
@@ -6108,6 +7706,7 @@
                     if (d < 110) {
                         tryHitEnemy(en, 2, 7, 'punch', darkWing);
                         darkWing._attackCD = 65;
+                        darkWing._punchTimer = 18; darkWing._animSide = darkWing.faceDir;
                         break;
                     }
                 }
@@ -6121,6 +7720,7 @@
             if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
             if (darkWing._smokeCD  > 0) darkWing._smokeCD--;
             if (darkWing._grappleCD > 0) darkWing._grappleCD--;
+            if (darkWing._jumpCD  > 0) darkWing._jumpCD--;
             if (darkWing._attackCD > 0) { darkWing._attackCD--; }
 
             // update batarang projectiles
@@ -6154,6 +7754,27 @@
             const enMid = best.x + best.w / 2;
             const enDist = Math.abs(enMid - darkWing.x);
 
+            // Reach elevated enemy: prefer grapple; jump only as fallback with cooldown
+            const bestAbove = (best.y + best.h) < darkWing.y - 80;
+            if (bestAbove) {
+                if (darkWing._grappleCD <= 0 && darkWing._onGround) {
+                    dwInitSwing();
+                } else if (darkWing._onGround && darkWing._jumpCD <= 0 && enDist < 200) {
+                    darkWing.vy = -14; darkWing._onGround = false;
+                    darkWing._jumpCD = 90;
+                } else if (darkWing._gadgetCD <= 0 && darkWing._attackCD <= 0 && enDist < 480) {
+                    const dy_aim = (best.y + best.h / 2) - (darkWing.y - 55);
+                    const dist = Math.max(enDist, 1);
+                    dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: dy_aim / dist * 5, life: 65, dmg: 3, type: 'batarang' });
+                    darkWing._gadgetCD = 55; darkWing._attackCD = 20;
+                    darkWing._throwTimer = 24; darkWing._animSide = darkWing.faceDir;
+                }
+            }
+            // Grapple swing across large horizontal gaps (ground-level targets)
+            if (!bestAbove && darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 400) {
+                dwInitSwing();
+            }
+
             const PREF_DIST = 80;
             if (darkWing._dodgeTimer <= 0) {
                 const wantX = enMid - darkWing.faceDir * PREF_DIST;
@@ -6177,25 +7798,28 @@
                             en.frozen = Math.max(en.frozen, 90);
                         }
                     }
-                    spawnImpact(darkWing.x, GROUND_Y - 40, 'freeze', false);
+                    spawnImpact(darkWing.x, darkWing.y - 40, 'freeze', false);
                     darkWing._smokeCD = 280;
                     darkWing._gadgetCD = 30;
+                    darkWing._smokeAnimTimer = 30;
                     return;
                 }
             }
 
             // grapple hook
             if (darkWing._grappleCD <= 0 && enDist > 280) {
-                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 40, vx: darkWing.faceDir * 14, vy: 0, life: 40, dmg: 1, type: 'grapple' });
+                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 40, vx: darkWing.faceDir * 14, vy: 0, life: 40, dmg: 1, type: 'grapple' });
                 darkWing._grappleCD = 220;
                 darkWing._gadgetCD = 20;
+                darkWing._grappleAnimTimer = 28; darkWing._animSide = darkWing.faceDir;
                 return;
             }
 
             // batarang
             if (darkWing._gadgetCD <= 0 && enDist > 100 && enDist < 300) {
-                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
+                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
                 darkWing._gadgetCD = 55;
+                darkWing._throwTimer = 26; darkWing._animSide = darkWing.faceDir;
                 return;
             }
 
@@ -6213,12 +7837,15 @@
                 let dmg = 2, ky = 5;
                 if (r < 0.5) {
                     dmg = 2; ky = 6;
+                    darkWing._punchTimer = 18; darkWing._animSide = darkWing.faceDir;
                 } else if (r < 0.8) {
                     dmg = 3; ky = 9;
                     best.vx = darkWing.faceDir * 4;
+                    darkWing._kickTimer = 24; darkWing._animSide = darkWing.faceDir;
                 } else {
                     dmg = 2; ky = 15;
                     best.vy = -7;
+                    darkWing._kickTimer = 30; darkWing._animSide = darkWing.faceDir;
                 }
                 tryHitEnemy(best, dmg, ky, 'punch', darkWing);
                 darkWing._attackCD = r < 0.5 ? 28 : (r < 0.8 ? 40 : 55);
@@ -6257,7 +7884,162 @@
         }
 
         // ── Level 2 background: grunge overcast city ──────────────────────────
-        function drawGrungeCity() {
+        function drawJungle() {
+            const t = Date.now() * 0.001;
+
+            // ── Sky: moonlit amazon night ─────────────────────────────────
+            const sky = ctx.createLinearGradient(0, 0, 0, H);
+            sky.addColorStop(0,   '#020a02');
+            sky.addColorStop(0.3, '#061408');
+            sky.addColorStop(0.7, '#0c2010');
+            sky.addColorStop(1,   '#142e10');
+            ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+            // Moon
+            const moonX = 720 - camera.x * 0.02, moonY = 80;
+            ctx.save();
+            ctx.fillStyle = 'rgba(220,240,210,0.18)';
+            ctx.beginPath(); ctx.arc(moonX, moonY, 55, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#d8f0d0';
+            ctx.beginPath(); ctx.arc(moonX, moonY, 30, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(180,220,170,0.5)';
+            ctx.beginPath(); ctx.arc(moonX + 8, moonY - 4, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+            // Stars
+            for (let i = 0; i < 60; i++) {
+                const sx = ((i * 317 + 50) % W);
+                const sy = 20 + (i * 137) % 160;
+                const sa = 0.2 + Math.sin(t * 0.8 + i) * 0.15;
+                ctx.globalAlpha = sa;
+                ctx.fillStyle = '#e0f0d8';
+                ctx.fillRect(sx, sy, 1.5, 1.5);
+            }
+            ctx.globalAlpha = 1;
+
+            // ── Far background: massive canopy ridge (parallax 0.03) ──────
+            const p0 = camera.x * 0.03;
+            ctx.fillStyle = '#040c04';
+            for (let i = 0; i < 8; i++) {
+                const bx = ((i * 480 - p0) % (W + 500)) - 250;
+                const bh = 300 + (i % 3) * 80;
+                ctx.beginPath();
+                ctx.moveTo(bx, H);
+                // irregular canopy ridge
+                for (let px = bx; px <= bx + 480; px += 30) {
+                    const py = H - bh + Math.sin(px * 0.04 + i) * 40 - (px > bx + 180 && px < bx + 300 ? 30 : 0);
+                    ctx.lineTo(px, py);
+                }
+                ctx.lineTo(bx + 480, H);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // ── Mid layer: tall jungle trees (parallax 0.06) ─────────────
+            const p1 = camera.x * 0.06;
+            for (let i = 0; i < 14; i++) {
+                const tx = ((i * 330 - p1) % (W + 340)) - 170;
+                const th = 220 + (i % 4) * 55;
+                const tw = 28 + (i % 3) * 8;
+                // Trunk
+                ctx.fillStyle = '#0a1206';
+                ctx.fillRect(tx + tw / 2 - tw / 4, H - th, tw / 2, th);
+                // Buttress roots
+                ctx.fillStyle = '#0c1608';
+                ctx.beginPath();
+                ctx.moveTo(tx + tw / 2, H - th * 0.3);
+                ctx.lineTo(tx, H); ctx.lineTo(tx + tw / 2 - 4, H); ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(tx + tw / 2, H - th * 0.3);
+                ctx.lineTo(tx + tw, H); ctx.lineTo(tx + tw / 2 + 4, H); ctx.closePath(); ctx.fill();
+                // Multi-blob canopy
+                const cr = 52 + (i % 3) * 18;
+                ctx.fillStyle = `hsl(${115 + (i % 4) * 8}, 60%, ${8 + (i % 3) * 3}%)`;
+                for (const [bOffX, bOffY, bR] of [
+                    [0, 0, cr], [-cr * 0.55, 12, cr * 0.7], [cr * 0.55, 10, cr * 0.65],
+                    [0, cr * 0.4, cr * 0.6], [-cr * 0.3, cr * 0.25, cr * 0.5]
+                ]) {
+                    ctx.beginPath();
+                    ctx.arc(tx + tw / 2 + bOffX, H - th + bOffY, bR, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // Hanging vines from canopy
+                ctx.strokeStyle = 'rgba(20,60,10,0.5)'; ctx.lineWidth = 2;
+                for (let v = 0; v < 3; v++) {
+                    const vx = tx + 10 + v * (tw * 0.4);
+                    ctx.beginPath(); ctx.moveTo(vx, H - th + cr);
+                    for (let vy = H - th + cr; vy < H - 20; vy += 25) {
+                        ctx.lineTo(vx + Math.sin(vy * 0.15 + v + i) * 8, vy + 25);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // ── Near foreground ferns / undergrowth ───────────────────────
+            const p2 = camera.x * 0.12;
+            for (let i = 0; i < 20; i++) {
+                const fx2 = ((i * 210 - p2) % (W + 220)) - 110;
+                const fy2 = H - 40 - (i % 3) * 18;
+                ctx.fillStyle = `hsl(${120 + (i % 5) * 6}, 65%, ${10 + (i % 3) * 4}%)`;
+                // Fan of fronds
+                for (let f = -3; f <= 3; f++) {
+                    const angle = (f / 3) * 0.9 - Math.PI / 2 + Math.sin(t * 0.4 + i) * 0.06;
+                    const len = 38 + (i % 3) * 12;
+                    ctx.beginPath();
+                    ctx.moveTo(fx2, fy2);
+                    const ex2 = fx2 + Math.cos(angle) * len;
+                    const ey2 = fy2 + Math.sin(angle) * len;
+                    const cpx = fx2 + Math.cos(angle - 0.3) * len * 0.55;
+                    const cpy = fy2 + Math.sin(angle - 0.3) * len * 0.55;
+                    ctx.quadraticCurveTo(cpx, cpy, ex2, ey2);
+                    ctx.lineWidth = 3 - Math.abs(f) * 0.4;
+                    ctx.strokeStyle = `hsl(${118 + f * 4}, 60%, ${12 + (i % 3) * 3}%)`;
+                    ctx.stroke();
+                }
+            }
+
+            // ── Mist layers ───────────────────────────────────────────────
+            const mist1 = ctx.createLinearGradient(0, H * 0.6, 0, H * 0.9);
+            mist1.addColorStop(0, 'rgba(20,60,15,0)');
+            mist1.addColorStop(1, 'rgba(15,45,10,0.38)');
+            ctx.fillStyle = mist1; ctx.fillRect(0, H * 0.6, W, H * 0.3);
+
+            // ── Fireflies ─────────────────────────────────────────────────
+            for (let i = 0; i < 28; i++) {
+                const ffx = ((i * 1137 - camera.x * 0.18) % (W + 80)) - 40;
+                const ffy = 180 + (i % 6) * 72 + Math.sin(t * 1.2 + i * 1.7) * 22;
+                const alpha = Math.max(0, 0.2 + Math.sin(t * 2.8 + i * 2.1) * 0.35);
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = i % 3 === 0 ? '#aaff44' : '#ccff88';
+                ctx.beginPath(); ctx.arc(ffx, ffy, 2, 0, Math.PI * 2); ctx.fill();
+                // subtle glow halo
+                ctx.globalAlpha = alpha * 0.3;
+                ctx.beginPath(); ctx.arc(ffx, ffy, 6, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            // ── River shimmer where gaps are ─────────────────────────────
+            for (const g of gaps) {
+                const gsx = g.x - camera.x;
+                if (gsx > W + 50 || gsx + g.w < -50) continue;
+                const rg = ctx.createLinearGradient(0, H * 0.75, 0, H);
+                rg.addColorStop(0, '#0a2a18'); rg.addColorStop(1, '#051408');
+                ctx.fillStyle = rg;
+                ctx.fillRect(g.x, L3_GROUND_Y, g.w, 80);
+                // water shimmer lines
+                ctx.strokeStyle = 'rgba(80,200,140,0.2)'; ctx.lineWidth = 1;
+                for (let wl = 0; wl < 4; wl++) {
+                    const wy = L3_GROUND_Y + 10 + wl * 16;
+                    ctx.beginPath();
+                    for (let wx = g.x; wx < g.x + g.w; wx += 18) {
+                        const ny = wy + Math.sin((wx + t * 40) * 0.06) * 3;
+                        wx === g.x ? ctx.moveTo(wx, ny) : ctx.lineTo(wx, ny);
+                    }
+                    ctx.stroke();
+                }
+            }
+        }
+
+                function drawGrungeCity() {
             // overcast stormy sky — no sun, always dark orange-grey
             const sky = ctx.createLinearGradient(0, 0, 0, H);
             sky.addColorStop(0, '#0e0a06');
@@ -6337,6 +8119,540 @@
                     ctx.fillRect(sx + 60, sy + 80, 14, 20);
                     ctx.fillStyle = '#0e0a04';
                 }
+            }
+        }
+
+        // ── Factory interior draw ────────────────────────────────────────
+        // ── Wonder Woman character draw ────────────────────────────────
+        function drawWonderWomanAt(wx, wy) {
+            ctx.save();
+            const bob  = Math.sin(wonderWoman.phase) * 1.2;
+            const fd   = wonderWoman.faceDir;
+            const base = wy; // feet Y
+
+            // Cape / cloak (dark red, streams behind)
+            ctx.fillStyle = 'rgba(180,20,20,0.85)';
+            ctx.beginPath();
+            ctx.moveTo(wx, base - 70);
+            ctx.lineTo(wx - fd * 38, base - 8);
+            ctx.lineTo(wx - fd * 14, base - 30);
+            ctx.closePath(); ctx.fill();
+
+            // Legs — armored blue-black
+            ctx.fillStyle = '#1a1a60';
+            ctx.fillRect(wx - 10, base - 32, 9, 32);
+            ctx.fillRect(wx + 1,  base - 32, 9, 32);
+            // Red boots
+            ctx.fillStyle = '#cc1111';
+            ctx.fillRect(wx - 11, base - 12, 11, 12);
+            ctx.fillRect(wx,      base - 12, 11, 12);
+
+            // Torso — red/gold armor
+            ctx.fillStyle = '#cc2222';
+            ctx.fillRect(wx - 12, base - 68, 24, 36);
+            // Gold chest eagle emblem
+            ctx.fillStyle = '#ddaa00';
+            ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('★', wx, base - 50 + bob);
+
+            // Arms
+            const punchExtend = wonderWoman._punchTimer > 0 ? fd * 18 : 0;
+            const kickExtend  = wonderWoman._kickTimer  > 0 ? fd * 12 : 0;
+            // Right arm
+            ctx.strokeStyle = '#cc2222'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(wx + fd * 10, base - 60 + bob);
+            ctx.lineTo(wx + fd * 22 + punchExtend, base - 50 + bob);
+            ctx.stroke();
+            // Left arm / lasso arm
+            const lassoExt = wonderWoman._lassoAnimTimer > 0 ? fd * 20 : 0;
+            ctx.beginPath();
+            ctx.moveTo(wx - fd * 10, base - 60 + bob);
+            ctx.lineTo(wx - fd * 22 + lassoExt, base - 52 + bob);
+            ctx.stroke();
+            // Lasso glow
+            if (wonderWoman._lassoAnimTimer > 0) {
+                ctx.strokeStyle = 'rgba(255,200,40,0.8)'; ctx.lineWidth = 2;
+                const lx = wx - fd * 22 + lassoExt;
+                const ly = base - 52 + bob;
+                ctx.beginPath(); ctx.arc(lx, ly, 10, 0, Math.PI * 2); ctx.stroke();
+            }
+            // Tiara toss animation
+            if (wonderWoman._throwTimer > 0) {
+                ctx.fillStyle = '#ddaa00';
+                ctx.beginPath();
+                ctx.arc(wx + fd * 28, base - 62 + bob, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Head + dark hair
+            ctx.fillStyle = '#e8c090';
+            ctx.beginPath(); ctx.arc(wx, base - 78 + bob, 12, 0, Math.PI * 2); ctx.fill();
+            // Dark hair
+            ctx.fillStyle = '#1a0a00';
+            ctx.beginPath();
+            ctx.arc(wx, base - 78 + bob, 12, Math.PI, 0); ctx.fill();
+            ctx.fillRect(wx - 12, base - 90 + bob, 24, 12);
+            // Gold tiara
+            ctx.fillStyle = '#ddaa00';
+            ctx.fillRect(wx - 11, base - 88 + bob, 22, 4);
+            // Red star on tiara
+            ctx.fillStyle = '#cc1111';
+            ctx.font = '8px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('★', wx, base - 85 + bob);
+
+            // HP bar
+            if (wonderWoman.hp < wonderWoman.maxHp) {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(wx - 18, base - 106 + bob, 36, 5);
+                ctx.fillStyle = '#f44'; ctx.fillRect(wx - 18, base - 106 + bob, 36 * wonderWoman.hp / wonderWoman.maxHp, 5);
+            }
+
+            // Lasso/tiara projectiles
+            for (const p of wwProjectiles) {
+                if (p.type === 'tiara') {
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(Date.now() * 0.02);
+                    ctx.fillStyle = '#ddaa00';
+                    ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('◇', 0, 4);
+                    ctx.restore();
+                } else {
+                    ctx.strokeStyle = 'rgba(255,200,40,0.85)'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(wonderWoman.x, wonderWoman.y - 50);
+                    ctx.lineTo(p.x, p.y); ctx.stroke();
+                    ctx.fillStyle = '#ddaa00';
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // ── Temple interior draw ──────────────────────────────────────────
+        function drawTemple() {
+            const TF = TEMPLE_SCENE.floorY, TC = TEMPLE_SCENE.ceilingY, TW = TEMPLE_SCENE.w;
+            const t  = Date.now() * 0.001;
+
+            // Stone walls
+            ctx.fillStyle = '#1a1008';
+            ctx.fillRect(0, TC, TW, TF - TC + 80);
+
+            // Ceiling
+            ctx.fillStyle = '#120a04';
+            ctx.fillRect(0, TC, TW, 28);
+
+            // Stone brick pattern
+            ctx.strokeStyle = '#0e0804'; ctx.lineWidth = 1.5;
+            for (let by = TC + 28; by < TF; by += 36) {
+                ctx.beginPath(); ctx.moveTo(0, by); ctx.lineTo(TW, by); ctx.stroke();
+                const off = ((by - TC) / 36 % 2 === 0) ? 0 : 40;
+                for (let bx = off; bx < TW; bx += 80) {
+                    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, by + 36); ctx.stroke();
+                }
+            }
+
+            // Torches every 400px
+            for (let tx = 200; tx < TW; tx += 400) {
+                const flicker = 0.7 + Math.sin(t * 7 + tx) * 0.3;
+                ctx.save();
+                ctx.fillStyle = '#5a3010';
+                ctx.fillRect(tx - 5, TC + 40, 10, 28);
+                ctx.globalAlpha = flicker;
+                ctx.fillStyle = '#ff8820';
+                ctx.beginPath(); ctx.arc(tx, TC + 36, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#ffcc40';
+                ctx.beginPath(); ctx.arc(tx, TC + 34, 5, 0, Math.PI * 2); ctx.fill();
+                // Torch glow cone
+                const tg = ctx.createRadialGradient(tx, TC + 36, 4, tx, TC + 36, 120);
+                tg.addColorStop(0, `rgba(255,140,30,${0.18 * flicker})`);
+                tg.addColorStop(1, 'rgba(255,100,10,0)');
+                ctx.fillStyle = tg;
+                ctx.beginPath(); ctx.arc(tx, TC + 36, 120, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+
+            // Stone columns every 560px
+            for (let cx = 120; cx < TW; cx += 560) {
+                // Column shaft
+                ctx.fillStyle = '#2e1e10';
+                ctx.fillRect(cx - 18, TC + 28, 36, TF - TC - 28);
+                // Capital
+                ctx.fillStyle = '#3a2814';
+                ctx.fillRect(cx - 22, TC + 28, 44, 18);
+                // Base plinth
+                ctx.fillStyle = '#3a2814';
+                ctx.fillRect(cx - 22, TF - 20, 44, 20);
+                // Column fluting
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
+                for (let fl = -12; fl <= 12; fl += 6) {
+                    ctx.beginPath(); ctx.moveTo(cx + fl, TC + 46); ctx.lineTo(cx + fl, TF - 20); ctx.stroke();
+                }
+                // Ares rune carvings
+                ctx.fillStyle = '#cc3300';
+                ctx.font = '18px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('⚔', cx, TC + 120);
+            }
+
+            // Glowing altar at far end
+            const altarX = TW - 300;
+            const aGlow = 0.4 + Math.sin(t * 2) * 0.3;
+            ctx.save();
+            ctx.globalAlpha = aGlow;
+            ctx.fillStyle = '#cc0000';
+            ctx.beginPath(); ctx.arc(altarX, TF - 60, 80, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#3a1008';
+            ctx.fillRect(altarX - 60, TF - 80, 120, 80);
+            ctx.fillStyle = '#cc3300';
+            ctx.font = 'bold 14px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('⚔ ALTAR ⚔', altarX, TF - 50);
+            ctx.restore();
+
+            // TEMPLE_PLATFORMS drawn as stone ledges
+            for (const p of TEMPLE_PLATFORMS) {
+                ctx.fillStyle = '#2e1e10';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.fillStyle = '#4a3020';
+                ctx.fillRect(p.x, p.y, p.w, 3);  // top highlight
+                // Stone columns below platform
+                ctx.fillStyle = '#261408';
+                ctx.fillRect(p.x + 10,       p.y + p.h, 10, TF - p.y - p.h);
+                ctx.fillRect(p.x + p.w - 20, p.y + p.h, 10, TF - p.y - p.h);
+            }
+
+            // Floor grate / flagstones
+            ctx.fillStyle = '#1e1208';
+            ctx.fillRect(0, TF, TW, 80);
+            ctx.strokeStyle = '#150e06'; ctx.lineWidth = 1;
+            for (let fx = 0; fx < TW; fx += 60) {
+                ctx.beginPath(); ctx.moveTo(fx, TF); ctx.lineTo(fx, TF + 80); ctx.stroke();
+            }
+
+            // Ares figure at altar (during intro/battle)
+            if (templePhase === 'intro' || templePhase === 'battle') {
+                const ax = altarX, ay = TF;
+                ctx.save();
+                // Red war armor
+                ctx.fillStyle = '#8a0000';
+                ctx.fillRect(ax - 16, ay - 100, 32, 60);
+                // Helmet
+                ctx.fillStyle = '#6a0000';
+                ctx.beginPath(); ctx.arc(ax, ay - 110, 14, 0, Math.PI * 2); ctx.fill();
+                // Helmet plume
+                ctx.fillStyle = '#cc0000';
+                ctx.fillRect(ax - 3, ay - 126, 6, 18);
+                // Legs
+                ctx.fillStyle = '#6a1010';
+                ctx.fillRect(ax - 10, ay - 40, 9, 40);
+                ctx.fillRect(ax + 1,  ay - 40, 9, 40);
+                // Arms raised
+                ctx.strokeStyle = '#8a0000'; ctx.lineWidth = 7;
+                ctx.beginPath(); ctx.moveTo(ax - 14, ay - 88); ctx.lineTo(ax - 30, ay - 108); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(ax + 14, ay - 88); ctx.lineTo(ax + 30, ay - 108); ctx.stroke();
+                // Spear
+                ctx.strokeStyle = '#886600'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(ax + 30, ay - 108); ctx.lineTo(ax + 30, ay - 148); ctx.stroke();
+                ctx.fillStyle = '#cc4400';
+                ctx.beginPath(); ctx.moveTo(ax + 24, ay - 148); ctx.lineTo(ax + 36, ay - 148); ctx.lineTo(ax + 30, ay - 162); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+
+            // Lex Luthor at altar alongside Ares
+            if (templePhase === 'intro' || templePhase === 'battle') {
+                const lx = altarX + 80, ly = TF;
+                ctx.save();
+                // Warsuit — green/purple as in factory
+                ctx.fillStyle = '#1a4a1a';
+                ctx.fillRect(lx - 14, ly - 90, 28, 56);
+                ctx.fillStyle = '#6a1a6a';
+                ctx.fillRect(lx - 10, ly - 90, 20, 20);
+                // Bald head
+                ctx.fillStyle = '#e8c090';
+                ctx.beginPath(); ctx.arc(lx, ly - 98, 12, 0, Math.PI * 2); ctx.fill();
+                // Legs
+                ctx.fillStyle = '#1a4a1a';
+                ctx.fillRect(lx - 9, ly - 34, 8, 34);
+                ctx.fillRect(lx + 1,  ly - 34, 8, 34);
+                // Arms
+                ctx.strokeStyle = '#1a4a1a'; ctx.lineWidth = 6;
+                ctx.beginPath(); ctx.moveTo(lx - 12, ly - 80); ctx.lineTo(lx - 26, ly - 62); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(lx + 12, ly - 80); ctx.lineTo(lx + 26, ly - 62); ctx.stroke();
+                // Glowing reactor
+                const rg2 = 0.6 + Math.sin(t * 4 + lx) * 0.4;
+                ctx.fillStyle = `rgba(80,255,80,${rg2})`;
+                ctx.beginPath(); ctx.arc(lx, ly - 72, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+                function drawFactory() {
+            const FF = FACTORY.floorY, FC = FACTORY.ceilingY, FW = FACTORY.w;
+
+            // Background wall
+            ctx.fillStyle = '#14141e';
+            ctx.fillRect(0, FC, FW, FF - FC + 80);
+
+            // Ceiling beam
+            ctx.fillStyle = '#202030';
+            ctx.fillRect(0, FC, FW, 32);
+
+            // Overhead pipes running the length of the factory
+            ctx.strokeStyle = '#2a2a40'; ctx.lineWidth = 12;
+            ctx.beginPath(); ctx.moveTo(0, FC + 50); ctx.lineTo(FW, FC + 50); ctx.stroke();
+            ctx.strokeStyle = '#1e1e32'; ctx.lineWidth = 7;
+            ctx.beginPath(); ctx.moveTo(0, FC + 66); ctx.lineTo(FW, FC + 66); ctx.stroke();
+
+            // Hanging lights every 340px
+            for (let lx = 220; lx < FW; lx += 340) {
+                // Chain
+                ctx.strokeStyle = '#383848'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(lx, FC + 32); ctx.lineTo(lx, FC + 82); ctx.stroke();
+                // Fixture
+                ctx.fillStyle = '#2e2e46';
+                ctx.fillRect(lx - 24, FC + 82, 48, 16);
+                // Bulb glow
+                ctx.fillStyle = '#fffce8';
+                ctx.beginPath(); ctx.arc(lx, FC + 98, 5, 0, Math.PI * 2); ctx.fill();
+                // Cone of light
+                const grd = ctx.createRadialGradient(lx, FC + 98, 4, lx, FC + 200, 180);
+                grd.addColorStop(0, 'rgba(255,245,180,0.14)');
+                grd.addColorStop(1, 'rgba(255,245,180,0)');
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.moveTo(lx - 22, FC + 98); ctx.lineTo(lx + 22, FC + 98);
+                ctx.lineTo(lx + 130, FF); ctx.lineTo(lx - 130, FF);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // Support columns every 650px with warning stripes
+            for (let sx = 0; sx < FW + 50; sx += 650) {
+                ctx.fillStyle = '#222234';
+                ctx.fillRect(sx, FC, 26, FF - FC);
+                ctx.fillStyle = '#f5c518';
+                for (let sy = FC; sy < FF; sy += 52) {
+                    ctx.fillRect(sx, sy, 26, 14);
+                }
+                ctx.fillStyle = '#14141e';
+                for (let sy = FC + 14; sy < FF; sy += 52) {
+                    ctx.fillRect(sx, sy, 26, 22);
+                }
+            }
+
+            // Wall conduits lower section
+            ctx.strokeStyle = '#2c2c44'; ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(0, FF - 40); ctx.lineTo(FW, FF - 40); ctx.stroke();
+            ctx.strokeStyle = '#242436'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(0, FF - 58); ctx.lineTo(FW, FF - 58); ctx.stroke();
+
+            // Floor machinery (generators, tanks)
+            for (let mx = 380; mx < FW - 200; mx += 520) {
+                ctx.fillStyle = '#20203a';
+                ctx.fillRect(mx, FF - 110, 88, 110);
+                ctx.fillStyle = '#181828';
+                ctx.fillRect(mx + 10, FF - 92, 68, 72);
+                // Gauge
+                ctx.strokeStyle = '#404058'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(mx + 44, FF - 58, 15, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = '#e05020'; ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(mx + 44, FF - 58);
+                ctx.lineTo(mx + 44 + Math.cos(-0.7) * 11, FF - 58 + Math.sin(-0.7) * 11);
+                ctx.stroke();
+                // Red warning light on top
+                const pulse = 0.4 + Math.sin(Date.now() * 0.005 + mx) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = '#ff3010';
+                ctx.beginPath(); ctx.arc(mx + 44, FF - 114, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // Grated metal floor
+            ctx.fillStyle = '#242438';
+            ctx.fillRect(0, FF, FW, 80);
+            ctx.strokeStyle = '#181826'; ctx.lineWidth = 1;
+            for (let gx = 0; gx < FW; gx += 36) {
+                ctx.beginPath(); ctx.moveTo(gx, FF); ctx.lineTo(gx, FF + 80); ctx.stroke();
+            }
+            for (let gy = 0; gy < 80; gy += 18) {
+                ctx.beginPath(); ctx.moveTo(0, FF + gy); ctx.lineTo(FW, FF + gy); ctx.stroke();
+            }
+
+            // FACTORY_PLATFORMS — catwalks with railings
+            for (const p of FACTORY_PLATFORMS) {
+                // Catwalk body
+                ctx.fillStyle = '#2a2a42';
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                // Grate texture on catwalk
+                ctx.strokeStyle = '#1e1e34'; ctx.lineWidth = 1;
+                for (let gx = p.x; gx < p.x + p.w; gx += 18) {
+                    ctx.beginPath(); ctx.moveTo(gx, p.y); ctx.lineTo(gx, p.y + p.h); ctx.stroke();
+                }
+                // Yellow warning edge stripe
+                ctx.fillStyle = '#f5c518';
+                for (let wx = p.x; wx < p.x + p.w; wx += 22) {
+                    ctx.fillRect(wx, p.y, 11, 3);
+                }
+                // Railing posts
+                ctx.fillStyle = '#404060';
+                const postSpacing = Math.floor(p.w / 4);
+                for (let pi = 0; pi <= 4; pi++) {
+                    ctx.fillRect(p.x + pi * postSpacing - 2, p.y - 30, 4, 30);
+                }
+                // Railing bar
+                ctx.fillStyle = '#525272';
+                ctx.fillRect(p.x, p.y - 32, p.w, 4);
+            }
+
+            // LexCorp signage every 900px
+            for (let sx = 600; sx < FW; sx += 900) {
+                const sy = FF - 240;
+                ctx.strokeStyle = '#cc2020'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.arc(sx, sy, 34, 0, Math.PI * 2); ctx.stroke();
+                ctx.fillStyle = '#cc2020';
+                ctx.font = 'bold 34px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('L', sx, sy);
+                ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+            }
+
+            // Lex Luthor — visible during intro at far right
+            if (factoryPhase === 'intro' || factoryPhase === 'escape') {
+                const lx = 4380, ly = FF;
+                ctx.fillStyle = '#4a2080';
+                ctx.fillRect(lx - 16, ly - 88, 32, 52);
+                // Lapels
+                ctx.fillStyle = '#3a8030';
+                ctx.fillRect(lx - 12, ly - 88, 10, 28);
+                ctx.fillRect(lx + 2, ly - 88, 10, 28);
+                // Legs
+                ctx.fillStyle = '#3a1a70';
+                ctx.fillRect(lx - 14, ly - 36, 12, 36);
+                ctx.fillRect(lx + 2, ly - 36, 12, 36);
+                // Head (bald)
+                ctx.fillStyle = '#e8b870';
+                ctx.beginPath(); ctx.ellipse(lx, ly - 100, 13, 15, 0, 0, Math.PI * 2); ctx.fill();
+                // Eyes
+                ctx.fillStyle = '#200050';
+                ctx.fillRect(lx - 7, ly - 106, 4, 3);
+                ctx.fillRect(lx + 3, ly - 106, 4, 3);
+                // Label
+                ctx.fillStyle = '#cc2020';
+                ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+                if (factoryPhase === 'escape') {
+                    ctx.fillStyle = 'rgba(200,200,50,0.85)'; ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText('ESCAPING…', lx, ly - 118);
+                } else {
+                    ctx.fillText('LEX LUTHOR', lx, ly - 118);
+                }
+                ctx.textAlign = 'left';
+            }
+
+            // Power Girl — captured with chains when still restrained
+            if (powerGirl.captured) {
+                const px = powerGirl.x, py = powerGirl.y;
+                // Anchor column to the left
+                const colX = Math.round(px / 650) * 650;
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(colX + 26, py - 54); ctx.lineTo(px - 2, py - 54); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(colX + 26, py - 20); ctx.lineTo(px - 2, py - 20); ctx.stroke();
+                // Chain links
+                ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+                for (let cx2 = colX + 30; cx2 < px - 4; cx2 += 14) {
+                    ctx.beginPath(); ctx.ellipse(cx2, py - 54, 5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(cx2, py - 20, 5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+                }
+                drawPowerGirlAt(px, py, true);
+            } else if (powerGirl.active) {
+                drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
+            }
+        }
+
+        // ── Power Girl draw ──────────────────────────────────────────────
+        function drawPowerGirlAt(wx, wy, isCaptured) {
+            const fd  = powerGirl.facing !== undefined ? powerGirl.facing : 1;
+            const bob = Math.sin(powerGirl.phase * 2) * 1.2;
+            const cx  = wx;   // feet center X (no w/2 offset — pass center directly)
+            const fy  = wy;   // feet Y
+
+            ctx.save();
+
+            // Cape — red, behind body
+            ctx.fillStyle = '#cc1a1a';
+            if (powerGirl.flightActive) {
+                ctx.beginPath();
+                ctx.moveTo(cx, fy - 52 + bob);
+                ctx.lineTo(cx - fd * 32, fy - 36 + bob);
+                ctx.lineTo(cx - fd * 28, fy - 26 + bob);
+                ctx.lineTo(cx, fy - 40 + bob);
+                ctx.closePath(); ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(cx - fd * 3, fy - 52 + bob);
+                ctx.quadraticCurveTo(cx - fd * 18, fy - 4, cx - fd * 20, fy - 8 + bob);
+                ctx.lineTo(cx - fd * 18, fy - 48 + bob);
+                ctx.closePath(); ctx.fill();
+            }
+
+            // Legs — blue
+            ctx.fillStyle = '#1a44cc';
+            ctx.fillRect(cx - 9,  fy - 26, 8, 26);
+            ctx.fillRect(cx + 1,  fy - 26, 8, 26);
+            // Red boots
+            ctx.fillStyle = '#cc1a1a';
+            ctx.fillRect(cx - 10, fy - 10, 10, 10);
+            ctx.fillRect(cx + 1,  fy - 10, 10, 10);
+
+            // Torso — blue
+            ctx.fillStyle = '#1a44cc';
+            ctx.fillRect(cx - 11, fy - 56 + bob, 22, 30);
+            // White oval chest emblem
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.ellipse(cx, fy - 42 + bob, 6, 8, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#c8900a';
+            ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('P', cx, fy - 42 + bob);
+            ctx.textBaseline = 'alphabetic';
+
+            // Arms
+            const punchExt = powerGirl._punchTimer > 0 ? (powerGirl._punchTimer / 18) * 12 : 0;
+            ctx.strokeStyle = '#1a44cc'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(cx + fd * 10, fy - 52 + bob); ctx.lineTo(cx + fd * 20 + punchExt * fd, fy - 45 + bob); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx - fd * 10, fy - 52 + bob); ctx.lineTo(cx - fd * 18, fy - 46 + bob); ctx.stroke();
+
+            // Neck + head
+            ctx.fillStyle = '#f0c090';
+            ctx.fillRect(cx - 4, fy - 60 + bob, 8, 6);
+            ctx.beginPath(); ctx.arc(cx, fy - 66 + bob, 9, 0, Math.PI * 2); ctx.fill();
+
+            // Blonde bob hair
+            ctx.fillStyle = '#f0c030';
+            ctx.beginPath(); ctx.arc(cx, fy - 68 + bob, 10, Math.PI, 0); ctx.fill();
+            ctx.fillRect(cx - 10, fy - 74 + bob, 20, 6);
+            if (powerGirl.flightActive) {
+                ctx.beginPath();
+                ctx.moveTo(cx - fd * 6, fy - 68 + bob);
+                ctx.lineTo(cx - fd * 26, fy - 62 + bob);
+                ctx.lineTo(cx - fd * 22, fy - 56 + bob);
+                ctx.lineTo(cx - fd * 5,  fy - 62 + bob);
+                ctx.closePath(); ctx.fill();
+            }
+            // Eyes
+            ctx.fillStyle = '#3a2010';
+            ctx.fillRect(cx - 4 + fd, fy - 68 + bob, 2, 2);
+            ctx.fillRect(cx + 1 + fd, fy - 68 + bob, 2, 2);
+
+            ctx.restore();
+
+            // HP bar
+            if (!isCaptured && (powerGirl.fightMode || powerGirl.active)) {
+                ctx.fillStyle = '#400'; ctx.fillRect(cx - 16, fy - 88, 32, 4);
+                ctx.fillStyle = '#22cc44'; ctx.fillRect(cx - 16, fy - 88, 32 * (powerGirl.hp / powerGirl.maxHp), 4);
+            }
+            if (!isCaptured && !powerGirl.fightMode) {
+                ctx.fillStyle = 'rgba(120,210,255,0.85)'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('POWER GIRL', cx, fy - 92);
+                ctx.textAlign = 'left';
             }
         }
 
@@ -6542,6 +8858,86 @@
                 ctx.fillStyle = '#1a1410';
                 ctx.fillRect(fix - 18, GROUND_Y - 4, 36, 4);
             }
+
+            // ── Temple entrance at Ares Temple (Level 3) ─────────────────────
+            if (currentLevel === 3 && templeEntryUnlocked) {
+                const TDOOR_X = 14920;
+                const TDOOR_W = 52, TDOOR_H = 84;
+                const TDOOR_Y = L3_GROUND_Y - TDOOR_H;
+                const tpulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.5;
+                ctx.save();
+                ctx.shadowColor = '#cc2200'; ctx.shadowBlur = 16 + tpulse * 12;
+                ctx.strokeStyle = `rgba(200,30,0,${0.7 + tpulse * 0.3})`;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(TDOOR_X - TDOOR_W / 2, TDOOR_Y, TDOOR_W, TDOOR_H);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = `rgba(18,4,4,${0.7 + tpulse * 0.2})`;
+                ctx.fillRect(TDOOR_X - TDOOR_W / 2 + 3, TDOOR_Y + 3, TDOOR_W - 6, TDOOR_H - 3);
+                ctx.fillStyle = '#cc2200'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('⚔ ARES TEMPLE ⚔', TDOOR_X, TDOOR_Y - 10);
+                const tbounce = Math.sin(Date.now() * 0.007) * 5;
+                ctx.fillStyle = '#ddaa00'; ctx.font = 'bold 20px Arial';
+                ctx.fillText('▼', TDOOR_X, TDOOR_Y - 28 + tbounce);
+                ctx.restore();
+                const heroMid2 = hero.x + hero.w / 2;
+                if (Math.abs(heroMid2 - TDOOR_X) < 120 && (hero.y + hero.h) >= L3_GROUND_Y - 50) {
+                    const tp2 = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.save(); ctx.globalAlpha = tp2;
+                    ctx.fillStyle = '#ffe072'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Press ENTER to enter Ares\' Temple', TDOOR_X, TDOOR_Y - 48);
+                    ctx.restore();
+                }
+            }
+
+            // ── Factory entrance at LexCorp Central ──────────────────────────
+            if (factoryEntryUnlocked) {
+                const DOOR_X = 15580;
+                const DOOR_W = 48;
+                const DOOR_H = 80;
+                const DOOR_Y = GROUND_Y - DOOR_H;
+
+                // Glowing door frame
+                const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.5;
+                ctx.save();
+                ctx.shadowColor = '#ff2200';
+                ctx.shadowBlur = 16 + pulse * 12;
+                ctx.strokeStyle = `rgba(255,60,0,${0.7 + pulse * 0.3})`;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(DOOR_X - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H);
+                ctx.shadowBlur = 0;
+
+                // Door fill (dark interior hint)
+                ctx.fillStyle = `rgba(10,0,0,${0.6 + pulse * 0.2})`;
+                ctx.fillRect(DOOR_X - DOOR_W / 2 + 3, DOOR_Y + 3, DOOR_W - 6, DOOR_H - 3);
+
+                // Warning stripes above door
+                ctx.fillStyle = '#ff2200';
+                ctx.font = 'bold 11px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('⚠ RESTRICTED ⚠', DOOR_X, DOOR_Y - 10);
+
+                // Arrow bouncing above
+                const bounce = Math.sin(Date.now() * 0.007) * 5;
+                ctx.fillStyle = '#ffcc00';
+                ctx.font = 'bold 20px Arial';
+                ctx.fillText('▼', DOOR_X, DOOR_Y - 28 + bounce);
+
+                ctx.restore();
+
+                // "Press ENTER to enter" prompt when hero is nearby
+                const heroMid = hero.x + hero.w / 2;
+                const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                if (Math.abs(heroMid - DOOR_X) < 100 && nearGround) {
+                    const p2 = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.save();
+                    ctx.globalAlpha = p2;
+                    ctx.fillStyle = '#ffe072';
+                    ctx.font = 'bold 13px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Press ENTER to breach LexCorp Central', DOOR_X, DOOR_Y - 48);
+                    ctx.restore();
+                }
+            }
         }
 
         function updateHUD() {
@@ -6566,10 +8962,11 @@
         //  FRONT-END SCREENS: title + how-to-play
         // ============================================================
         let titlePulse = 0;
-        let titleSelectedLevel = 1;   // 1 or 2, chosen on the title screen
+        let titleSelectedLevel = 1;   // 1, 2, or 3
+        let l3Companion = 'darkwing';   // 'darkwing' | 'powergirl' | 'both'
 
         function drawTitleScreen() {
-            drawManhattan();
+            if (titleSelectedLevel === 3) drawJungle(); else if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
             ctx.fillStyle = 'rgba(6,8,16,0.60)';
             ctx.fillRect(0, 0, W, H);
             titlePulse += 0.05;
@@ -6605,39 +9002,90 @@
             // level select label
             ctx.fillStyle = '#9fb6ff';
             ctx.font = 'bold 18px Arial';
-            ctx.fillText('SELECT LEVEL', W/2, H*0.57);
+            ctx.fillText('SELECT LEVEL', W/2, H*0.53);
             ctx.fillStyle = 'rgba(255,255,255,0.35)';
             ctx.font = '13px Arial';
-            ctx.fillText('← 1 / 2 →  or click a button', W/2, H*0.62);
+            ctx.fillText('← / → or 1 2 3 to choose, click to select', W/2, H*0.575);
 
-            // level buttons
-            const btnY = H*0.66, btnW = 140, btnH = 52;
-            const btn1x = W/2 - 160, btn2x = W/2 + 20;
-            const sel1 = titleSelectedLevel === 1, sel2 = titleSelectedLevel === 2;
+            // level buttons — 3 across
+            const btnY = H*0.61, btnW = 130, btnH = 50, btnGap = 16;
+            const totalW = btnW * 3 + btnGap * 2;
+            const btn1x = W/2 - totalW/2;
+            const btn2x = btn1x + btnW + btnGap;
+            const btn3x = btn2x + btnW + btnGap;
+            const sel1 = titleSelectedLevel === 1, sel2 = titleSelectedLevel === 2, sel3 = titleSelectedLevel === 3;
 
-            // button 1
+            // button 1 — City of Heroes
             ctx.fillStyle = sel1 ? 'rgba(50,100,220,0.75)' : 'rgba(20,30,60,0.55)';
             ctx.strokeStyle = sel1 ? '#7fb0ff' : '#3a4f7a';
             ctx.lineWidth = sel1 ? 2.5 : 1.5;
             ctx.beginPath(); ctx.roundRect(btn1x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
             ctx.fillStyle = sel1 ? '#ffffff' : '#7a90b0';
-            ctx.font = sel1 ? 'bold 20px Arial' : '18px Arial';
-            ctx.fillText('LEVEL 1', btn1x + btnW/2, btnY + 22);
+            ctx.font = sel1 ? 'bold 18px Arial' : '16px Arial';
+            ctx.fillText('LEVEL 1', btn1x + btnW/2, btnY + 20);
             ctx.fillStyle = sel1 ? '#b0c8ff' : '#4a5a7a';
-            ctx.font = '12px Arial';
-            ctx.fillText('City of Heroes', btn1x + btnW/2, btnY + 41);
+            ctx.font = '11px Arial';
+            ctx.fillText('City of Heroes', btn1x + btnW/2, btnY + 37);
 
-            // button 2
+            // button 2 — The Badlands
             ctx.fillStyle = sel2 ? 'rgba(160,50,30,0.75)' : 'rgba(30,20,15,0.55)';
             ctx.strokeStyle = sel2 ? '#ff8060' : '#5a3a2a';
             ctx.lineWidth = sel2 ? 2.5 : 1.5;
             ctx.beginPath(); ctx.roundRect(btn2x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
             ctx.fillStyle = sel2 ? '#ffffff' : '#8a7060';
-            ctx.font = sel2 ? 'bold 20px Arial' : '18px Arial';
-            ctx.fillText('LEVEL 2', btn2x + btnW/2, btnY + 22);
+            ctx.font = sel2 ? 'bold 18px Arial' : '16px Arial';
+            ctx.fillText('LEVEL 2', btn2x + btnW/2, btnY + 20);
             ctx.fillStyle = sel2 ? '#ffc0a0' : '#5a4030';
-            ctx.font = '12px Arial';
-            ctx.fillText('The Badlands', btn2x + btnW/2, btnY + 41);
+            ctx.font = '11px Arial';
+            ctx.fillText('The Badlands', btn2x + btnW/2, btnY + 37);
+
+            // button 3 — The Amazon
+            ctx.fillStyle = sel3 ? 'rgba(20,120,30,0.75)' : 'rgba(10,25,10,0.55)';
+            ctx.strokeStyle = sel3 ? '#60ee80' : '#2a5a2a';
+            ctx.lineWidth = sel3 ? 2.5 : 1.5;
+            ctx.beginPath(); ctx.roundRect(btn3x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = sel3 ? '#ffffff' : '#60906a';
+            ctx.font = sel3 ? 'bold 18px Arial' : '16px Arial';
+            ctx.fillText('LEVEL 3', btn3x + btnW/2, btnY + 20);
+            ctx.fillStyle = sel3 ? '#a0ffb0' : '#2a5a30';
+            ctx.font = '11px Arial';
+            ctx.fillText('The Amazon', btn3x + btnW/2, btnY + 37);
+
+            // Level 3: companion picker
+            if (sel3) {
+                const cpY = btnY + btnH + 16;
+                ctx.fillStyle = '#a0ffb0';
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText('COMPANIONS FROM PREVIOUS LEVELS', W/2, cpY);
+
+                const cpBtnW = 150, cpBtnH = 44, cpGap = 12;
+                const cpTotal = cpBtnW * 3 + cpGap * 2;
+                const cp1x = W/2 - cpTotal/2, cp2x = cp1x + cpBtnW + cpGap, cp3x = cp2x + cpBtnW + cpGap;
+                const cpBtnY = cpY + 10;
+
+                const companions = [
+                    { id: 'darkwing',  label: 'Dark Wing',  sub: 'AI / Player 3', x: cp1x, color: ['rgba(30,30,120,0.75)','#4a6aff','#aac0ff','rgba(10,10,40,0.55)','#2a3a6a','#4a5a8a'] },
+                    { id: 'powergirl', label: 'Power Girl', sub: 'AI / Player 3', x: cp2x, color: ['rgba(10,60,180,0.75)','#4a9aff','#b0d8ff','rgba(5,20,50,0.55)','#2a4a7a','#3a5a8a'] },
+                    { id: 'both',      label: 'Both',       sub: 'AI companions', x: cp3x, color: ['rgba(100,20,120,0.75)','#cc60ff','#e0b0ff','rgba(30,5,40,0.55)','#5a2a6a','#6a3a7a'] },
+                ];
+                for (const cp of companions) {
+                    const isSel = l3Companion === cp.id;
+                    const [selBg, selBorder, selText, defBg, defBorder, defText] = cp.color;
+                    ctx.fillStyle = isSel ? selBg : defBg;
+                    ctx.strokeStyle = isSel ? selBorder : defBorder;
+                    ctx.lineWidth = isSel ? 2 : 1.5;
+                    ctx.beginPath(); ctx.roundRect(cp.x, cpBtnY, cpBtnW, cpBtnH, 6); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = isSel ? '#ffffff' : defText;
+                    ctx.font = isSel ? 'bold 14px Arial' : '13px Arial';
+                    ctx.fillText(cp.label, cp.x + cpBtnW/2, cpBtnY + 17);
+                    ctx.fillStyle = isSel ? selText : defText;
+                    ctx.font = '10px Arial';
+                    ctx.fillText(cp.sub, cp.x + cpBtnW/2, cpBtnY + 32);
+                }
+                ctx.fillStyle = 'rgba(160,255,170,0.5)';
+                ctx.font = '11px Arial';
+                ctx.fillText('Wonder Woman always joins. Press ← → to cycle companion pick.', W/2, cpBtnY + cpBtnH + 14);
+            }
 
             // pulsing prompt
             const a = 0.55 + Math.sin(titlePulse) * 0.45;
@@ -6654,7 +9102,7 @@
         }
 
         function drawHowToScreen() {
-            if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
+            if (titleSelectedLevel === 3) drawJungle(); else if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
             ctx.fillStyle = 'rgba(6,8,16,0.82)';
             ctx.fillRect(0, 0, W, H);
 
@@ -7302,7 +9750,7 @@
             if (!loop._uiShown) {
                 document.getElementById('hud').style.display = '';
                 document.getElementById('controls').style.display = controlsVisible ? '' : 'none';
-                document.getElementById('ctrlHint').style.display = controlsVisible ? 'none' : 'block';
+                // ctrlHint permanently hidden
                 titleCard = { text: 'THE WEEKLY PLANET', sub: 'Your city needs you. Head to EXIT to begin!', timer: 240 };
                 loop._uiShown = true;
             }
@@ -7340,6 +9788,42 @@
             }
 
             if (enterCooldown > 0) enterCooldown--;
+
+            // ---- FACTORY INTERIOR: LexCorp final battle ----
+            if (scene === 'factory') {
+                const pin = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                updateEnemies();
+                updateDarkWing();
+                updateFactory();
+                updateHitFX();
+                updateCamera();
+
+                draw(); // draw() detects scene==='factory' and handles background/floor swap
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // ---- TEMPLE INTERIOR: Ares final battle ----
+            if (scene === 'temple') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                updateEnemies();
+                updateWonderWoman();
+                updateDarkWing();
+                updateTemple();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
 
             // ---- DINING INTERIOR: diner / shop room ----
             if (diningScene) {
@@ -7379,6 +9863,8 @@
             updateAmbientNPCs();
             updateCityLois();
             updateDarkWing();
+            updatePowerGirl();
+            updateWonderWoman();
             updateWorldState();
             updateHitFX();
             updateCamera();
