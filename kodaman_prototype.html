@@ -1568,15 +1568,31 @@
             }
             // ---- front-end screens intercept input ----
             if (gameScreen === 'title') {
-                if (e.code === 'Digit1' || e.code === 'ArrowLeft')  { titleSelectedLevel = 1; e.preventDefault(); }
-                if (e.code === 'Digit2' || e.code === 'ArrowRight') { titleSelectedLevel = 2; e.preventDefault(); }
+                if (e.code === 'Digit1') { titleSelectedLevel = 1; e.preventDefault(); }
+                if (e.code === 'Digit2') { titleSelectedLevel = 2; e.preventDefault(); }
+                if (e.code === 'Digit3') { titleSelectedLevel = 3; e.preventDefault(); }
+                if (e.code === 'ArrowLeft') {
+                    if (titleSelectedLevel === 3) {
+                        const order = ['darkwing','powergirl','both'];
+                        l3Companion = order[(order.indexOf(l3Companion) + 2) % 3];
+                    } else titleSelectedLevel = Math.max(1, titleSelectedLevel - 1);
+                    e.preventDefault();
+                }
+                if (e.code === 'ArrowRight') {
+                    if (titleSelectedLevel === 3) {
+                        const order = ['darkwing','powergirl','both'];
+                        l3Companion = order[(order.indexOf(l3Companion) + 1) % 3];
+                    } else titleSelectedLevel = Math.min(3, titleSelectedLevel + 1);
+                    e.preventDefault();
+                }
                 if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
                 return;
             }
             if (gameScreen === 'howto') {
                 if (e.code === 'Enter' || e.code === 'Space') {
                     gameScreen = 'playing'; startMusic();
-                    if (titleSelectedLevel === 2) startLevel2();
+                    if (titleSelectedLevel === 3) startLevel3();
+                    else if (titleSelectedLevel === 2) startLevel2();
                     e.preventDefault();
                 }
                 return;
@@ -1773,13 +1789,29 @@
                 const rect = canvas.getBoundingClientRect();
                 const mx = (ev.clientX - rect.left) * (W / rect.width);
                 const my = (ev.clientY - rect.top) * (H / rect.height);
-                const btn1x = W / 2 - 160, btn2x = W / 2 + 20, btnY = H * 0.72, btnW = 140, btnH = 52;
-                if (mx >= btn1x && mx <= btn1x + btnW && my >= btnY && my <= btnY + btnH) { titleSelectedLevel = 1; gameScreen = 'howto'; }
-                else if (mx >= btn2x && mx <= btn2x + btnW && my >= btnY && my <= btnY + btnH) { titleSelectedLevel = 2; gameScreen = 'howto'; }
-                else gameScreen = 'howto';
+                const btnW2 = 130, btnH2 = 50, btnGap2 = 16;
+                const totalW2 = btnW2 * 3 + btnGap2 * 2;
+                const btn1x2 = W/2 - totalW2/2, btn2x2 = btn1x2 + btnW2 + btnGap2, btn3x2 = btn2x2 + btnW2 + btnGap2;
+                const btnY2 = H * 0.61;
+                if (mx >= btn1x2 && mx <= btn1x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 1; gameScreen = 'howto'; }
+                else if (mx >= btn2x2 && mx <= btn2x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 2; gameScreen = 'howto'; }
+                else if (mx >= btn3x2 && mx <= btn3x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 3; gameScreen = 'howto'; }
+                else if (titleSelectedLevel === 3) {
+                    // companion picker click
+                    const cpBtnW2 = 150, cpBtnH2 = 44, cpGap2 = 12;
+                    const cpTotal2 = cpBtnW2 * 3 + cpGap2 * 2;
+                    const cp1x2 = W/2 - cpTotal2/2, cp2x2 = cp1x2 + cpBtnW2 + cpGap2, cp3x2 = cp2x2 + cpBtnW2 + cpGap2;
+                    const cpBtnY2 = btnY2 + btnH2 + 26;
+                    if (my >= cpBtnY2 && my <= cpBtnY2 + cpBtnH2) {
+                        if (mx >= cp1x2 && mx <= cp1x2 + cpBtnW2) l3Companion = 'darkwing';
+                        else if (mx >= cp2x2 && mx <= cp2x2 + cpBtnW2) l3Companion = 'powergirl';
+                        else if (mx >= cp3x2 && mx <= cp3x2 + cpBtnW2) l3Companion = 'both';
+                    } else gameScreen = 'howto';
+                } else gameScreen = 'howto';
             } else if (gameScreen === 'howto') {
                 gameScreen = 'playing'; startMusic();
-                if (titleSelectedLevel === 2) startLevel2();
+                if (titleSelectedLevel === 3) startLevel3();
+                else if (titleSelectedLevel === 2) startLevel2();
             }
         });
 
@@ -7067,7 +7099,33 @@
             wonderWoman._onGround = false;
             wonderWoman.fightMode = false;
             wonderWoman.zoneCombat = false;
-            titleCard = { text: 'LEVEL 3 — THE AMAZON', sub: 'Wonder Woman: "Ares corrupts this forest. We fight together — now."', timer: 380 };
+
+            // ── Activate previous-level companions based on title screen selection ──
+            // Dark Wing
+            const hasDW = (l3Companion === 'darkwing' || l3Companion === 'both');
+            darkWing.x = l3Clues[0].x - 140;
+            darkWing._targetX = darkWing.x;
+            darkWing.y = L3_GROUND_Y;
+            darkWing.vy = 0; darkWing._onGround = true;
+            darkWing._swinging = false; darkWing._gliding = false;
+            darkWing.fightMode = false; darkWing.zoneCombat = false;
+            darkWing.driving = false; darkWing._jumpCD = 0; darkWing._grappleCD = 0;
+            // Mark as active or parked off-screen
+            darkWing._l3Active = hasDW;
+            if (!hasDW) darkWing.x = -9999;   // park off-screen if not selected
+
+            // Power Girl
+            const hasPG = (l3Companion === 'powergirl' || l3Companion === 'both');
+            powerGirl.active = hasPG;
+            powerGirl.captured = false;
+            powerGirl.x = hasPG ? l3Clues[0].x - 200 : -9999;
+            powerGirl.y = L3_GROUND_Y;
+            powerGirl.vx = 0; powerGirl.vy = 0;
+            powerGirl.onGround = true; powerGirl.fightMode = hasPG;
+            powerGirl.hp = 20; powerGirl.maxHp = 20;
+
+            const compNames = { darkwing: 'Dark Wing', powergirl: 'Power Girl', both: 'Dark Wing & Power Girl' };
+            titleCard = { text: 'LEVEL 3 — THE AMAZON', sub: 'Wonder Woman: "Ares corrupts this forest. We fight together — now." Companions: ' + compNames[l3Companion], timer: 420 };
         }
 
         // ── Final battle: 30 henchmen + Lex Luthor boss ──────────────────────
@@ -7338,7 +7396,8 @@
         }
 
                 function updateDarkWing() {
-            if (currentLevel !== 2) return;
+            if (currentLevel === 3 && !darkWing._l3Active) return;
+            if (currentLevel !== 2 && currentLevel !== 3) return;
             const cl = clues[activeClueIndex];
 
             // ── DRIVING MODE: Batmobile racing to the quest zone ────────────────
@@ -8673,10 +8732,11 @@
         //  FRONT-END SCREENS: title + how-to-play
         // ============================================================
         let titlePulse = 0;
-        let titleSelectedLevel = 1;   // 1 or 2, chosen on the title screen
+        let titleSelectedLevel = 1;   // 1, 2, or 3
+        let l3Companion = 'darkwing';   // 'darkwing' | 'powergirl' | 'both'
 
         function drawTitleScreen() {
-            drawManhattan();
+            if (titleSelectedLevel === 3) drawJungle(); else if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
             ctx.fillStyle = 'rgba(6,8,16,0.60)';
             ctx.fillRect(0, 0, W, H);
             titlePulse += 0.05;
@@ -8712,39 +8772,90 @@
             // level select label
             ctx.fillStyle = '#9fb6ff';
             ctx.font = 'bold 18px Arial';
-            ctx.fillText('SELECT LEVEL', W/2, H*0.57);
+            ctx.fillText('SELECT LEVEL', W/2, H*0.53);
             ctx.fillStyle = 'rgba(255,255,255,0.35)';
             ctx.font = '13px Arial';
-            ctx.fillText('← 1 / 2 →  or click a button', W/2, H*0.62);
+            ctx.fillText('← / → or 1 2 3 to choose, click to select', W/2, H*0.575);
 
-            // level buttons
-            const btnY = H*0.66, btnW = 140, btnH = 52;
-            const btn1x = W/2 - 160, btn2x = W/2 + 20;
-            const sel1 = titleSelectedLevel === 1, sel2 = titleSelectedLevel === 2;
+            // level buttons — 3 across
+            const btnY = H*0.61, btnW = 130, btnH = 50, btnGap = 16;
+            const totalW = btnW * 3 + btnGap * 2;
+            const btn1x = W/2 - totalW/2;
+            const btn2x = btn1x + btnW + btnGap;
+            const btn3x = btn2x + btnW + btnGap;
+            const sel1 = titleSelectedLevel === 1, sel2 = titleSelectedLevel === 2, sel3 = titleSelectedLevel === 3;
 
-            // button 1
+            // button 1 — City of Heroes
             ctx.fillStyle = sel1 ? 'rgba(50,100,220,0.75)' : 'rgba(20,30,60,0.55)';
             ctx.strokeStyle = sel1 ? '#7fb0ff' : '#3a4f7a';
             ctx.lineWidth = sel1 ? 2.5 : 1.5;
             ctx.beginPath(); ctx.roundRect(btn1x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
             ctx.fillStyle = sel1 ? '#ffffff' : '#7a90b0';
-            ctx.font = sel1 ? 'bold 20px Arial' : '18px Arial';
-            ctx.fillText('LEVEL 1', btn1x + btnW/2, btnY + 22);
+            ctx.font = sel1 ? 'bold 18px Arial' : '16px Arial';
+            ctx.fillText('LEVEL 1', btn1x + btnW/2, btnY + 20);
             ctx.fillStyle = sel1 ? '#b0c8ff' : '#4a5a7a';
-            ctx.font = '12px Arial';
-            ctx.fillText('City of Heroes', btn1x + btnW/2, btnY + 41);
+            ctx.font = '11px Arial';
+            ctx.fillText('City of Heroes', btn1x + btnW/2, btnY + 37);
 
-            // button 2
+            // button 2 — The Badlands
             ctx.fillStyle = sel2 ? 'rgba(160,50,30,0.75)' : 'rgba(30,20,15,0.55)';
             ctx.strokeStyle = sel2 ? '#ff8060' : '#5a3a2a';
             ctx.lineWidth = sel2 ? 2.5 : 1.5;
             ctx.beginPath(); ctx.roundRect(btn2x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
             ctx.fillStyle = sel2 ? '#ffffff' : '#8a7060';
-            ctx.font = sel2 ? 'bold 20px Arial' : '18px Arial';
-            ctx.fillText('LEVEL 2', btn2x + btnW/2, btnY + 22);
+            ctx.font = sel2 ? 'bold 18px Arial' : '16px Arial';
+            ctx.fillText('LEVEL 2', btn2x + btnW/2, btnY + 20);
             ctx.fillStyle = sel2 ? '#ffc0a0' : '#5a4030';
-            ctx.font = '12px Arial';
-            ctx.fillText('The Badlands', btn2x + btnW/2, btnY + 41);
+            ctx.font = '11px Arial';
+            ctx.fillText('The Badlands', btn2x + btnW/2, btnY + 37);
+
+            // button 3 — The Amazon
+            ctx.fillStyle = sel3 ? 'rgba(20,120,30,0.75)' : 'rgba(10,25,10,0.55)';
+            ctx.strokeStyle = sel3 ? '#60ee80' : '#2a5a2a';
+            ctx.lineWidth = sel3 ? 2.5 : 1.5;
+            ctx.beginPath(); ctx.roundRect(btn3x, btnY, btnW, btnH, 8); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = sel3 ? '#ffffff' : '#60906a';
+            ctx.font = sel3 ? 'bold 18px Arial' : '16px Arial';
+            ctx.fillText('LEVEL 3', btn3x + btnW/2, btnY + 20);
+            ctx.fillStyle = sel3 ? '#a0ffb0' : '#2a5a30';
+            ctx.font = '11px Arial';
+            ctx.fillText('The Amazon', btn3x + btnW/2, btnY + 37);
+
+            // Level 3: companion picker
+            if (sel3) {
+                const cpY = btnY + btnH + 16;
+                ctx.fillStyle = '#a0ffb0';
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText('COMPANIONS FROM PREVIOUS LEVELS', W/2, cpY);
+
+                const cpBtnW = 150, cpBtnH = 44, cpGap = 12;
+                const cpTotal = cpBtnW * 3 + cpGap * 2;
+                const cp1x = W/2 - cpTotal/2, cp2x = cp1x + cpBtnW + cpGap, cp3x = cp2x + cpBtnW + cpGap;
+                const cpBtnY = cpY + 10;
+
+                const companions = [
+                    { id: 'darkwing',  label: 'Dark Wing',  sub: 'AI / Player 3', x: cp1x, color: ['rgba(30,30,120,0.75)','#4a6aff','#aac0ff','rgba(10,10,40,0.55)','#2a3a6a','#4a5a8a'] },
+                    { id: 'powergirl', label: 'Power Girl', sub: 'AI / Player 3', x: cp2x, color: ['rgba(10,60,180,0.75)','#4a9aff','#b0d8ff','rgba(5,20,50,0.55)','#2a4a7a','#3a5a8a'] },
+                    { id: 'both',      label: 'Both',       sub: 'AI companions', x: cp3x, color: ['rgba(100,20,120,0.75)','#cc60ff','#e0b0ff','rgba(30,5,40,0.55)','#5a2a6a','#6a3a7a'] },
+                ];
+                for (const cp of companions) {
+                    const isSel = l3Companion === cp.id;
+                    const [selBg, selBorder, selText, defBg, defBorder, defText] = cp.color;
+                    ctx.fillStyle = isSel ? selBg : defBg;
+                    ctx.strokeStyle = isSel ? selBorder : defBorder;
+                    ctx.lineWidth = isSel ? 2 : 1.5;
+                    ctx.beginPath(); ctx.roundRect(cp.x, cpBtnY, cpBtnW, cpBtnH, 6); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = isSel ? '#ffffff' : defText;
+                    ctx.font = isSel ? 'bold 14px Arial' : '13px Arial';
+                    ctx.fillText(cp.label, cp.x + cpBtnW/2, cpBtnY + 17);
+                    ctx.fillStyle = isSel ? selText : defText;
+                    ctx.font = '10px Arial';
+                    ctx.fillText(cp.sub, cp.x + cpBtnW/2, cpBtnY + 32);
+                }
+                ctx.fillStyle = 'rgba(160,255,170,0.5)';
+                ctx.font = '11px Arial';
+                ctx.fillText('Wonder Woman always joins. Press ← → to cycle companion pick.', W/2, cpBtnY + cpBtnH + 14);
+            }
 
             // pulsing prompt
             const a = 0.55 + Math.sin(titlePulse) * 0.45;
@@ -8761,7 +8872,7 @@
         }
 
         function drawHowToScreen() {
-            if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
+            if (titleSelectedLevel === 3) drawJungle(); else if (titleSelectedLevel === 2) drawGrungeCity(); else drawManhattan();
             ctx.fillStyle = 'rgba(6,8,16,0.82)';
             ctx.fillRect(0, 0, W, H);
 
