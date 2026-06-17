@@ -283,12 +283,7 @@
         // They span floor-to-ceiling and HARD-BLOCK both hero and hound.
         // The hero must use punch / laser / freeze to destroy them (3 hits).
         // activatesOnClue: the clue index whose discovery powers them on.
-        const hazards = [
-            { x: 1280, y: 0, w: 18, h: 900, district: 'downtown', activatesOnClue: 0, hp: 3, destroyed: false, phase: 0 },
-            { x: 5200, y: 0, w: 18, h: 900, district: 'docks',    activatesOnClue: 1, hp: 3, destroyed: false, phase: 0 },
-            { x: 9800, y: 0, w: 18, h: 900, district: 'uptown',   activatesOnClue: 3, hp: 3, destroyed: false, phase: 0 },
-            { x: 13800, y: 0, w: 18, h: 900, district: 'uptown',  activatesOnClue: 4, hp: 3, destroyed: false, phase: 0 },
-        ];
+        const hazards = [];  // laser barriers removed
         function hazardActive(hz) {
             return !hz.destroyed && cluesFound > hz.activatesOnClue;
         }
@@ -392,7 +387,9 @@
         const clues = [
             {
                 x: 1100, district: 'downtown', found: false, questType: 'bank',
-                civName: 'Bank Teller', trapTypes: ['robber', 'robber', 'robber'], lines: [
+                civName: 'Bank Teller', trapTypes: ['robber', 'robber', 'robber'],
+                zone: { x: 820, label: 'FIRST NATIONAL BANK', spread: 120 },
+                lines: [
                     "CASE FILE — CLUE 1 OF 5",
                     "Witnesses near the breach say the escapee never raised his voice, never raised a fist — he didn't need to. \"Smartest man I ever met,\" one guard muttered, \"and he never once let you forget it.\"",
                     "A silent alarm just tripped at FIRST NATIONAL BANK — masked men, moving fast. Could be unrelated... or could be funding his next move."
@@ -400,21 +397,27 @@
             },
             {
                 x: 3150, district: 'downtown', found: false, questType: 'rescue',
-                civName: 'Records Clerk', trapTypes: ['brute', 'brute'], lines: [
+                civName: 'Records Clerk', trapTypes: ['brute', 'brute'],
+                zone: { x: 2800, label: 'DOWNTOWN ALLEY', spread: 160 },
+                lines: [
                     "CASE FILE — CLUE 2 OF 5",
                     "Prison intake records are sealed, but an old newspaper clipping found in his cell shows a boardroom photo — pinstripe suit, corner office, a company logo torn away before anyone could read it."
                 ]
             },
             {
                 x: 4865, district: 'downtown', found: false, questType: 'lockdown',
-                civName: 'Prison Guard', trapTypes: ['brute', 'brute', 'genius'], lines: [
+                civName: 'Prison Guard', trapTypes: ['brute', 'brute', 'genius'],
+                zone: { x: 5500, label: 'DOCKS ENTRANCE', spread: 200 },
+                lines: [
                     "CASE FILE — CLUE 3 OF 5",
                     "At the breach itself: a guard's report. \"Bald. Calm. Looked at the warden like he pitied him.\" One line is underlined twice — \"Said something about settling a score with the man who can fly.\""
                 ]
             },
             {
                 x: 6700, district: 'docks', found: false, questType: 'cargo',
-                civName: 'Missing Cargo Crate', trapTypes: ['genius', 'genius', 'energy'], lines: [
+                civName: 'Missing Cargo Crate', trapTypes: ['genius', 'genius', 'energy'],
+                zone: { x: 7200, label: 'WAREHOUSE ROW', spread: 220 },
+                lines: [
                     "CASE FILE — CLUE 4 OF 5",
                     "A dockworker found a shipping crate forced open from the inside. Stamped on the side, half scratched off: a stylized letter 'L'. The metal inside was still warm — like it had powered something, recently.",
                     "The crate itself has gone missing again, dragged off toward the warehouses. Whatever's inside, it needs to come back."
@@ -422,7 +425,9 @@
             },
             {
                 x: 12600, district: 'uptown', found: false, questType: 'chase',
-                civName: 'Hijacked Car', trapTypes: ['genius', 'energy', 'energy', 'energy'], lines: [
+                civName: 'Hijacked Car', trapTypes: ['genius', 'energy', 'energy', 'energy'],
+                zone: { x: 11500, label: 'UPTOWN HIGHWAY', spread: 260 },
+                lines: [
                     "CASE FILE — CLUE 5 OF 5",
                     "Uptown security caught a thermal signature in an abandoned tower basement — humming servers, fresh welding marks, the unmistakable green glow of unlicensed reactor tech. He's already rebuilding.",
                     "All five threads point to one boardroom shadow. CK has more than enough leads now to start tracking him through the city.",
@@ -475,66 +480,92 @@
         const SAFE_RESCUE_DIST = 700;
 
         // Build a fully-initialized enemy left behind as part of a clue's quest.
-        function makeTrapEnemy(type, x, district) {
+        // active zone for the current quest (shown as nav arrow on canvas)
+        let questZone = null;
+
+        function makeTrapEnemy(type, x, district, hpBonus, speedMult) {
+            const sp = speedMult || 1;
+            const hp = 3 + (hpBonus || 0);
             const base = {
                 x, alive: true, frozen: 0, dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
-                district, vx: (Math.random() < 0.5 ? -1 : 1) * 1.2, maxHp: 3, hp: 3
+                district, vx: (Math.random() < 0.5 ? -1 : 1) * 1.2 * sp, maxHp: hp, hp
             };
             if (type === 'energy') {
                 const y = 480 + Math.random() * 200;
                 return Object.assign(base, {
                     y, w: 44, h: 44, minX: x - 120, maxX: x + 120,
-                    vy: (Math.random() < 0.5 ? -0.5 : 0.5), minY: y - 100, maxY: y + 100, type: 'energy'
+                    vy: (Math.random() < 0.5 ? -0.5 : 0.5) * sp, minY: y - 100, maxY: y + 100, type: 'energy'
                 });
             }
             if (type === 'genius') {
-                return Object.assign(base, { y: GROUND_Y - 50, w: 38, h: 50, minX: x - 120, maxX: x + 120, type: 'genius' });
+                return Object.assign(base, { y: GROUND_Y - 50, w: 38, h: 50, minX: x - 140, maxX: x + 140, type: 'genius' });
             }
             if (type === 'robber') {
                 return Object.assign(base, { y: GROUND_Y - 52, w: 38, h: 52, minX: x - 120, maxX: x + 120, type: 'robber', robber: true });
             }
+            // elite brute (used as mini-boss in clue 5 waves)
+            if (type === 'elite') {
+                return Object.assign(base, { y: GROUND_Y - 60, w: 48, h: 60, minX: x - 160, maxX: x + 160, type: 'brute', hp: 5, maxHp: 5 });
+            }
             return Object.assign(base, { y: GROUND_Y - 52, w: 40, h: 52, minX: x - 120, maxX: x + 120, type: 'brute' });
         }
 
-        // Drop a clue's enemy wave around a center point, flanking left/right.
-        function spawnTrapEnemies(cl, centerX) {
+        // Difficulty table per clue index (0-based):
+        //   speed: movement multiplier     hp: bonus HP on every enemy
+        //   extras: additional enemy count  extraTypes: what those extras are
+        const CLUE_DIFFICULTY = [
+            { speed: 1.0, hp: 0, extras: 0, extraTypes: [] },                              // clue 1 — baseline
+            { speed: 1.18, hp: 0, extras: 1, extraTypes: ['brute'] },                      // clue 2
+            { speed: 1.36, hp: 1, extras: 2, extraTypes: ['genius', 'brute'] },             // clue 3
+            { speed: 1.54, hp: 1, extras: 3, extraTypes: ['genius', 'energy', 'genius'] },  // clue 4
+            { speed: 1.72, hp: 2, extras: 4, extraTypes: ['energy', 'genius', 'energy', 'elite'] }, // clue 5
+        ];
+
+        // Spawn enemies spread across cl.zone (not cl.x).
+        // Applies difficulty scaling from CLUE_DIFFICULTY[activeClueIndex].
+        function spawnTrapEnemies(cl, overrideCenterX) {
+            const idx = Math.min(activeClueIndex, CLUE_DIFFICULTY.length - 1);
+            const diff = CLUE_DIFFICULTY[idx];
+            const zone = cl.zone || { x: cl.x, spread: 120 };
+            const cx = overrideCenterX !== undefined ? overrideCenterX : zone.x;
+            const spread = zone.spread || 120;
+
+            // Base enemies from trapTypes, flanking alternately
             let side = -1;
-            (cl.trapTypes || []).forEach((type, i) => {
-                const ex = (centerX !== undefined ? centerX : cl.x) + side * (90 + i * 30);
+            const allTypes = [...(cl.trapTypes || []), ...diff.extraTypes];
+            allTypes.forEach((type, i) => {
+                const ex = cx + side * (Math.min(spread * 0.4, 80) + i * 40) + (Math.random() - 0.5) * 60;
                 side *= -1;
-                enemies.push(makeTrapEnemy(type, ex, cl.district));
+                enemies.push(makeTrapEnemy(type, ex, cl.district, diff.hp, diff.speed));
             });
         }
 
-        // ---- QUEST DISPATCH: each clue plays out as a different kind of quest ----
+        // ---- QUEST DISPATCH ----
         function spawnQuestForClue(cl) {
+            questZone = cl.zone || { x: cl.x, label: 'INCIDENT ZONE', spread: 120 };
             switch (cl.questType) {
-                case 'bank': return spawnBankQuest(cl);
-                case 'cargo': return spawnCargoQuest(cl);
-                case 'chase': return spawnChaseQuest(cl);
-                default: return spawnRescueQuest(cl);   // 'rescue' and 'lockdown'
+                case 'bank':     return spawnBankQuest(cl);
+                case 'cargo':    return spawnCargoQuest(cl);
+                case 'chase':    return spawnChaseQuest(cl);
+                default:         return spawnRescueQuest(cl);
             }
         }
 
-        // Civilian rescue / prison lockdown: a person in danger, surrounded by a
-        // wave of enemies (existing "guard nearest civilian" AI picks them up
-        // automatically — no extra logic needed there).
         function spawnRescueQuest(cl) {
-            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Civilian');
+            const zone = cl.zone || { x: cl.x };
+            const civ = mkCiv(zone.x, cl.district, cl.civName || 'Civilian');
             civ.trapVictim = true;
-            civ.crimeX = cl.x;
+            civ.crimeX = zone.x;
             civilians.push(civ);
             spawnTrapEnemies(cl);
             titleCard = {
-                text: '⚠ TRAP SPRUNG ⚠',
-                sub: civ.name + ' is in danger nearby — clear the enemies and rescue them!',
-                timer: 200
+                text: '⚠ ' + (cl.zone ? cl.zone.label : 'TRAP SPRUNG') + ' ⚠',
+                sub: civ.name + ' is in danger — fly to ' + (cl.zone ? cl.zone.label : 'the zone') + ' and clear the area!',
+                timer: 220
             };
             return civ;
         }
 
-        // Bank heist: robbers hit FIRST NATIONAL BANK and hold the teller. Reuses
-        // the bank's existing alarm-light visual (bankRobbery.triggered/complete).
         function spawnBankQuest(cl) {
             const bankX = bankRobbery.bankX;
             const civ = mkCiv(bankX + 87, 'downtown', cl.civName || 'Bank Teller');
@@ -546,42 +577,40 @@
             bankRobbery.complete = false;
             titleCard = {
                 text: '🚨 BANK HEIST IN PROGRESS!',
-                sub: 'Stop the robbers and get the teller to safety!',
+                sub: 'Stop the robbers at FIRST NATIONAL BANK and get the teller to safety!',
                 timer: 220
             };
             return civ;
         }
 
-        // Cargo recovery: an object (not a person) needs carrying back to safety,
-        // guarded by the wave just like any other quest.
         function spawnCargoQuest(cl) {
-            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Missing Cargo');
+            const zone = cl.zone || { x: cl.x };
+            const civ = mkCiv(zone.x, cl.district, cl.civName || 'Missing Cargo');
             civ.trapVictim = true;
             civ.isObject = true;
-            civ.crimeX = cl.x;
+            civ.crimeX = zone.x;
             civilians.push(civ);
             spawnTrapEnemies(cl);
             titleCard = {
-                text: '📦 CARGO RECOVERY',
-                sub: 'Recover ' + civ.name + ' before the guards drag it off for good!',
-                timer: 200
+                text: '📦 ' + (cl.zone ? cl.zone.label : 'CARGO RECOVERY'),
+                sub: 'Recover ' + civ.name + ' from ' + (cl.zone ? cl.zone.label : 'the zone') + ' before the guards drag it off!',
+                timer: 220
             };
             return civ;
         }
 
-        // Car chase: a hijacked car speeds off — it roams much faster/farther
-        // than a normal rescue target, so catching it feels like a real chase.
         function spawnChaseQuest(cl) {
-            const civ = mkCiv(cl.x, cl.district, cl.civName || 'Hijacked Car');
+            const zone = cl.zone || { x: cl.x };
+            const civ = mkCiv(zone.x, cl.district, cl.civName || 'Hijacked Car');
             civ.trapVictim = true;
             civ.isVehicle = true;
-            civ.crimeX = cl.x;
+            civ.crimeX = zone.x;
             civilians.push(civ);
             spawnTrapEnemies(cl);
             titleCard = {
-                text: '🚗 CAR CHASE!',
-                sub: 'Catch up to ' + civ.name + ' before it gets away!',
-                timer: 200
+                text: '🚗 ' + (cl.zone ? cl.zone.label : 'CAR CHASE') + '!',
+                sub: 'Head to ' + (cl.zone ? cl.zone.label : 'the zone') + ' and stop the convoy!',
+                timer: 220
             };
             return civ;
         }
@@ -1675,24 +1704,7 @@
             hitFX.push({ x: cx, y: cy - 12, life: 0, max: 18, type: 'word', text: 'MISS', color: '#c8d2e0', outline: '#2a3040' });
         }
 
-        function damageHazards(box, dmg) {
-            for (const hz of hazards) {
-                if (!hazardActive(hz)) continue;
-                if (aabb(box, hz)) {
-                    hz.hp -= dmg;
-                    if (hz.hp <= 0) {
-                        hz.destroyed = true;
-                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.4, 'laser', true);
-                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.7, 'punch', true);
-                        screenShake = Math.max(screenShake, 14);
-                        titleCard = { text: 'BARRIER DESTROYED', sub: 'Path is clear — keep moving.', timer: 150 };
-                    } else {
-                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.4, 'laser', false);
-                        screenShake = Math.max(screenShake, 5);
-                    }
-                }
-            }
-        }
+        function damageHazards() {}  // laser barriers removed
 
         function doPunch(e) {
             e.punchTimer = PUNCH_EFFECT;
@@ -1791,25 +1803,7 @@
                 }
             }
 
-            // Laser barrier towers — hard wall when active. Dash does NOT help.
-            // The entity is pushed back to the correct side and velocity zeroed.
-            for (const hz of hazards) {
-                if (!hazardActive(hz)) continue;
-                if (aabb(e, hz)) {
-                    const fromLeft = (e.x + e.w / 2) < (hz.x + hz.w / 2);
-                    // resolve penetration: snap to the correct edge
-                    if (fromLeft) {
-                        e.x = hz.x - e.w;
-                        if (e.vx > 0) e.vx = 0;
-                        if (e.dashTimer > 0) { e.dashTimer = 0; e.vx = 0; }
-                    } else {
-                        e.x = hz.x + hz.w;
-                        if (e.vx < 0) e.vx = 0;
-                        if (e.dashTimer > 0) { e.dashTimer = 0; e.vx = 0; }
-                    }
-                    e.zap = 10;
-                }
-            }
+            // laser barriers removed
 
             // collect power orbs (hero or hound)
             for (const o of orbs) {
@@ -2188,21 +2182,7 @@
                 input.moveDown = true;
             }
 
-            // hazard avoidance
-            for (const hz of hazards) {
-                if (!hazardActive(hz)) continue;
-                const hcx2 = hound.x + hound.w / 2;
-                const heroCx = hero.x + hero.w / 2;
-                const blocked = (hcx2 < hz.x && heroCx > hz.x + hz.w) ||
-                                (hcx2 > hz.x + hz.w && heroCx < hz.x);
-                if (blocked) {
-                    if (hound.y > 100) {
-                        input.jumpHeld = true;
-                        input.left = false; input.right = false;
-                    }
-                    break;
-                }
-            }
+            // hazard avoidance removed (laser barriers gone)
 
             // drag nearby enemies
             let best = null, bestD = Infinity;
@@ -4808,52 +4788,7 @@
                 ctx.fillRect(p.x + p.w - 16, p.y + p.h, 6, 24);
             }
 
-            // ---- laser barrier towers ----
-            for (const hz of hazards) {
-                hz.phase = (hz.phase || 0) + 0.06;
-                if (hz.destroyed) continue;
-                const active = hazardActive(hz);
-                ctx.save();
-                if (active) {
-                    // pylon body
-                    ctx.fillStyle = '#1a1a2e';
-                    ctx.fillRect(hz.x - 5, 0, hz.w + 10, GROUND_Y);
-                    // glowing beam core
-                    const flick = 0.6 + Math.sin(hz.phase * 7) * 0.4;
-                    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 22 * flick;
-                    ctx.fillStyle = `rgba(80,230,255,${0.55 * flick})`;
-                    ctx.fillRect(hz.x, 0, hz.w, GROUND_Y);
-                    // zig-zag arc
-                    ctx.strokeStyle = `rgba(200,250,255,${0.8 * flick})`;
-                    ctx.lineWidth = 2.5;
-                    ctx.beginPath();
-                    ctx.moveTo(hz.x + hz.w / 2, 0);
-                    for (let yy = 0; yy < GROUND_Y; yy += 32) {
-                        ctx.lineTo(hz.x + hz.w / 2 + (Math.random() - 0.5) * 20, yy + 32);
-                    }
-                    ctx.stroke();
-                    // emitter nodes every 200px
-                    ctx.fillStyle = '#9be8ff';
-                    for (let ny = 80; ny < GROUND_Y; ny += 200) {
-                        ctx.fillRect(hz.x - 8, ny - 6, hz.w + 16, 12);
-                    }
-                    // HP pips — drawn in world space (camera.x already translated out)
-                    ctx.shadowBlur = 0;
-                    for (let i = 0; i < 3; i++) {
-                        ctx.fillStyle = i < hz.hp ? '#00e5ff' : '#1a2a2a';
-                        ctx.fillRect(hz.x - 20 + i * 16, 18, 12, 7);
-                    }
-                    ctx.fillStyle = '#9be8ff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-                    ctx.fillText('BARRIER — USE POWERS', hz.x + hz.w / 2, 14);
-                } else {
-                    // inactive: just a dark pylon stub
-                    ctx.globalAlpha = 0.3;
-                    ctx.fillStyle = '#2a2a3a';
-                    ctx.fillRect(hz.x - 4, 0, hz.w + 8, GROUND_Y);
-                    ctx.globalAlpha = 1;
-                }
-                ctx.restore();
-            }
+            // laser barriers removed
 
             // ---- collectible power orbs ----
             for (const o of orbs) {
@@ -5258,6 +5193,7 @@
             // ---- screen-space overlays (not affected by camera) ----
             drawMinimap();
             if (mapOpen) drawFullMap();
+            drawQuestZoneArrow();
             drawTitleCard();
             if (cutscene.active) drawCutscene();
         }
@@ -5617,6 +5553,58 @@
             ctx.restore();
         }
 
+        function drawQuestZoneArrow() {
+            if (!questZone || !pendingTrapCiv) return;
+            const heroWorldX = hero.x + hero.w / 2;
+            const zoneWorldX = questZone.x;
+            const dx = zoneWorldX - heroWorldX;
+            const dist = Math.abs(dx);
+            // Only show arrow when hero is more than 300px from zone center
+            if (dist < 300) return;
+
+            const dir = dx > 0 ? 1 : -1;  // 1 = right, -1 = left
+            const screenX = dir > 0 ? W - 56 : 56;
+            const screenY = 38;
+
+            ctx.save();
+            ctx.globalAlpha = 0.88;
+
+            // pill background
+            const pillW = 160, pillH = 32;
+            const pillX = dir > 0 ? W - pillW - 10 : 10;
+            ctx.fillStyle = 'rgba(12,14,28,0.82)';
+            ctx.strokeStyle = '#ffd84d';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(pillX, screenY - pillH / 2, pillW, pillH, 8);
+            ctx.fill(); ctx.stroke();
+
+            // arrow chevron
+            const ax = dir > 0 ? pillX + pillW - 18 : pillX + 18;
+            const ay = screenY;
+            ctx.fillStyle = '#ffd84d';
+            ctx.beginPath();
+            if (dir > 0) {
+                ctx.moveTo(ax, ay - 8); ctx.lineTo(ax + 10, ay); ctx.lineTo(ax, ay + 8);
+            } else {
+                ctx.moveTo(ax, ay - 8); ctx.lineTo(ax - 10, ay); ctx.lineTo(ax, ay + 8);
+            }
+            ctx.closePath(); ctx.fill();
+
+            // label + distance
+            ctx.fillStyle = '#ffd84d';
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = dir > 0 ? 'left' : 'left';
+            ctx.textAlign = 'center';
+            const labelX = pillX + pillW / 2 + (dir > 0 ? -6 : 6);
+            ctx.fillText(questZone.label, labelX, screenY - 4);
+            ctx.fillStyle = '#aac4ff';
+            ctx.font = '10px Arial';
+            ctx.fillText(Math.round(dist / 100) * 100 + 'm away', labelX, screenY + 10);
+
+            ctx.restore();
+        }
+
         function drawTitleCard() {
             if (titleCard.timer <= 0) return;
             const t = titleCard.timer;
@@ -5704,11 +5692,14 @@
                     );
                 }
                 pendingTrapCiv = null;
+                questZone = null;
                 activeClueIndex++;
                 if (activeClueIndex >= clues.length) {
                     if (currentLevel === 2) spawnFinalBattle(); else spawnBoss();
                 } else {
-                    titleCard = { text: 'NEW LEAD', sub: 'A new clue has turned up somewhere in the city.', timer: 160 };
+                    const nextCl = clues[activeClueIndex];
+                    const zoneName = nextCl.zone ? nextCl.zone.label : 'the city';
+                    titleCard = { text: 'NEW LEAD', sub: 'A new clue has appeared — find it in ' + zoneName + '.', timer: 200 };
                 }
             }
 
@@ -5762,13 +5753,7 @@
             { x: 12800, w: 165, h: 200, type: 'pawnshop',  district: 'badlands',   name: 'STRIPPED PARTS' },
             { x: 15500, w: 200, h: 260, type: 'warehouse', district: 'badlands',   name: 'LEXCORP CENTRAL' },
         ];
-        const l2Hazards = [
-            { x: 1700,  y: 0, w: 18, h: 900, activatesOnClue: 0, hp: 3, destroyed: false, phase: 0 },
-            { x: 4800,  y: 0, w: 18, h: 900, activatesOnClue: 1, hp: 3, destroyed: false, phase: 0 },
-            { x: 8000,  y: 0, w: 18, h: 900, activatesOnClue: 2, hp: 3, destroyed: false, phase: 0 },
-            { x: 11400, y: 0, w: 18, h: 900, activatesOnClue: 3, hp: 3, destroyed: false, phase: 0 },
-            { x: 14600, y: 0, w: 18, h: 900, activatesOnClue: 4, hp: 3, destroyed: false, phase: 0 },
-        ];
+        const l2Hazards = [];  // laser barriers removed
         const l2Emitters = [
             { x: 5100, y: 440, hp: 3, destroyed: false, district: 'industrial', phase: 0 },
             { x: 12600, y: 400, hp: 3, destroyed: false, district: 'badlands',  phase: 0 },
@@ -5788,15 +5773,19 @@
         const l2Clues = [
             {
                 x: 900, found: false, questType: 'rescue', district: 'ruins',
-                civName: 'Stranded Worker', trapTypes: ['brute', 'brute'], lines: [
+                civName: 'Stranded Worker', trapTypes: ['brute', 'brute'],
+                zone: { x: 2200, label: 'EAST RUINS', spread: 160 },
+                lines: [
                     'BADLANDS FILE — CLUE 1 OF 5',
                     'A torn business card in the rubble, barely legible: "...LEXCORP INDUSTRIES".',
-                    'The escapee wasn\'t fleeing prison. He was fleeing TO something — and someone bankrolled the whole escape.'
+                    'The escapee wasn't fleeing prison. He was fleeing TO something — and someone bankrolled the whole escape.'
                 ]
             },
             {
                 x: 3400, found: false, questType: 'lockdown', district: 'ruins',
-                civName: 'Security Guard', trapTypes: ['brute', 'genius'], lines: [
+                civName: 'Security Guard', trapTypes: ['brute', 'genius'],
+                zone: { x: 5000, label: 'INDUSTRIAL GATE', spread: 200 },
+                lines: [
                     'BADLANDS FILE — CLUE 2 OF 5',
                     'A hidden ledger: weapons purchases, reactor parts, mercenary contracts. Every line signed with a stylized "L".',
                     '"This operation has deep pockets," Dark Wing says. "And a very specific target in mind."'
@@ -5804,25 +5793,31 @@
             },
             {
                 x: 6300, found: false, questType: 'cargo', isObject: true, district: 'industrial',
-                civName: 'Stolen Reactor Core', trapTypes: ['genius', 'genius', 'energy'], lines: [
+                civName: 'Stolen Reactor Core', trapTypes: ['genius', 'genius', 'energy'],
+                zone: { x: 8000, label: 'OIL FIELDS', spread: 240 },
+                lines: [
                     'BADLANDS FILE — CLUE 3 OF 5',
                     'Surveillance image: a bald man in a power suit, calm as stone, directing a crew unloading reactor components.',
-                    '"He\'s not hiding," Dark Wing says. "He\'s BUILDING. We have to move now."'
+                    '"He's not hiding," Dark Wing says. "He's BUILDING. We have to move now."'
                 ]
             },
             {
                 x: 10000, found: false, questType: 'chase', isVehicle: true, district: 'badlands',
-                civName: 'Armored Convoy', trapTypes: ['genius', 'energy', 'energy', 'energy'], lines: [
+                civName: 'Armored Convoy', trapTypes: ['genius', 'energy', 'energy', 'energy'],
+                zone: { x: 12000, label: 'BADLANDS CANYON', spread: 280 },
+                lines: [
                     'BADLANDS FILE — CLUE 4 OF 5',
                     'LexCorp markings on every vehicle. The convoy is carrying something — or someone.',
-                    '"He\'s consolidating," Dark Wing says grimly. "The army is already assembled. Only one thread left to pull."'
+                    '"He's consolidating," Dark Wing says grimly. "The army is already assembled. Only one thread left to pull."'
                 ]
             },
             {
                 x: 14200, found: false, questType: 'rescue', district: 'badlands',
-                civName: 'Captured Informant', trapTypes: ['genius', 'genius', 'energy', 'energy'], lines: [
+                civName: 'Captured Informant', trapTypes: ['genius', 'genius', 'energy', 'energy'],
+                zone: { x: 15000, label: 'TOWER APPROACH', spread: 300 },
+                lines: [
                     'BADLANDS FILE — CLUE 5 OF 5',
-                    'The informant gasps: "He\'s in the central tower — Lex Luthor. He never escaped to hide. He escaped to FINISH what he started against the man who can fly."',
+                    'The informant gasps: "He's in the central tower — Lex Luthor. He never escaped to hide. He escaped to FINISH what he started against the man who can fly."',
                     '"He has thirty of his best men down there," Dark Wing says. "We go in together. Right now."'
                 ]
             },
@@ -5845,6 +5840,7 @@
             activeClueIndex = 0;
             cluesFound = 0;
             pendingTrapCiv = null;
+            questZone = null;
             enemies.splice(0);
             civilians.splice(0);
             carriedCivilians = [];
