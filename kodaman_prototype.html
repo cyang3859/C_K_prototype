@@ -2058,64 +2058,59 @@
             e.laserTimer = LASER_EFFECT;
             e.lunge = -1.5 * e.facing;
             const dir = e.facing;
-            const srcX = e.x + e.w * 0.5;
-            const beamY = e.y + e.h * 0.05;
-            const beamH = e.h * 0.50;
+            const srcX  = e.x + e.w * 0.5;
+            const srcY  = e.y + e.h * 0.35;   // eye-level origin
 
-            // Lock-on: keep targeting the same enemy while laser key held
-            // If current lock target is alive and in front, aim beam at it
+            // ── Maintain existing lock if target still alive and in front ──
             let hitEn = null;
             if (e._laserTarget && e._laserTarget.alive) {
-                const lt = e._laserTarget;
-                const ltMid = lt.x + lt.w / 2;
-                const inFront = dir === 1 ? ltMid > srcX : ltMid < srcX;
-                if (inFront) hitEn = lt;
-                else e._laserTarget = null; // target behind us — release lock
+                const ltMid = e._laserTarget.x + e._laserTarget.w / 2;
+                if (dir === 1 ? ltMid > srcX : ltMid < srcX) {
+                    hitEn = e._laserTarget;
+                } else {
+                    e._laserTarget = null;
+                }
             }
 
-            // No active lock — acquire closest enemy in beam path
+            // ── Acquire: closest alive enemy in facing direction (any Y) ──
             if (!hitEn) {
-                let stopX2 = dir === 1 ? WORLD_WIDTH : 0;
+                let bestDist = Infinity;
                 for (const en of enemies) {
                     if (!en.alive) continue;
-                    if (en.y + en.h <= beamY || en.y >= beamY + beamH) continue;
-                    const enEdge = dir === 1 ? en.x : en.x + en.w;
-                    const inFront = dir === 1 ? enEdge > srcX : enEdge < srcX;
-                    if (!inFront) continue;
-                    const closer = dir === 1 ? enEdge < stopX2 : enEdge > stopX2;
-                    if (closer) { stopX2 = enEdge; hitEn = en; }
+                    const enMid = en.x + en.w / 2;
+                    if (dir === 1 ? enMid <= srcX : enMid >= srcX) continue;
+                    const d = Math.abs(enMid - srcX);
+                    if (d < bestDist) { bestDist = d; hitEn = en; }
                 }
-                if (hitEn) e._laserTarget = hitEn; // acquire lock
+                if (hitEn) e._laserTarget = hitEn;
             }
 
-            // Aim beam at locked target center Y (tracking beam)
-            let stopX = dir === 1 ? WORLD_WIDTH : 0;
-            let trackBeamY = beamY, trackBeamH = beamH;
+            // ── Beam endpoint ─────────────────────────────────────────────
+            let stopX = dir === 1 ? srcX + 2200 : srcX - 2200;
+            let stopY  = srcY;
             if (hitEn) {
-                // Steer beam toward locked target's center
-                const enMidX = hitEn.x + hitEn.w / 2;
-                const enMidY = hitEn.y + hitEn.h / 2;
-                stopX = dir === 1 ? hitEn.x : hitEn.x + hitEn.w;
-                // Widen vertical window to track target
-                trackBeamY = Math.min(beamY, enMidY - 10);
-                trackBeamH = Math.max(beamH, enMidY + 10 - trackBeamY);
+                stopX = hitEn.x + hitEn.w / 2;
+                stopY = hitEn.y + hitEn.h / 2;
                 tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
                 if (!hitEn.alive) {
-                    stopX = dir === 1 ? WORLD_WIDTH : 0;
-                    hitEn = null;
-                    e._laserTarget = null; // target destroyed — release lock
+                    stopX = dir === 1 ? srcX + 2200 : srcX - 2200;
+                    stopY  = srcY;
+                    hitEn  = null;
+                    e._laserTarget = null;
                 }
             }
 
-            const emBox = dir === 1
-                ? { x: srcX, y: trackBeamY, w: stopX - srcX, h: trackBeamH }
-                : { x: stopX, y: trackBeamY, w: srcX - stopX, h: trackBeamH };
+            // Damage emitters along straight path
+            const minX = Math.min(srcX, stopX), maxX = Math.max(srcX, stopX);
+            const minY = Math.min(srcY, stopY) - 8, maxY = Math.max(srcY, stopY) + 8;
+            const emBox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
             damageEmitters(emBox, LASER_DMG);
             if (e === hero) damageHazards(emBox, 1);
 
             e._laserStopX = stopX;
-            e._laserHit = !!hitEn;
-            e._laserTargetY = hitEn ? hitEn.y + hitEn.h / 2 : beamY + beamH / 2;
+            e._laserStopY = stopY;
+            e._laserSrcY  = srcY;
+            e._laserHit   = !!hitEn;
         }
         function doFreeze(e) {
             e.freezeTimer = FREEZE_EFFECT;
@@ -3419,49 +3414,51 @@
             const [mx, my] = e._fx.mouth;
             const [fx, fy] = e._fx.fist;
 
-            // LASER — lock-on tracking beam: angles toward target, holds until defeated
+            // LASER — lock-on tracking beam that follows target anywhere on screen
             if (e.laserTimer > 0) {
-                const defaultEnd = dir === 1 ? exA + 2200 : exA - 2200;
-                const end = (e._laserStopX !== undefined) ? e._laserStopX : defaultEnd;
-                const srcMidY = (eyA + eyB) / 2;
-                // If locked on, smoothly angle beam toward target center Y
-                const targetY = (e._laserTarget && e._laserTarget.alive)
-                    ? e._laserTarget.y + e._laserTarget.h / 2
-                    : srcMidY;
-                const endYA = targetY - (eyA - srcMidY);
-                const endYB = targetY - (eyB - srcMidY);
-                const impY = targetY;
+                const srcMidY = e._laserSrcY || (eyA + eyB) / 2;
+                const endX  = e._laserStopX !== undefined ? e._laserStopX : (dir === 1 ? exA + 2200 : exA - 2200);
+                const endY  = e._laserStopY !== undefined ? e._laserStopY : srcMidY;
+                // Beam goes from both eyes converging on the same target point
+                const impY = endY;
 
-                // Lock-on reticle around target
+                // Lock-on reticle
                 if (e._laserTarget && e._laserTarget.alive) {
                     const lt = e._laserTarget;
                     const rtX = lt.x + lt.w / 2, rtY = lt.y + lt.h / 2;
-                    const rtR = Math.max(lt.w, lt.h) * 0.7 + Math.sin(Date.now() * 0.01) * 3;
+                    const rtR = Math.max(lt.w, lt.h) * 0.65 + Math.sin(Date.now() * 0.012) * 3;
                     ctx.save();
-                    ctx.strokeStyle = 'rgba(255,60,20,0.85)'; ctx.lineWidth = 1.5;
-                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = 'rgba(255,60,20,0.9)'; ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 4]);
                     ctx.beginPath(); ctx.arc(rtX, rtY, rtR, 0, Math.PI * 2); ctx.stroke();
                     ctx.setLineDash([]);
-                    // Corner brackets
-                    const bk = rtR * 0.4;
-                    for (const [cx2, cy2, sx, sy] of [[rtX - rtR, rtY - rtR, 1, 1],[rtX + rtR, rtY - rtR, -1, 1],[rtX - rtR, rtY + rtR, 1, -1],[rtX + rtR, rtY + rtR, -1, -1]]) {
-                        ctx.beginPath(); ctx.moveTo(cx2 + sx * bk, cy2); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2, cy2 + sy * bk); ctx.stroke();
+                    const bk = rtR * 0.38;
+                    for (const [cx2, cy2, sx2, sy2] of [
+                        [rtX - rtR, rtY - rtR, 1, 1],[rtX + rtR, rtY - rtR, -1, 1],
+                        [rtX - rtR, rtY + rtR, 1, -1],[rtX + rtR, rtY + rtR, -1, -1]
+                    ]) {
+                        ctx.beginPath(); ctx.moveTo(cx2 + sx2 * bk, cy2); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2, cy2 + sy2 * bk); ctx.stroke();
                     }
+                    // Crosshair lines
+                    ctx.strokeStyle = 'rgba(255,80,40,0.5)'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(rtX - rtR * 1.3, rtY); ctx.lineTo(rtX + rtR * 1.3, rtY); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(rtX, rtY - rtR * 1.3); ctx.lineTo(rtX, rtY + rtR * 1.3); ctx.stroke();
                     ctx.restore();
                 }
 
                 ctx.save();
-                // Beam body — angled toward target
-                ctx.shadowColor = '#ff4030'; ctx.shadowBlur = 16;
-                ctx.strokeStyle = 'rgba(255,80,60,0.9)'; ctx.lineWidth = 5;
-                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, endYA); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, endYB); ctx.stroke();
+                // Outer glow beam
+                ctx.shadowColor = '#ff4030'; ctx.shadowBlur = 18;
+                ctx.strokeStyle = 'rgba(255,80,60,0.85)'; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(endX, endY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(endX, endY); ctx.stroke();
                 ctx.shadowBlur = 0;
-                ctx.strokeStyle = 'rgba(255,235,210,0.95)'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(end, endYA); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(end, endYB); ctx.stroke();
-                // Eye glow origin
-                ctx.fillStyle = 'rgba(255,210,160,0.8)';
+                // Inner bright core
+                ctx.strokeStyle = 'rgba(255,240,220,0.95)'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(exA, eyA); ctx.lineTo(endX, endY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(exB, eyB); ctx.lineTo(endX, endY); ctx.stroke();
+                // Eye origin glow
+                ctx.fillStyle = 'rgba(255,210,160,0.85)';
                 ctx.beginPath(); ctx.arc(exA + dir * 4, srcMidY, 4, 0, Math.PI * 2); ctx.fill();
 
                 // Impact burst at the beam terminus (only when hitting an enemy)
@@ -6889,18 +6886,7 @@
 
         const l3Gateways = [];   // open world, no locked gates
 
-        const l3Buildings = [
-            // Stone ruins and temple structures — drawn by drawJungle() but listed here for entry logic
-            { x: 800,   w: 140, h: 200, type: 'ruin',   district: 'outskirts',  name: 'VINE SHRINE'       },
-            { x: 2100,  w: 160, h: 240, type: 'ruin',   district: 'outskirts',  name: 'RIVER WATCHTOWER'  },
-            { x: 4000,  w: 170, h: 260, type: 'ruin',   district: 'deepjungle', name: 'OVERGROWN ALTAR'   },
-            { x: 5800,  w: 180, h: 280, type: 'ruin',   district: 'deepjungle', name: 'CANOPY FORT'       },
-            { x: 7700,  w: 160, h: 300, type: 'ruin',   district: 'ruins',      name: 'FALLEN TEMPLE'     },
-            { x: 9300,  w: 175, h: 320, type: 'ruin',   district: 'ruins',      name: 'WARRIOR CITADEL'   },
-            { x: 11100, w: 185, h: 340, type: 'temple', district: 'ruins',      name: 'ARES SHRINE'       },
-            { x: 12900, w: 200, h: 360, type: 'temple', district: 'temple',     name: 'OUTER SANCTUM'     },
-            { x: 14700, w: 220, h: 380, type: 'temple', district: 'temple',     name: 'ARES TEMPLE',      rooftop: true },
-        ];
+        const l3Buildings = []; // no overworld structures on L3 — jungle only
 
         const l3Hazards  = [];
         const l3Emitters = [];
@@ -7386,6 +7372,7 @@
                     const d = Math.abs((en.x + en.w / 2) - wonderWoman.x);
                     if (d < tDist) { tDist = d; target = en; }
                 }
+                if (!target) { wonderWoman.zoneCombat = false; } // return to formation when clear
                 if (target) {
                     const enMid  = target.x + target.w / 2;
                     const enDist = Math.abs(enMid - wonderWoman.x);
@@ -7401,7 +7388,7 @@
                             wonderWoman._throwTimer = 20; wonderWoman._animSide = wonderWoman.faceDir;
                         }
                     }
-                    if (!enAbove && enDist > 85) wonderWoman.x += Math.sign(enMid - wonderWoman.x) * 3.2;
+                    if (!enAbove && enDist > 85) wonderWoman.x += Math.sign(enMid - wonderWoman.x) * 4.5;
                     if (wonderWoman._attackCD <= 0) {
                         const vertClose = Math.abs((wonderWoman.y - 35) - (target.y + target.h / 2)) < 65;
                         if (enDist < 85 && vertClose) {
@@ -7444,9 +7431,19 @@
                 }
 
                 // Auto-activate zoneCombat when quest zone is active and WW is close
-                if (questZone && Math.abs(wonderWoman.x - questZone.x) < 400) {
+                // Activate combat if near a quest zone OR near any live enemy
+                if (questZone && Math.abs(wonderWoman.x - questZone.x) < 700) {
                     wonderWoman.zoneCombat = true;
                     wonderWoman._targetX = questZone.x;
+                }
+                if (!wonderWoman.zoneCombat) {
+                    for (const en of enemies) {
+                        if (!en.alive) continue;
+                        if (Math.abs((en.x + en.w / 2) - wonderWoman.x) < 600) {
+                            wonderWoman.zoneCombat = true;
+                            break;
+                        }
+                    }
                 }
                 return;
             }
@@ -8573,96 +8570,88 @@
 
         // ── Power Girl draw ──────────────────────────────────────────────
         function drawPowerGirlAt(wx, wy, isCaptured) {
-            // wx/wy are world coords (canvas already translated by camera)
-            const fd = powerGirl.facing;
-            const bob = Math.sin(powerGirl.phase * 2) * 1.5;
-            const feetY = wy;
-            const cx = wx + powerGirl.w / 2;
+            const fd  = powerGirl.facing !== undefined ? powerGirl.facing : 1;
+            const bob = Math.sin(powerGirl.phase * 2) * 1.2;
+            const cx  = wx;   // feet center X (no w/2 offset — pass center directly)
+            const fy  = wy;   // feet Y
 
             ctx.save();
 
-            // Cape (behind body)
+            // Cape — red, behind body
             ctx.fillStyle = '#cc1a1a';
             if (powerGirl.flightActive) {
                 ctx.beginPath();
-                ctx.moveTo(cx - fd * 4, feetY - 60 + bob);
-                ctx.lineTo(cx - fd * 4, feetY - 46 + bob);
-                ctx.lineTo(cx - fd * 46, feetY - 42 + bob);
-                ctx.lineTo(cx - fd * 50, feetY - 54 + bob);
+                ctx.moveTo(cx, fy - 52 + bob);
+                ctx.lineTo(cx - fd * 32, fy - 36 + bob);
+                ctx.lineTo(cx - fd * 28, fy - 26 + bob);
+                ctx.lineTo(cx, fy - 40 + bob);
                 ctx.closePath(); ctx.fill();
             } else {
                 ctx.beginPath();
-                ctx.moveTo(cx - fd * 4, feetY - 60 + bob);
-                ctx.lineTo(cx - fd * 4, feetY - 6 + bob);
-                ctx.quadraticCurveTo(cx - fd * 20, feetY - 2, cx - fd * 24, feetY - 10 + bob);
-                ctx.lineTo(cx - fd * 26, feetY - 56 + bob);
+                ctx.moveTo(cx - fd * 3, fy - 52 + bob);
+                ctx.quadraticCurveTo(cx - fd * 18, fy - 4, cx - fd * 20, fy - 8 + bob);
+                ctx.lineTo(cx - fd * 18, fy - 48 + bob);
                 ctx.closePath(); ctx.fill();
             }
 
             // Legs — blue
             ctx.fillStyle = '#1a44cc';
-            ctx.fillRect(cx - 14, feetY - 34 + bob, 12, 34);
-            ctx.fillRect(cx + 2,  feetY - 34 + bob, 12, 34);
-            // Boots — red
+            ctx.fillRect(cx - 9,  fy - 26, 8, 26);
+            ctx.fillRect(cx + 1,  fy - 26, 8, 26);
+            // Red boots
             ctx.fillStyle = '#cc1a1a';
-            ctx.fillRect(cx - 15, feetY - 15 + bob, 13, 15);
-            ctx.fillRect(cx + 2,  feetY - 15 + bob, 13, 15);
+            ctx.fillRect(cx - 10, fy - 10, 10, 10);
+            ctx.fillRect(cx + 1,  fy - 10, 10, 10);
 
             // Torso — blue
             ctx.fillStyle = '#1a44cc';
-            ctx.fillRect(cx - 16, feetY - 72 + bob, 32, 40);
-
+            ctx.fillRect(cx - 11, fy - 56 + bob, 22, 30);
             // White oval chest emblem
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath(); ctx.ellipse(cx, feetY - 53 + bob, 9, 12, 0, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#d4a017';
-            ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('P', cx, feetY - 53 + bob);
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.ellipse(cx, fy - 42 + bob, 6, 8, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#c8900a';
+            ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('P', cx, fy - 42 + bob);
             ctx.textBaseline = 'alphabetic';
 
             // Arms
-            const punchExt = powerGirl._punchTimer > 0 ? (powerGirl._punchTimer / 18) * 14 : 0;
-            ctx.fillStyle = '#1a44cc';
-            // Front arm
-            ctx.fillRect(cx + fd * 14, feetY - 68 + bob, fd * (12 + punchExt), 9);
-            // Back arm
-            ctx.fillRect(cx - fd * 26, feetY - 68 + bob, fd * 12, 9);
+            const punchExt = powerGirl._punchTimer > 0 ? (powerGirl._punchTimer / 18) * 12 : 0;
+            ctx.strokeStyle = '#1a44cc'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(cx + fd * 10, fy - 52 + bob); ctx.lineTo(cx + fd * 20 + punchExt * fd, fy - 45 + bob); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(cx - fd * 10, fy - 52 + bob); ctx.lineTo(cx - fd * 18, fy - 46 + bob); ctx.stroke();
 
             // Neck + head
             ctx.fillStyle = '#f0c090';
-            ctx.fillRect(cx - 5, feetY - 74 + bob, 10, 10);
-            ctx.beginPath(); ctx.ellipse(cx, feetY - 82 + bob, 12, 13, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillRect(cx - 4, fy - 60 + bob, 8, 6);
+            ctx.beginPath(); ctx.arc(cx, fy - 66 + bob, 9, 0, Math.PI * 2); ctx.fill();
 
-            // Blonde hair — golden bob
+            // Blonde bob hair
             ctx.fillStyle = '#f0c030';
-            ctx.beginPath(); ctx.ellipse(cx, feetY - 86 + bob, 13, 9, 0, 0, Math.PI * 2); ctx.fill();
-            ctx.fillRect(cx - 13, feetY - 88 + bob, 26, 8);
+            ctx.beginPath(); ctx.arc(cx, fy - 68 + bob, 10, Math.PI, 0); ctx.fill();
+            ctx.fillRect(cx - 10, fy - 74 + bob, 20, 6);
             if (powerGirl.flightActive) {
-                // Hair streams back
                 ctx.beginPath();
-                ctx.moveTo(cx - fd * 10, feetY - 86 + bob);
-                ctx.lineTo(cx - fd * 34, feetY - 80 + bob);
-                ctx.lineTo(cx - fd * 28, feetY - 74 + bob);
-                ctx.lineTo(cx - fd * 8, feetY - 78 + bob);
+                ctx.moveTo(cx - fd * 6, fy - 68 + bob);
+                ctx.lineTo(cx - fd * 26, fy - 62 + bob);
+                ctx.lineTo(cx - fd * 22, fy - 56 + bob);
+                ctx.lineTo(cx - fd * 5,  fy - 62 + bob);
                 ctx.closePath(); ctx.fill();
             }
-
             // Eyes
             ctx.fillStyle = '#3a2010';
-            ctx.fillRect(cx - 5 + fd, feetY - 84 + bob, 3, 2);
-            ctx.fillRect(cx + 2 + fd, feetY - 84 + bob, 3, 2);
+            ctx.fillRect(cx - 4 + fd, fy - 68 + bob, 2, 2);
+            ctx.fillRect(cx + 1 + fd, fy - 68 + bob, 2, 2);
 
             ctx.restore();
 
-            // HP bar in combat
-            if (!isCaptured && powerGirl.fightMode) {
-                ctx.fillStyle = '#400'; ctx.fillRect(wx - 4, wy - 92, 44, 5);
-                ctx.fillStyle = '#22cc44'; ctx.fillRect(wx - 4, wy - 92, 44 * (powerGirl.hp / powerGirl.maxHp), 5);
+            // HP bar
+            if (!isCaptured && (powerGirl.fightMode || powerGirl.active)) {
+                ctx.fillStyle = '#400'; ctx.fillRect(cx - 16, fy - 88, 32, 4);
+                ctx.fillStyle = '#22cc44'; ctx.fillRect(cx - 16, fy - 88, 32 * (powerGirl.hp / powerGirl.maxHp), 4);
             }
-            // Name label when idle
             if (!isCaptured && !powerGirl.fightMode) {
                 ctx.fillStyle = 'rgba(120,210,255,0.85)'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('POWER GIRL', wx + powerGirl.w / 2, wy - 97);
+                ctx.fillText('POWER GIRL', cx, fy - 92);
                 ctx.textAlign = 'left';
             }
         }
