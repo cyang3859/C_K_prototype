@@ -4412,6 +4412,170 @@
                 ctx.restore();
             }
 
+            else if (type === 'warehouse') {
+                // ── INDUSTRIAL WAREHOUSE: tall concrete block, LexCorp signage ──
+                // Main body — concrete slab
+                const wg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                wg.addColorStop(0, '#2a2a32');
+                wg.addColorStop(0.5, '#1e1e26');
+                wg.addColorStop(1, '#14141c');
+                ctx.fillStyle = wg;
+                ctx.fillRect(x, top, w, h);
+
+                // Horizontal panel seams every 60px
+                ctx.strokeStyle = '#0e0e14'; ctx.lineWidth = 2;
+                for (let sy = top + 60; sy < GROUND_Y - 10; sy += 60) {
+                    ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + w, sy); ctx.stroke();
+                }
+
+                // Vertical corner reinforcement columns
+                ctx.fillStyle = '#323240';
+                ctx.fillRect(x, top, 10, h);
+                ctx.fillRect(x + w - 10, top, 10, h);
+                ctx.fillRect(x + w / 2 - 5, top, 10, h);
+
+                // Corrugated metal shading strips
+                ctx.fillStyle = 'rgba(255,255,255,0.03)';
+                for (let ci = 0; ci < Math.floor(w / 14); ci++) {
+                    if (ci % 2 === 0) ctx.fillRect(x + ci * 14, top, 7, h);
+                }
+
+                // Grimy windows — narrow industrial slits
+                ctx.fillStyle = '#0a0e18';
+                const wRows = Math.max(2, Math.floor(h / 80));
+                const wCols = Math.max(2, Math.floor((w - 24) / 40));
+                for (let r = 0; r < wRows; r++) {
+                    for (let c = 0; c < wCols; c++) {
+                        const wx2 = x + 12 + c * Math.floor((w - 24) / wCols);
+                        const wy2 = top + 28 + r * 70;
+                        ctx.fillRect(wx2, wy2, 20, 32);
+                        // occasional dim orange glow inside
+                        if ((c + r) % 3 === 0) {
+                            ctx.fillStyle = 'rgba(200,80,10,0.12)';
+                            ctx.fillRect(wx2 + 2, wy2 + 2, 16, 28);
+                            ctx.fillStyle = '#0a0e18';
+                        }
+                        // window bars
+                        ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.moveTo(wx2 + 10, wy2); ctx.lineTo(wx2 + 10, wy2 + 32); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(wx2, wy2 + 16); ctx.lineTo(wx2 + 20, wy2 + 16); ctx.stroke();
+                    }
+                }
+
+                // LexCorp name plate + red "L" logo
+                const plateY = top + Math.floor(h * 0.55);
+                ctx.fillStyle = '#0a0008';
+                ctx.fillRect(x + 8, plateY, w - 16, 28);
+                // Red stripe accent
+                ctx.fillStyle = '#cc1111';
+                ctx.fillRect(x + 8, plateY, 4, 28);
+                ctx.fillStyle = '#cc2222';
+                ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2 + 4, plateY + 18);
+
+                // Rooftop parapet — raised edge so the flat top reads as a landing surface
+                ctx.fillStyle = '#3a3a48';
+                ctx.fillRect(x - 4, top - 10, w + 8, 12);          // parapet wall
+                ctx.fillStyle = '#4a4a58';
+                ctx.fillRect(x - 4, top - 10, w + 8, 3);           // top highlight
+                // Rooftop hazard stripes at parapet edge
+                ctx.fillStyle = '#cc2200';
+                for (let si = 0; si < Math.floor((w + 8) / 16); si++) {
+                    if (si % 2 === 0) ctx.fillRect(x - 4 + si * 16, top - 10, 8, 4);
+                }
+
+                // Rooftop vent stacks
+                const vents = [x + 20, x + w - 30, x + w / 2];
+                for (const vx of vents) {
+                    ctx.fillStyle = '#252530';
+                    ctx.fillRect(vx, top - 28, 14, 20);
+                    ctx.fillStyle = '#1a1a24';
+                    ctx.fillRect(vx - 4, top - 30, 22, 6);   // cap
+                    // smoke puff
+                    const sp = (Date.now() * 0.0004 + vx * 0.01) % 1;
+                    ctx.globalAlpha = (1 - sp) * 0.35;
+                    ctx.fillStyle = '#4a4a50';
+                    ctx.beginPath(); ctx.arc(vx + 7, top - 30 - sp * 40, 6 + sp * 8, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+
+                // Loading bay door at ground level
+                ctx.fillStyle = '#0e0e14';
+                ctx.fillRect(x + w / 2 - 22, GROUND_Y - 58, 44, 58);
+                ctx.strokeStyle = '#333340'; ctx.lineWidth = 2;
+                for (let gi = 0; gi < 4; gi++) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + w / 2 - 22, GROUND_Y - 58 + gi * 14);
+                    ctx.lineTo(x + w / 2 + 22, GROUND_Y - 58 + gi * 14);
+                    ctx.stroke();
+                }
+                // Door warning stripe
+                ctx.fillStyle = '#cc8800';
+                ctx.fillRect(x + w / 2 - 22, GROUND_Y - 60, 44, 4);
+            }
+            else if (type === 'pawnshop') {
+                // ── BADLANDS PAWNSHOP: squat brick front, barred windows, neon sign ──
+                const pg3 = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                pg3.addColorStop(0, '#2e2018');
+                pg3.addColorStop(1, '#1a1208');
+                ctx.fillStyle = pg3;
+                ctx.fillRect(x, top, w, h);
+
+                // Brick texture rows
+                ctx.strokeStyle = '#150e06'; ctx.lineWidth = 1;
+                for (let by2 = top + 8; by2 < GROUND_Y; by2 += 14) {
+                    ctx.beginPath(); ctx.moveTo(x, by2); ctx.lineTo(x + w, by2); ctx.stroke();
+                    const offset = ((by2 - top) / 14 % 2 === 0) ? 0 : 18;
+                    for (let bx2 = x + offset; bx2 < x + w; bx2 += 36) {
+                        ctx.beginPath(); ctx.moveTo(bx2, by2); ctx.lineTo(bx2, by2 + 14); ctx.stroke();
+                    }
+                }
+
+                // Barred windows
+                const numW = Math.max(1, Math.floor((w - 20) / 50));
+                for (let wi2 = 0; wi2 < numW; wi2++) {
+                    const bwx = x + 10 + wi2 * Math.floor((w - 20) / numW);
+                    const bwy = top + 24;
+                    ctx.fillStyle = '#080c14';
+                    ctx.fillRect(bwx, bwy, 34, 44);
+                    ctx.strokeStyle = '#666655'; ctx.lineWidth = 2;
+                    for (let bi2 = 0; bi2 < 4; bi2++) {
+                        ctx.beginPath(); ctx.moveTo(bwx + bi2 * 8 + 4, bwy); ctx.lineTo(bwx + bi2 * 8 + 4, bwy + 44); ctx.stroke();
+                    }
+                    ctx.beginPath(); ctx.moveTo(bwx, bwy + 22); ctx.lineTo(bwx + 34, bwy + 22); ctx.stroke();
+                }
+
+                // Rooftop parapet
+                ctx.fillStyle = '#3a2a18';
+                ctx.fillRect(x - 3, top - 8, w + 6, 10);
+                ctx.fillStyle = '#4a3a24';
+                ctx.fillRect(x - 3, top - 8, w + 6, 3);
+                // Battlements (crenellations)
+                for (let ci2 = 0; ci2 < Math.floor((w + 6) / 18); ci2++) {
+                    if (ci2 % 2 === 0) {
+                        ctx.fillStyle = '#3a2a18';
+                        ctx.fillRect(x - 3 + ci2 * 18, top - 18, 10, 10);
+                    }
+                }
+
+                // Neon sign — buzzing "PAWN" in sickly green
+                const neonOn = Math.sin(Date.now() * 0.008) > -0.9;
+                ctx.fillStyle = '#0a1a0a';
+                ctx.fillRect(x + 6, top + h * 0.5 - 4, w - 12, 22);
+                ctx.fillStyle = neonOn ? '#22ee44' : '#0a3a14';
+                ctx.shadowColor = neonOn ? '#22ee44' : 'transparent';
+                ctx.shadowBlur = neonOn ? 10 : 0;
+                ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(name, x + w / 2, top + h * 0.5 + 12);
+                ctx.shadowBlur = 0;
+
+                // Door
+                ctx.fillStyle = '#0e0806';
+                ctx.fillRect(x + w / 2 - 16, GROUND_Y - 52, 32, 52);
+                ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x + w / 2, GROUND_Y - 52); ctx.lineTo(x + w / 2, GROUND_Y); ctx.stroke();
+            }
+
             // Shared: "grab a bite" prompt for diners/shops when the hero is near
             if (type === 'diner' || type === 'shop') {
                 const heroMid = hero.x + hero.w / 2;
