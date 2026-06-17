@@ -543,6 +543,11 @@
         // ---- QUEST DISPATCH ----
         function spawnQuestForClue(cl) {
             questZone = cl.zone || { x: cl.x, label: 'INCIDENT ZONE', spread: 120 };
+            if (currentLevel === 2) {
+                darkWing.driving = true;
+                darkWing._driveTrailX = darkWing.x;
+                titleCard = { text: '🦇 DARK WING IS EN ROUTE', sub: 'Batmobile heading to ' + questZone.label + ' — get there first!', timer: 180 };
+            }
             switch (cl.questType) {
                 case 'bank':     return spawnBankQuest(cl);
                 case 'cargo':    return spawnCargoQuest(cl);
@@ -5048,7 +5053,92 @@
                     const lx = darkWing.x;
                     const bob = Math.sin(darkWing.phase) * 1.2;
                     ctx.save();
-                    // legs
+
+                    if (darkWing.driving) {
+                        // ── BATMOBILE ────────────────────────────────────────
+                        const bx = lx;
+                        const by = GROUND_Y;
+                        const spd = darkWing.faceDir;
+
+                        // speed trail / exhaust streaks
+                        for (let t = 1; t <= 5; t++) {
+                            ctx.globalAlpha = 0.12 * (6 - t);
+                            ctx.fillStyle = '#00e5ff';
+                            ctx.fillRect(bx - spd * (t * 22), by - 18, 18, 8);
+                        }
+                        ctx.globalAlpha = 1;
+
+                        // main body — low wedge
+                        ctx.fillStyle = '#0a0a14';
+                        ctx.beginPath();
+                        ctx.moveTo(bx - 52 * spd, by);
+                        ctx.lineTo(bx - 52 * spd, by - 16);
+                        ctx.lineTo(bx - 26 * spd, by - 28);
+                        ctx.lineTo(bx + 10 * spd, by - 28);
+                        ctx.lineTo(bx + 34 * spd, by - 18);
+                        ctx.lineTo(bx + 52 * spd, by - 10);
+                        ctx.lineTo(bx + 52 * spd, by);
+                        ctx.closePath(); ctx.fill();
+
+                        // canopy (dark glass dome)
+                        ctx.fillStyle = '#1a2040';
+                        ctx.beginPath();
+                        ctx.ellipse(bx - 6 * spd, by - 30, 22, 10, 0, Math.PI, 0);
+                        ctx.fill();
+
+                        // bat-fin rear wing
+                        ctx.fillStyle = '#0e0e1e';
+                        ctx.beginPath();
+                        ctx.moveTo(bx - 42 * spd, by - 16);
+                        ctx.lineTo(bx - 52 * spd, by - 38);
+                        ctx.lineTo(bx - 38 * spd, by - 32);
+                        ctx.lineTo(bx - 30 * spd, by - 16);
+                        ctx.closePath(); ctx.fill();
+                        // second smaller fin
+                        ctx.beginPath();
+                        ctx.moveTo(bx - 30 * spd, by - 16);
+                        ctx.lineTo(bx - 38 * spd, by - 30);
+                        ctx.lineTo(bx - 24 * spd, by - 25);
+                        ctx.lineTo(bx - 20 * spd, by - 16);
+                        ctx.closePath(); ctx.fill();
+
+                        // cyan accent stripe + engine glow
+                        ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 1.5;
+                        ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 8;
+                        ctx.beginPath();
+                        ctx.moveTo(bx - 46 * spd, by - 14);
+                        ctx.lineTo(bx + 44 * spd, by - 14);
+                        ctx.stroke();
+                        ctx.shadowBlur = 0;
+
+                        // wheels
+                        ctx.fillStyle = '#1a1a1a';
+                        ctx.beginPath(); ctx.arc(bx - 30 * spd, by, 10, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(bx + 30 * spd, by, 10, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
+                        ctx.beginPath(); ctx.arc(bx - 30 * spd, by, 10, 0, Math.PI * 2); ctx.stroke();
+                        ctx.beginPath(); ctx.arc(bx + 30 * spd, by, 10, 0, Math.PI * 2); ctx.stroke();
+
+                        // Dark Wing silhouette in cockpit (small head + ears)
+                        ctx.fillStyle = '#1c1c2a';
+                        ctx.beginPath(); ctx.arc(bx - 6 * spd, by - 36, 7, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath();
+                        ctx.moveTo(bx - 10 * spd, by - 40); ctx.lineTo(bx - 8 * spd, by - 48); ctx.lineTo(bx - 5 * spd, by - 40);
+                        ctx.closePath(); ctx.fill();
+                        ctx.beginPath();
+                        ctx.moveTo(bx - 3 * spd, by - 40); ctx.lineTo(bx - 1 * spd, by - 48); ctx.lineTo(bx + 2 * spd, by - 40);
+                        ctx.closePath(); ctx.fill();
+
+                        // "BATMOBILE" label pulse
+                        const pulse = 0.6 + Math.sin(darkWing.phase * 8) * 0.4;
+                        ctx.globalAlpha = pulse;
+                        ctx.fillStyle = '#00e5ff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                        ctx.fillText('EN ROUTE — ' + (questZone ? questZone.label : ''), lx, GROUND_Y - 60);
+                        ctx.globalAlpha = 1;
+
+                        ctx.restore();
+                    } else {
+                    // ── ON FOOT: normal Dark Wing character ──────────────────
                     const sw = Math.abs(darkWing._targetX - darkWing.x) > 12 ? Math.sin(darkWing.phase * 3) * 5 : 0;
                     ctx.fillStyle = '#181818';
                     ctx.fillRect(lx - 8, GROUND_Y - 22 - Math.max(0, sw), 7, 22);
@@ -5134,6 +5224,7 @@
                         ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36 * (darkWing.hp / darkWing.maxHp), 5);
                     }
                     ctx.restore();
+                    } // end else (on-foot)
                     // draw gadget projectiles
                     for (const p of dwProjectiles) {
                         const px = p.x - camX, py = p.y;
@@ -5859,6 +5950,7 @@
             darkWing.x = l2Clues[0].x - 70;
             darkWing._targetX = darkWing.x;
             darkWing.fightMode = false;
+            darkWing.driving = false;
             titleCard = { text: 'LEVEL 2 — THE BADLANDS', sub: 'Something worse is lurking in the shadows. Dark Wing is with you.', timer: 360 };
         }
 
@@ -5912,7 +6004,8 @@
             greeting: 0, _attackCD: 0, fightMode: false,
             _gadgetCD: 0, _dodgeTimer: 0, _blockTimer: 0,
             _smokeCD: 0, _grappleCD: 0, _targetEnemy: null,
-            hp: 20, maxHp: 20, blocking: false
+            hp: 20, maxHp: 20, blocking: false,
+            driving: false, _driveTrailX: 200
         };
 
         // projectiles from Dark Wing gadgets
@@ -5921,6 +6014,23 @@
         function updateDarkWing() {
             if (currentLevel !== 2) return;
             const cl = clues[activeClueIndex];
+
+            // ── DRIVING MODE: Batmobile racing to the quest zone ────────────────
+            if (darkWing.driving) {
+                const zx = questZone ? questZone.x : darkWing._targetX;
+                const dx = zx - darkWing.x;
+                darkWing._driveTrailX = darkWing.x;
+                if (Math.abs(dx) > 120) {
+                    darkWing.x += Math.sign(dx) * 6.5;
+                    darkWing.faceDir = Math.sign(dx);
+                    darkWing.phase += 0.12;
+                } else {
+                    // arrived — switch to zone combat
+                    darkWing.driving = false;
+                    titleCard = { text: 'DARK WING ARRIVED', sub: 'Fighting alongside you at ' + (questZone ? questZone.label : 'the zone') + '!', timer: 150 };
+                }
+                return;
+            }
 
             if (!darkWing.fightMode) {
                 // ── clue-following mode ──────────────────────────────────
@@ -5966,7 +6076,6 @@
                 p.x += p.vx; p.y += p.vy;
                 p.life--;
                 if (p.life <= 0) { dwProjectiles.splice(i, 1); continue; }
-                // hit enemy
                 for (const en of enemies) {
                     if (!en.alive) continue;
                     if (p.x > en.x && p.x < en.x + en.w && p.y > en.y && p.y < en.y + en.h) {
@@ -5978,13 +6087,12 @@
                 }
             }
 
-            // pick best enemy target: prefer un-boss, closest alive
+            // pick best enemy target
             let best = null, bestScore = Infinity;
             for (const en of enemies) {
                 if (!en.alive) continue;
                 const d = Math.abs((en.x + en.w / 2) - darkWing.x);
-                const score = d + (en.boss ? 0 : 500) * 0; // prefer boss in late fight
-                if (score < bestScore) { bestScore = score; best = en; }
+                if (d < bestScore) { bestScore = d; best = en; }
             }
             darkWing._targetEnemy = best;
 
@@ -5993,7 +6101,6 @@
             const enMid = best.x + best.w / 2;
             const enDist = Math.abs(enMid - darkWing.x);
 
-            // keep a preferred separation of ~80px unless dodging
             const PREF_DIST = 80;
             if (darkWing._dodgeTimer <= 0) {
                 const wantX = enMid - darkWing.faceDir * PREF_DIST;
@@ -6003,18 +6110,15 @@
                     darkWing.faceDir = Math.sign(enMid - darkWing.x);
                 }
             } else {
-                // dodge roll: slide away fast
                 darkWing.x -= darkWing.faceDir * 4.5;
             }
             darkWing.faceDir = enMid < darkWing.x ? -1 : 1;
 
-            // ── gadget selection ─────────────────────────────────────────
-            // smoke bomb: if 3+ enemies within 200px, drop a smoke bomb to stun them
+            // smoke bomb
             if (darkWing._smokeCD <= 0) {
                 let nearby = 0;
                 for (const en of enemies) { if (en.alive && Math.abs((en.x+en.w/2) - darkWing.x) < 200) nearby++; }
                 if (nearby >= 3) {
-                    // smoke: freeze all nearby enemies briefly
                     for (const en of enemies) {
                         if (en.alive && Math.abs((en.x+en.w/2) - darkWing.x) < 220) {
                             en.frozen = Math.max(en.frozen, 90);
@@ -6027,7 +6131,7 @@
                 }
             }
 
-            // grapple hook: if enemy is far (>300px), fire a grapple to pull them in
+            // grapple hook
             if (darkWing._grappleCD <= 0 && enDist > 280) {
                 dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 40, vx: darkWing.faceDir * 14, vy: 0, life: 40, dmg: 1, type: 'grapple' });
                 darkWing._grappleCD = 220;
@@ -6035,35 +6139,32 @@
                 return;
             }
 
-            // batarang: throw at mid-range (120-280px)
+            // batarang
             if (darkWing._gadgetCD <= 0 && enDist > 100 && enDist < 300) {
                 dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
                 darkWing._gadgetCD = 55;
                 return;
             }
 
-            // ── melee combo: punch → kick → uppercut ──────────────────────
+            // melee combo
             if (darkWing._attackCD <= 0 && enDist < 95) {
-                // dodge incoming if enemy is very close and we haven't dodged recently
                 if (Math.random() < 0.12 && darkWing._dodgeTimer <= 0) {
                     darkWing._dodgeTimer = 22;
                     return;
                 }
-                // block briefly before counter
                 if (Math.random() < 0.08 && darkWing._blockTimer <= 0) {
                     darkWing._blockTimer = 18;
                     return;
                 }
-                // choose attack: punch (50%), kick (30%), uppercut (20%)
                 const r = Math.random();
                 let dmg = 2, ky = 5;
                 if (r < 0.5) {
-                    dmg = 2; ky = 6;        // punch
+                    dmg = 2; ky = 6;
                 } else if (r < 0.8) {
-                    dmg = 3; ky = 9;        // kick — stronger
+                    dmg = 3; ky = 9;
                     best.vx = darkWing.faceDir * 4;
                 } else {
-                    dmg = 2; ky = 15;       // uppercut — launches up
+                    dmg = 2; ky = 15;
                     best.vy = -7;
                 }
                 tryHitEnemy(best, dmg, ky, 'punch', darkWing);
