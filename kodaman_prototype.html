@@ -229,45 +229,10 @@
             { x: 12000, w: 300, district: 'uptown' },
         ];
 
-        // Solid rooftops / platforms.
+        // Solid rooftops — only the Weekly Planet roof remains as a real landing surface.
+        // All floating mid-air ledges have been removed; the hero uses flight to traverse.
         const platforms = [
-            // Downtown
-            { x: 760, y: 820, w: 150, h: 22, district: 'downtown' },
-            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },    // Weekly Planet roof (central)
-            { x: 1150, y: 720, w: 170, h: 22, district: 'downtown' },
-            { x: 1850, y: 640, w: 160, h: 22, district: 'downtown' },
-            { x: 2300, y: 560, w: 180, h: 22, district: 'downtown' },
-            { x: 2750, y: 700, w: 150, h: 22, district: 'downtown' },
-            { x: 3150, y: 470, w: 200, h: 22, district: 'downtown' },
-            { x: 3700, y: 560, w: 170, h: 22, district: 'downtown' },
-            { x: 4250, y: 640, w: 160, h: 22, district: 'downtown' },
-            { x: 4700, y: 520, w: 180, h: 22, district: 'downtown' },
-            // Docks — crane platforms over the bay
-            { x: 5500, y: 760, w: 160, h: 22, district: 'docks' },
-            { x: 6100, y: 640, w: 200, h: 22, district: 'docks' },   // crane arm over water
-            { x: 6700, y: 740, w: 160, h: 22, district: 'docks' },
-            { x: 7300, y: 560, w: 180, h: 22, district: 'docks' },
-            { x: 7900, y: 700, w: 200, h: 22, district: 'docks' },
-            { x: 8500, y: 600, w: 180, h: 22, district: 'docks' },   // over second bay span
-            { x: 9200, y: 700, w: 170, h: 22, district: 'docks' },
-            { x: 9800, y: 540, w: 180, h: 22, district: 'docks' },
-            // Uptown — vertical tower ledges
-            { x: 10600, y: 760, w: 150, h: 22, district: 'uptown' },
-            { x: 11100, y: 600, w: 160, h: 22, district: 'uptown' },
-            { x: 11600, y: 440, w: 160, h: 22, district: 'uptown' },
-            { x: 12200, y: 560, w: 170, h: 22, district: 'uptown' },
-            { x: 12800, y: 380, w: 160, h: 22, district: 'uptown' },
-            { x: 13400, y: 520, w: 170, h: 22, district: 'uptown' },
-            { x: 14000, y: 340, w: 180, h: 22, district: 'uptown' },
-            { x: 14700, y: 260, w: 220, h: 22, district: 'uptown' },  // old mid-section ledge
-            // ---- Extended uptown climb (15500-20000) ----
-            { x: 15600, y: 700, w: 170, h: 22, district: 'uptown' },
-            { x: 16100, y: 540, w: 160, h: 22, district: 'uptown' },
-            { x: 16700, y: 380, w: 170, h: 22, district: 'uptown' },
-            { x: 17300, y: 500, w: 180, h: 22, district: 'uptown' },
-            { x: 17900, y: 320, w: 160, h: 22, district: 'uptown' },
-            { x: 18500, y: 440, w: 175, h: 22, district: 'uptown' },
-            { x: 19100, y: 220, w: 240, h: 22, district: 'uptown' },  // final boss arena
+            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },   // Weekly Planet roof
         ];
 
         // Power orbs.
@@ -314,12 +279,19 @@
 
         // Electric hazard barriers — guard AERIAL routes (raised off the ground so
         // you can always walk underneath; they block high-flight shortcuts).
+        // Laser barrier towers — inactive until the corresponding clue is found.
+        // They span floor-to-ceiling and HARD-BLOCK both hero and hound.
+        // The hero must use punch / laser / freeze to destroy them (3 hits).
+        // activatesOnClue: the clue index whose discovery powers them on.
         const hazards = [
-            { x: 1280, y: 300, w: 16, h: 420, district: 'downtown' },   // ends at y720, ground clear
-            { x: 7000, y: 200, w: 16, h: 500, district: 'docks' },      // ends at y700
-            { x: 11500, y: 120, w: 16, h: 480, district: 'uptown' },    // ends at y600
-            { x: 13800, y: 200, w: 16, h: 520, district: 'uptown' },    // ends at y720
+            { x: 1280, y: 0, w: 18, h: 900, district: 'downtown', activatesOnClue: 0, hp: 3, destroyed: false, phase: 0 },
+            { x: 5200, y: 0, w: 18, h: 900, district: 'docks',    activatesOnClue: 1, hp: 3, destroyed: false, phase: 0 },
+            { x: 9800, y: 0, w: 18, h: 900, district: 'uptown',   activatesOnClue: 3, hp: 3, destroyed: false, phase: 0 },
+            { x: 13800, y: 0, w: 18, h: 900, district: 'uptown',  activatesOnClue: 4, hp: 3, destroyed: false, phase: 0 },
         ];
+        function hazardActive(hz) {
+            return !hz.destroyed && cluesFound > hz.activatesOnClue;
+        }
 
         // Enemy archetypes (original designs in classic Superman-villain molds):
         //   warlord  - armored alien tyrant   brute - hulking monster
@@ -461,6 +433,41 @@
         let activeClueIndex = 0;   // only this clue is present in the world right now
         let pendingTrapCiv = null;   // the civilian from the in-progress trap; once
                                       // rescued, the next clue is revealed
+
+        // Lois Lane city presence — she stands near each active clue, reacts to
+        // the hero approaching, and offers dialogue as a hint.
+        const cityLois = {
+            x: clues[0].x - 55,   // starts near clue 0
+            y: 0,                  // set each frame to GROUND_Y - bodyH
+            phase: 0,
+            dir: 1,
+            faceDir: 1,
+            greeting: 0,
+            _targetX: clues[0].x - 55,
+        };
+        function updateCityLois() {
+            if (!interior.note.read) return;   // she only appears after the briefing
+            const cl = clues[activeClueIndex];
+            if (!cl) return;
+            // re-target 55px left of the active clue
+            cityLois._targetX = cl.x - 55;
+            // smoothly walk toward target (she teleports large distances instantly)
+            const dx = cityLois._targetX - cityLois.x;
+            if (Math.abs(dx) > 600) {
+                cityLois.x = cityLois._targetX;  // snap for big jumps
+            } else if (Math.abs(dx) > 8) {
+                cityLois.x += Math.sign(dx) * 1.2;
+                cityLois.faceDir = Math.sign(dx);
+            }
+            cityLois.phase += 0.05;
+            cityLois.y = GROUND_Y - 74;   // approximate standing height
+            const heroMid = hero.x + hero.w / 2;
+            const nearHero = Math.abs(heroMid - cityLois.x) < 80;
+            cityLois.greeting = nearHero
+                ? Math.min(cityLois.greeting + 1, 40)
+                : Math.max(cityLois.greeting - 1, 0);
+            if (nearHero) cityLois.faceDir = heroMid < cityLois.x ? -1 : 1;
+        }
         // How far a quest objective must be carried from its crime scene before
         // it's considered safe — no trip back to the Weekly Planet required.
         const SAFE_RESCUE_DIST = 700;
@@ -1649,6 +1656,25 @@
             hitFX.push({ x: cx, y: cy - 12, life: 0, max: 18, type: 'word', text: 'MISS', color: '#c8d2e0', outline: '#2a3040' });
         }
 
+        function damageHazards(box, dmg) {
+            for (const hz of hazards) {
+                if (!hazardActive(hz)) continue;
+                if (aabb(box, hz)) {
+                    hz.hp -= dmg;
+                    if (hz.hp <= 0) {
+                        hz.destroyed = true;
+                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.4, 'laser', true);
+                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.7, 'punch', true);
+                        screenShake = Math.max(screenShake, 14);
+                        titleCard = { text: 'BARRIER DESTROYED', sub: 'Path is clear — keep moving.', timer: 150 };
+                    } else {
+                        spawnImpact(hz.x + hz.w / 2, hz.y + hz.h * 0.4, 'laser', false);
+                        screenShake = Math.max(screenShake, 5);
+                    }
+                }
+            }
+        }
+
         function doPunch(e) {
             e.punchTimer = PUNCH_EFFECT;
             e.lunge = 7 * e.facing;
@@ -1663,6 +1689,7 @@
                 if (en.alive && aabb(box, en)) tryHitEnemy(en, PUNCH_DMG, 9, 'punch', e);
             }
             damageEmitters(box, PUNCH_DMG);
+            if (e === hero) damageHazards(box, 1);
         }
         function doLaser(e) {
             e.laserTimer = LASER_EFFECT;
@@ -1691,11 +1718,12 @@
                 if (!hitEn.alive) { stopX = dir === 1 ? WORLD_WIDTH : 0; hitEn = null; }
             }
 
-            // Emitters also block the beam
+            // Emitters + hazard towers also block/take beam damage
             const emBox = dir === 1
                 ? { x: srcX, y: beamY, w: stopX - srcX, h: beamH }
                 : { x: stopX, y: beamY, w: srcX - stopX, h: beamH };
             damageEmitters(emBox, LASER_DMG);
+            if (e === hero) damageHazards(emBox, 1);
 
             e._laserStopX = stopX;    // used by draw to terminate the beam visually
             e._laserHit = !!hitEn;  // flag: beam hit something real (not a kill)
@@ -1712,6 +1740,7 @@
                     en.frozen = FREEZE_DURATION;
                 }
             }
+            if (e === hero) damageHazards(box, 1);
         }
 
         // ---------- COLLISION ----------
@@ -1743,13 +1772,23 @@
                 }
             }
 
-            // electric hazards: zap + nudge back (deters but won't hard-wall you)
+            // Laser barrier towers — hard wall when active. Dash does NOT help.
+            // The entity is pushed back to the correct side and velocity zeroed.
             for (const hz of hazards) {
+                if (!hazardActive(hz)) continue;
                 if (aabb(e, hz)) {
                     const fromLeft = (e.x + e.w / 2) < (hz.x + hz.w / 2);
-                    e.x += fromLeft ? -8 : 8;
-                    e.vx = fromLeft ? -2.5 : 2.5;
-                    e.zap = 8;
+                    // resolve penetration: snap to the correct edge
+                    if (fromLeft) {
+                        e.x = hz.x - e.w;
+                        if (e.vx > 0) e.vx = 0;
+                        if (e.dashTimer > 0) { e.dashTimer = 0; e.vx = 0; }
+                    } else {
+                        e.x = hz.x + hz.w;
+                        if (e.vx < 0) e.vx = 0;
+                        if (e.dashTimer > 0) { e.dashTimer = 0; e.vx = 0; }
+                    }
+                    e.zap = 10;
                 }
             }
 
@@ -2077,22 +2116,45 @@
                 input.moveDown = true;
             }
 
-            // ---- attack: only enemies that are CLOSE and roughly IN FRONT ----
+            // ---- hazard avoidance: if an active barrier is between hound and hero, fly over it ----
+            for (const hz of hazards) {
+                if (!hazardActive(hz)) continue;
+                const hcx = hound.x + hound.w / 2;
+                const heroCx = hero.x + hero.w / 2;
+                // barrier sits between them
+                const blocked = (hcx < hz.x && heroCx > hz.x + hz.w) ||
+                                (hcx > hz.x + hz.w && heroCx < hz.x);
+                if (blocked) {
+                    // fly high enough to clear it — barriers go floor-to-ceiling so
+                    // the hound must go WAY above (y < 80) to navigate around by air
+                    if (hound.y > 100) {
+                        input.jumpHeld = true;
+                        input.left = false; input.right = false;  // pause horizontal until clear
+                    }
+                    break;
+                }
+            }
+
+            // ---- attack: drag nearby enemies — no laser/freeze, just a shove + tiny damage ----
             let best = null, bestD = Infinity;
             for (const en of enemies) {
                 if (!en.alive) continue;
                 const ex = en.x + en.w / 2, ey = en.y + en.h / 2;
                 const hx = hound.x + hound.w / 2, hy = hound.y + hound.h / 2;
                 const d = Math.hypot(ex - hx, ey - hy);
-                // must be on the side the hound faces and not far vertically
                 const inFront = (ex - hx) * hound.facing > -20;
-                if (d < bestD && d < 240 && inFront && Math.abs(ey - hy) < 120) { bestD = d; best = en; }
+                if (d < bestD && d < 160 && inFront && Math.abs(ey - hy) < 80) { bestD = d; best = en; }
             }
-            if (best) {
-                if (best.type === 'warlord') { if (bestD < 130) input.punch = true; else input.laser = true; }
-                else if (best.type === 'energy') { if (bestD < 150) input.freeze = true; else input.laser = true; }
-                else { if (bestD < 90) input.punch = true; else if (bestD < 200) input.laser = true; }
+            if (best && (hound._dragCD || 0) <= 0) {
+                // drag: shove the enemy away from the hero (create separation) and
+                // deal a small amount of damage — no laser beam, no freeze cone.
+                const dragDir = best.x < hound.x ? -1 : 1;
+                best.vx = dragDir * 3.5;
+                best.x += dragDir * 14;
+                tryHitEnemy(best, 1, 3, 'punch', hound);
+                hound._dragCD = 55;
             }
+            if ((hound._dragCD || 0) > 0) hound._dragCD--;
             return input;
         }
 
@@ -4680,26 +4742,50 @@
                 ctx.fillRect(p.x + p.w - 16, p.y + p.h, 6, 24);
             }
 
-            // ---- electric hazard barriers ----
+            // ---- laser barrier towers ----
             for (const hz of hazards) {
-                const flick = 0.5 + Math.random() * 0.5;
+                hz.phase = (hz.phase || 0) + 0.06;
+                if (hz.destroyed) continue;
+                const active = hazardActive(hz);
                 ctx.save();
-                ctx.shadowColor = '#5ce0ff'; ctx.shadowBlur = 16;
-                ctx.fillStyle = `rgba(120,220,255,${0.5 * flick})`;
-                ctx.fillRect(hz.x, hz.y, hz.w, hz.h);
-                // arcing zig-zag bolt down the middle
-                ctx.strokeStyle = `rgba(220,250,255,${flick})`;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(hz.x + hz.w / 2, hz.y);
-                for (let yy = hz.y; yy < hz.y + hz.h; yy += 24) {
-                    ctx.lineTo(hz.x + hz.w / 2 + (Math.random() - 0.5) * hz.w, yy);
+                if (active) {
+                    // pylon body
+                    ctx.fillStyle = '#1a1a2e';
+                    ctx.fillRect(hz.x - 5, 0, hz.w + 10, GROUND_Y);
+                    // glowing beam core
+                    const flick = 0.6 + Math.sin(hz.phase * 7) * 0.4;
+                    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 22 * flick;
+                    ctx.fillStyle = `rgba(80,230,255,${0.55 * flick})`;
+                    ctx.fillRect(hz.x, 0, hz.w, GROUND_Y);
+                    // zig-zag arc
+                    ctx.strokeStyle = `rgba(200,250,255,${0.8 * flick})`;
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.moveTo(hz.x + hz.w / 2, 0);
+                    for (let yy = 0; yy < GROUND_Y; yy += 32) {
+                        ctx.lineTo(hz.x + hz.w / 2 + (Math.random() - 0.5) * 20, yy + 32);
+                    }
+                    ctx.stroke();
+                    // emitter nodes every 200px
+                    ctx.fillStyle = '#9be8ff';
+                    for (let ny = 80; ny < GROUND_Y; ny += 200) {
+                        ctx.fillRect(hz.x - 8, ny - 6, hz.w + 16, 12);
+                    }
+                    // HP pips — drawn in world space (camera.x already translated out)
+                    ctx.shadowBlur = 0;
+                    for (let i = 0; i < 3; i++) {
+                        ctx.fillStyle = i < hz.hp ? '#00e5ff' : '#1a2a2a';
+                        ctx.fillRect(hz.x - 20 + i * 16, 18, 12, 7);
+                    }
+                    ctx.fillStyle = '#9be8ff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('BARRIER — USE POWERS', hz.x + hz.w / 2, 14);
+                } else {
+                    // inactive: just a dark pylon stub
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = '#2a2a3a';
+                    ctx.fillRect(hz.x - 4, 0, hz.w + 8, GROUND_Y);
+                    ctx.globalAlpha = 1;
                 }
-                ctx.stroke();
-                // emitter caps
-                ctx.fillStyle = '#9be8ff';
-                ctx.fillRect(hz.x - 4, hz.y - 6, hz.w + 8, 8);
-                ctx.fillRect(hz.x - 4, hz.y + hz.h - 2, hz.w + 8, 8);
                 ctx.restore();
             }
 
@@ -4772,6 +4858,78 @@
                 // hp pips
                 ctx.fillStyle = '#ff7cf0';
                 for (let i = 0; i < em.hp; i++) ctx.fillRect(em.x - 18 + i * 12, em.y - 34, 9, 5);
+                ctx.restore();
+            }
+
+            // ---- LOIS LANE in the city — stands near the active clue ----
+            if (interior.note.read && clues[activeClueIndex]) {
+                const lx = cityLois.x, ly = cityLois.y;
+                const bob = Math.sin(cityLois.phase) * 1.2;
+                ctx.save();
+                // legs
+                const sw = Math.abs(cityLois._targetX - cityLois.x) > 8 ? Math.sin(cityLois.phase * 3) * 4 : 0;
+                ctx.fillStyle = '#1a1a30';
+                ctx.fillRect(lx - 7, GROUND_Y - 20 - Math.max(0, sw), 6, 20);
+                ctx.fillRect(lx + 1, GROUND_Y - 20 - Math.max(0, -sw), 6, 20);
+                // heels
+                ctx.fillStyle = '#c01820';
+                ctx.fillRect(lx - 8, GROUND_Y - 3, 8, 4);
+                ctx.fillRect(lx + 1, GROUND_Y - 3, 8, 4);
+                // red blazer
+                ctx.fillStyle = '#b81c2c';
+                ctx.fillRect(lx - 12, GROUND_Y - 55 + bob, 24, 36);
+                // white blouse
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(lx - 5, GROUND_Y - 54 + bob, 10, 10);
+                // lapels
+                ctx.fillStyle = '#941420';
+                ctx.beginPath(); ctx.moveTo(lx - 12, GROUND_Y - 54 + bob); ctx.lineTo(lx - 2, GROUND_Y - 44 + bob); ctx.lineTo(lx - 12, GROUND_Y - 44 + bob); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(lx + 12, GROUND_Y - 54 + bob); ctx.lineTo(lx + 2, GROUND_Y - 44 + bob); ctx.lineTo(lx + 12, GROUND_Y - 44 + bob); ctx.closePath(); ctx.fill();
+                // head
+                ctx.fillStyle = '#e8c0a0';
+                ctx.beginPath(); ctx.arc(lx, GROUND_Y - 66 + bob, 10, 0, Math.PI * 2); ctx.fill();
+                // dark bob hair
+                ctx.fillStyle = '#1a1010';
+                ctx.beginPath(); ctx.arc(lx, GROUND_Y - 68 + bob, 11, Math.PI * 0.75, Math.PI * 2.25); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(lx - 10, GROUND_Y - 68 + bob);
+                ctx.quadraticCurveTo(lx - 18, GROUND_Y - 60 + bob, lx - 12, GROUND_Y - 56 + bob);
+                ctx.lineTo(lx - 10, GROUND_Y - 58 + bob); ctx.closePath(); ctx.fill();
+                // eyes
+                ctx.fillStyle = '#1a1a1a';
+                const ed = cityLois.faceDir * 2.5;
+                ctx.fillRect(lx - 4 + ed, GROUND_Y - 68 + bob, 2, 2.5);
+                ctx.fillRect(lx + 2 + ed, GROUND_Y - 68 + bob, 2, 2.5);
+                // press badge
+                ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lx - 4, GROUND_Y - 46 + bob, 12, 8);
+                ctx.fillStyle = '#1a1a80'; ctx.font = '4px Arial'; ctx.textAlign = 'left';
+                ctx.fillText('PRESS', lx - 3, GROUND_Y - 41 + bob);
+                // notepad
+                ctx.fillStyle = '#f5f0e0'; ctx.fillRect(lx + 10, GROUND_Y - 44 + bob, 10, 14);
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 0.5;
+                for (let li = 0; li < 3; li++) ctx.strokeRect(lx + 11, GROUND_Y - 42 + bob + li * 4, 8, 1);
+                // greeting bubble or name label
+                if (cityLois.greeting > 20) {
+                    const cl = clues[activeClueIndex];
+                    const hint = cl && !cl.found ? 'Check that clue, CK!' : 'The city needs you!';
+                    const bw = 150, bh = 26, bx = lx - bw / 2, bby = GROUND_Y - 102 + bob;
+                    ctx.fillStyle = 'rgba(255,240,245,0.95)';
+                    ctx.strokeStyle = '#b81c2c'; ctx.lineWidth = 1.5;
+                    ctx.fillRect(bx, bby, bw, bh);
+                    ctx.strokeRect(bx, bby, bw, bh);
+                    ctx.beginPath(); ctx.moveTo(lx - 5, bby + bh); ctx.lineTo(lx + 5, bby + bh); ctx.lineTo(lx, bby + bh + 8); ctx.fill();
+                    ctx.fillStyle = '#1a1a1a'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(hint, lx, bby + 16);
+                    // "Press P" hint
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#b81c2c'; ctx.font = 'bold 9px Arial';
+                    ctx.fillText('Press P for intel', lx, GROUND_Y - 115 + bob);
+                    ctx.globalAlpha = 1;
+                } else {
+                    ctx.fillStyle = 'rgba(255,200,210,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Lois', lx, GROUND_Y - 84 + bob);
+                }
                 ctx.restore();
             }
 
@@ -6148,6 +6306,7 @@
             updateEnemies();
             updateCivilians();
             updateAmbientNPCs();
+            updateCityLois();
             updateWorldState();
             updateHitFX();
             updateCamera();
