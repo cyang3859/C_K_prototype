@@ -676,6 +676,7 @@
         let factoryIntroStep = 0;
         let factoryIntroTimer = 0;
         let lexEscaped = false;
+        let factoryEntryUnlocked = false;
 
         const powerGirl = {
             x: 4800, y: FACTORY.floorY, vx: 0, vy: 0, w: 36, h: 74,
@@ -1606,6 +1607,13 @@
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
             // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
             if (e.code === 'Enter' && enterCooldown <= 0) {
+                if (scene === 'city' && factoryEntryUnlocked) {
+                    // Factory entrance at LexCorp Central
+                    const FACTORY_DOOR_X = 15580;
+                    if (Math.abs((hero.x + hero.w / 2) - FACTORY_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                        enterFactory(); e.preventDefault();
+                    }
+                }
                 if (scene === 'city') {
                     let handled = false;
                     for (const b of rescueBuildings) {
@@ -6268,7 +6276,10 @@
                 darkWing.zoneCombat = false;
                 activeClueIndex++;
                 if (activeClueIndex >= clues.length) {
-                    if (currentLevel === 2) enterFactory(); else spawnBoss();
+                    if (currentLevel === 2) {
+                        factoryEntryUnlocked = true;
+                        titleCard = { text: 'LEXCORP CENTRAL', sub: 'Dark Wing: "He\'s in the central tower. Move — LexCorp Central, west end of the Badlands."', timer: 320 };
+                    } else spawnBoss();
                 } else {
                     const nextCl = clues[activeClueIndex];
                     const zoneName = nextCl.zone ? nextCl.zone.label : 'the city';
@@ -6418,6 +6429,7 @@
             carriedCivilians = [];
             orbsCollected = 0;
             bossDefeated = false;
+            factoryEntryUnlocked = false;
             interior.note.read = true;   // story has started — clues are live immediately
             // reposition hero + hound at L2 start
             hero.x = 200; hero.y = GROUND_Y - hero.h;
@@ -7447,6 +7459,56 @@
                 // debris ring
                 ctx.fillStyle = '#1a1410';
                 ctx.fillRect(fix - 18, GROUND_Y - 4, 36, 4);
+            }
+
+            // ── Factory entrance at LexCorp Central ──────────────────────────
+            if (factoryEntryUnlocked) {
+                const DOOR_X = 15580;
+                const DOOR_W = 48;
+                const DOOR_H = 80;
+                const DOOR_Y = GROUND_Y - DOOR_H;
+
+                // Glowing door frame
+                const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.5;
+                ctx.save();
+                ctx.shadowColor = '#ff2200';
+                ctx.shadowBlur = 16 + pulse * 12;
+                ctx.strokeStyle = `rgba(255,60,0,${0.7 + pulse * 0.3})`;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(DOOR_X - DOOR_W / 2, DOOR_Y, DOOR_W, DOOR_H);
+                ctx.shadowBlur = 0;
+
+                // Door fill (dark interior hint)
+                ctx.fillStyle = `rgba(10,0,0,${0.6 + pulse * 0.2})`;
+                ctx.fillRect(DOOR_X - DOOR_W / 2 + 3, DOOR_Y + 3, DOOR_W - 6, DOOR_H - 3);
+
+                // Warning stripes above door
+                ctx.fillStyle = '#ff2200';
+                ctx.font = 'bold 11px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('⚠ RESTRICTED ⚠', DOOR_X, DOOR_Y - 10);
+
+                // Arrow bouncing above
+                const bounce = Math.sin(Date.now() * 0.007) * 5;
+                ctx.fillStyle = '#ffcc00';
+                ctx.font = 'bold 20px Arial';
+                ctx.fillText('▼', DOOR_X, DOOR_Y - 28 + bounce);
+
+                ctx.restore();
+
+                // "Press ENTER to enter" prompt when hero is nearby
+                const heroMid = hero.x + hero.w / 2;
+                const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
+                if (Math.abs(heroMid - DOOR_X) < 100 && nearGround) {
+                    const p2 = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.save();
+                    ctx.globalAlpha = p2;
+                    ctx.fillStyle = '#ffe072';
+                    ctx.font = 'bold 13px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Press ENTER to breach LexCorp Central', DOOR_X, DOOR_Y - 48);
+                    ctx.restore();
+                }
             }
         }
 
