@@ -6492,7 +6492,7 @@
             x: 200, _targetX: 200, y: 0, phase: 0, dir: 1, faceDir: 1,
             greeting: 0, _attackCD: 0, fightMode: false,
             _gadgetCD: 0, _dodgeTimer: 0, _blockTimer: 0,
-            _smokeCD: 0, _grappleCD: 0, _targetEnemy: null,
+            _smokeCD: 0, _grappleCD: 0, _jumpCD: 0, _targetEnemy: null,
             hp: 20, maxHp: 20, blocking: false,
             driving: false, _driveTrailX: 200,
             zoneCombat: false,
@@ -6615,6 +6615,8 @@
                     darkWing.phase += 0.05;
                     if (darkWing._attackCD > 0) darkWing._attackCD--;
                     if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
+                    if (darkWing._grappleCD > 0) darkWing._grappleCD--;
+                    if (darkWing._jumpCD    > 0) darkWing._jumpCD--;
 
                     // Pick closest alive enemy anywhere on screen (no radius limit)
                     let target = null, tDist = Infinity;
@@ -6629,13 +6631,27 @@
                         const enDist = Math.abs(enMid - darkWing.x);
                         darkWing.faceDir = enMid < darkWing.x ? -1 : 1;
 
-                        // Jump to reach elevated enemy
-                        if (darkWing._onGround && darkWing.y >= GROUND_Y - 5 && (target.y + target.h) < GROUND_Y - 100 && enDist < 220) {
-                            darkWing.vy = -13; darkWing._onGround = false;
+                        // Reach elevated enemy: prefer grapple; jump only as fallback with cooldown
+                        const enAbove = (target.y + target.h) < darkWing.y - 80;
+                        if (enAbove) {
+                            if (darkWing._grappleCD <= 0 && darkWing._onGround) {
+                                dwInitSwing(); // swing up to their level
+                            } else if (darkWing._onGround && darkWing._jumpCD <= 0 && enDist < 180) {
+                                darkWing.vy = -13; darkWing._onGround = false;
+                                darkWing._jumpCD = 90; // wait before jumping again
+                            }
+                            // if enemy is too high/far to reach, throw batarang
+                            else if (darkWing._gadgetCD <= 0 && darkWing._attackCD <= 0 && enDist < 420) {
+                                const dy_aim = (target.y + target.h / 2) - (darkWing.y - 55);
+                                const dist = Math.max(enDist, 1);
+                                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: dy_aim / dist * 5, life: 65, dmg: 3, type: 'batarang' });
+                                darkWing._gadgetCD = 55; darkWing._attackCD = 20;
+                                darkWing._throwTimer = 24; darkWing._animSide = darkWing.faceDir;
+                            }
                         }
 
-                        // Grapple to close large distance
-                        if (darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 320) {
+                        // Grapple to close large horizontal distance
+                        if (!enAbove && darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 320) {
                             dwInitSwing();
                         }
 
@@ -6705,6 +6721,7 @@
             if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
             if (darkWing._smokeCD  > 0) darkWing._smokeCD--;
             if (darkWing._grappleCD > 0) darkWing._grappleCD--;
+            if (darkWing._jumpCD  > 0) darkWing._jumpCD--;
             if (darkWing._attackCD > 0) { darkWing._attackCD--; }
 
             // update batarang projectiles
@@ -6738,12 +6755,24 @@
             const enMid = best.x + best.w / 2;
             const enDist = Math.abs(enMid - darkWing.x);
 
-            // Jump toward elevated enemy
-            if (darkWing._onGround && darkWing.y >= GROUND_Y - 5 && (best.y + best.h) < GROUND_Y - 100 && enDist < 250) {
-                darkWing.vy = -14; darkWing._onGround = false;
+            // Reach elevated enemy: prefer grapple; jump only as fallback with cooldown
+            const bestAbove = (best.y + best.h) < darkWing.y - 80;
+            if (bestAbove) {
+                if (darkWing._grappleCD <= 0 && darkWing._onGround) {
+                    dwInitSwing();
+                } else if (darkWing._onGround && darkWing._jumpCD <= 0 && enDist < 200) {
+                    darkWing.vy = -14; darkWing._onGround = false;
+                    darkWing._jumpCD = 90;
+                } else if (darkWing._gadgetCD <= 0 && darkWing._attackCD <= 0 && enDist < 480) {
+                    const dy_aim = (best.y + best.h / 2) - (darkWing.y - 55);
+                    const dist = Math.max(enDist, 1);
+                    dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: dy_aim / dist * 5, life: 65, dmg: 3, type: 'batarang' });
+                    darkWing._gadgetCD = 55; darkWing._attackCD = 20;
+                    darkWing._throwTimer = 24; darkWing._animSide = darkWing.faceDir;
+                }
             }
-            // Grapple swing across large gaps
-            if (darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 400) {
+            // Grapple swing across large horizontal gaps (ground-level targets)
+            if (!bestAbove && darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 400) {
                 dwInitSwing();
             }
 
