@@ -231,9 +231,23 @@
 
         // Solid rooftops — only the Weekly Planet roof remains as a real landing surface.
         // All floating mid-air ledges have been removed; the hero uses flight to traverse.
-        const platforms = [
-            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },   // Weekly Planet roof
+        const L1_PLATFORMS = [
+            { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },
         ];
+        // Level 2 rooftops derived from tall l2Buildings below
+        const L2_PLATFORMS = [
+            { x: 4800,  y: 680, w: 180, h: 16 },   // LEXCORP DEPOT A
+            { x: 6200,  y: 660, w: 160, h: 16 },   // REFINERY BLOCK 3
+            { x: 8600,  y: 620, w: 170, h: 16 },   // FUEL STORAGE
+            { x: 10200, y: 650, w: 150, h: 16 },   // BLACKSITE EAST
+            { x: 12800, y: 700, w: 165, h: 16 },   // STRIPPED PARTS
+            { x: 15500, y: 580, w: 200, h: 16 },   // LEXCORP CENTRAL (tallest)
+            // mid-height ledges for grapple traversal
+            { x: 2900,  y: 740, w: 160, h: 12 },
+            { x: 7400,  y: 760, w: 140, h: 12 },
+            { x: 1200,  y: 760, w: 155, h: 12 },
+        ];
+        let platforms = [...L1_PLATFORMS];
 
         // Power orbs.
         const orbs = [
@@ -3630,7 +3644,7 @@
                     : k === 'laser' ? 'ZAPPED!'
                         : en.type === 'brute' ? 'ARGH!'
                             : en.type === 'genius' ? 'ERROR!'
-                                : en.type === 'energy' ? 'SCATTER!'
+                                : en.type === 'energy' ? 'FZZZT!'
                                     : en.type === 'robber' ? 'OOF!'
                                         : 'IMPACT!';
                 ctx.save();
@@ -5162,63 +5176,175 @@
                         ctx.restore();
                     } else {
                     // ── ON FOOT: normal Dark Wing character ──────────────────
-                    const sw = Math.abs(darkWing._targetX - darkWing.x) > 12 ? Math.sin(darkWing.phase * 3) * 5 : 0;
+                    // ── tick animation timers ─────────────────────────────
+                    if (darkWing._punchTimer > 0) darkWing._punchTimer--;
+                    if (darkWing._kickTimer  > 0) darkWing._kickTimer--;
+                    if (darkWing._throwTimer > 0) darkWing._throwTimer--;
+                    if (darkWing._grappleAnimTimer > 0) darkWing._grappleAnimTimer--;
+                    if (darkWing._smokeAnimTimer   > 0) darkWing._smokeAnimTimer--;
+
+                    const dy = darkWing.y; // feet Y (may be above GROUND_Y on rooftops)
+                    const fd = darkWing.faceDir;
+                    const isMoving = Math.abs(darkWing._targetX - darkWing.x) > 12
+                                  || darkWing.zoneCombat || darkWing.fightMode
+                                  || !darkWing._onGround;
+                    const walkSwing = isMoving ? Math.sin(darkWing.phase * 3) : 0;
+
+                    // Draw grapple rope when swinging
+                    if (darkWing._swinging || darkWing._grappleAnimTimer > 0) {
+                        const ropeAlpha = darkWing._swinging ? 0.9 : darkWing._grappleAnimTimer / 22;
+                        ctx.save();
+                        ctx.globalAlpha = ropeAlpha;
+                        ctx.strokeStyle = '#c8a040'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+                        ctx.beginPath();
+                        ctx.moveTo(lx + fd * 12, dy - 45);
+                        ctx.lineTo(darkWing._anchorX, darkWing._anchorY);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        // anchor grapple hook
+                        ctx.fillStyle = '#c8a040';
+                        ctx.beginPath(); ctx.arc(darkWing._anchorX, darkWing._anchorY, 4, 0, Math.PI * 2); ctx.fill();
+                        ctx.restore();
+                    }
+
+                    // shoulder offsets from lx
+                    const frontShX = fd > 0 ? 13 : -13;
+                    const backShX  = fd > 0 ? -13 : 13;
+                    const shY = dy - 58 + bob;
+
+                    // arm endpoint deltas from shoulder (elbow, hand)
+                    let feX = fd * (-walkSwing * 3), feY = 10;
+                    let fhX = fd * (-walkSwing * 5), fhY = 20;
+                    let beX = fd * ( walkSwing * 3), beY = 10;
+                    let bhX = fd * ( walkSwing * 5), bhY = 20;
+
+                    if (darkWing._punchTimer > 0) {
+                        const pt = darkWing._punchTimer / 18;
+                        feX = fd * (14 - 6 * pt); feY = 4;
+                        fhX = fd * (26 - 8 * pt); fhY = 2;
+                        beX = -fd * 3; beY = 8; bhX = -fd * 4; bhY = 16;
+                    } else if (darkWing._kickTimer > 0) {
+                        feX = fd * 6;  feY = 4;  fhX = fd * 10; fhY = -4;
+                        beX = -fd * 8; beY = 6;  bhX = -fd * 14; bhY = 2;
+                    } else if (darkWing._throwTimer > 0) {
+                        const tt = darkWing._throwTimer / 26;
+                        feX = fd * (8 + 8 * (1 - tt));  feY = -8 + 14 * (1 - tt);
+                        fhX = fd * (14 + 10 * (1 - tt)); fhY = -18 + 30 * (1 - tt);
+                        beX = -fd * 4; beY = 6; bhX = -fd * 6; bhY = 14;
+                    } else if (darkWing._grappleAnimTimer > 0) {
+                        const gt = Math.min(darkWing._grappleAnimTimer, 20) / 20;
+                        feX = fd * 12 * gt; feY = 2 + 6 * (1 - gt);
+                        fhX = fd * 22 * gt; fhY = -2 + 14 * (1 - gt);
+                        beX = -fd * 2; beY = 10; bhX = -fd * 4; bhY = 20;
+                    } else if (darkWing._smokeAnimTimer > 0) {
+                        const st = darkWing._smokeAnimTimer / 30;
+                        feX = fd * 8 * st;  feY = 10; fhX = fd * 14 * st;  fhY = 18;
+                        beX = -fd * 8 * st; beY = 10; bhX = -fd * 14 * st; bhY = 18;
+                    } else if (darkWing.blocking) {
+                        feX = fd * 8;  feY = -2; fhX = fd * 4;  fhY = -12;
+                        beX = fd * 4;  beY =  2; bhX = fd * 2;  bhY =  -8;
+                    }
+
+                    // draw one arm segment as a thick line
+                    const dwSeg = (x1, y1, x2, y2, w, col) => {
+                        ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+                    };
+
+                    // ── BACK ARM (behind body) ────────────────────────────
+                    const bsX = lx + backShX;
+                    dwSeg(bsX, shY, bsX + beX, shY + beY, 6, '#1c1c2a');
+                    dwSeg(bsX + beX, shY + beY, bsX + bhX, shY + bhY, 5, '#111');
+
+                    // ── LEGS ─────────────────────────────────────────────
+                    const frontLegX = fd > 0 ? lx + 1 : lx - 8;
+                    const backLegX  = fd > 0 ? lx - 8 : lx + 1;
+                    const frontLegTopY = darkWing._kickTimer > 0
+                        ? dy - 28 - 4 * (Math.min(darkWing._kickTimer, 18) / 18)
+                        : dy - 22 - Math.max(0,  walkSwing * 5);
+                    const backLegTopY  = darkWing._kickTimer > 0
+                        ? dy - 20
+                        : dy - 22 - Math.max(0, -walkSwing * 5);
+
+                    // back leg
                     ctx.fillStyle = '#181818';
-                    ctx.fillRect(lx - 8, GROUND_Y - 22 - Math.max(0, sw), 7, 22);
-                    ctx.fillRect(lx + 1, GROUND_Y - 22 - Math.max(0, -sw), 7, 22);
-                    // boots
+                    ctx.fillRect(backLegX, backLegTopY, 7, 22);
                     ctx.fillStyle = '#0a0a0a';
-                    ctx.fillRect(lx - 10, GROUND_Y - 5, 11, 5);
-                    ctx.fillRect(lx + 1, GROUND_Y - 5, 11, 5);
-                    // body / suit
+                    ctx.fillRect(backLegX - 2, dy - 5, 11, 5);
+
+                    // ── BODY / BELT / BAT SYMBOL / CAPE ──────────────────
                     ctx.fillStyle = '#1c1c2a';
-                    ctx.fillRect(lx - 13, GROUND_Y - 60 + bob, 26, 38);
-                    // yellow utility belt
+                    ctx.fillRect(lx - 13, dy - 60 + bob, 26, 38);
                     ctx.fillStyle = '#e0c020';
-                    ctx.fillRect(lx - 13, GROUND_Y - 28 + bob, 26, 6);
-                    // bat symbol on chest
+                    ctx.fillRect(lx - 13, dy - 28 + bob, 26, 6);
                     ctx.fillStyle = '#e0c020';
                     ctx.beginPath();
-                    ctx.moveTo(lx, GROUND_Y - 52 + bob);
-                    ctx.bezierCurveTo(lx - 10, GROUND_Y - 58 + bob, lx - 14, GROUND_Y - 48 + bob, lx, GROUND_Y - 44 + bob);
-                    ctx.bezierCurveTo(lx + 14, GROUND_Y - 48 + bob, lx + 10, GROUND_Y - 58 + bob, lx, GROUND_Y - 52 + bob);
+                    ctx.moveTo(lx, dy - 52 + bob);
+                    ctx.bezierCurveTo(lx - 10, dy - 58 + bob, lx - 14, dy - 48 + bob, lx, dy - 44 + bob);
+                    ctx.bezierCurveTo(lx + 14, dy - 48 + bob, lx + 10, dy - 58 + bob, lx, dy - 52 + bob);
                     ctx.fill();
-                    // scalloped cape
+                    // Cape — wider when gliding
+                    const capeSpread = darkWing._gliding ? 44 : 26;
+                    const capeLen    = darkWing._gliding ? 8  : 14;
                     ctx.fillStyle = '#0e0e1a';
                     ctx.beginPath();
-                    ctx.moveTo(lx - 13, GROUND_Y - 60 + bob);
-                    ctx.lineTo(lx - 26, GROUND_Y - 30 + bob);
+                    ctx.moveTo(lx - 13, dy - 60 + bob);
+                    ctx.lineTo(lx - capeSpread, dy - 30 + bob);
                     for (let sc = 0; sc < 4; sc++) {
-                        const scx = lx - 26 + sc * 13;
-                        ctx.quadraticCurveTo(scx + 6, GROUND_Y - 14 + bob, scx + 13, GROUND_Y - 30 + bob);
+                        const scx = lx - capeSpread + sc * (capeSpread * 2 / 4);
+                        ctx.quadraticCurveTo(scx + capeSpread / 4, dy - capeLen + bob, scx + capeSpread / 2, dy - 30 + bob);
                     }
-                    ctx.lineTo(lx + 13, GROUND_Y - 60 + bob);
+                    ctx.lineTo(lx + 13, dy - 60 + bob);
                     ctx.closePath(); ctx.fill();
-                    // cowl / head
+
+                    // front leg (drawn over body base)
+                    if (darkWing._kickTimer > 0) {
+                        const kt = Math.min(darkWing._kickTimer, 18) / 18;
+                        const kx1 = frontLegX + 3, ky1 = frontLegTopY;
+                        ctx.strokeStyle = '#181818'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(kx1, ky1);
+                        ctx.lineTo(kx1 + fd * 18 * kt, dy - 4);
+                        ctx.stroke();
+                        ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 6;
+                        ctx.beginPath();
+                        ctx.moveTo(kx1 + fd * 16 * kt, dy - 6);
+                        ctx.lineTo(kx1 + fd * 22 * kt, dy - 2);
+                        ctx.stroke();
+                    } else {
+                        ctx.fillStyle = '#181818';
+                        ctx.fillRect(frontLegX, frontLegTopY, 7, 22);
+                        ctx.fillStyle = '#0a0a0a';
+                        ctx.fillRect(frontLegX - 2, dy - 5, 11, 5);
+                    }
+
+                    // ── FRONT ARM (in front of body) ──────────────────────
+                    const fsX = lx + frontShX;
+                    dwSeg(fsX, shY, fsX + feX, shY + feY, 6, '#1c1c2a');
+                    dwSeg(fsX + feX, shY + feY, fsX + fhX, shY + fhY, 5, '#111');
+
+                    // ── COWL / HEAD / EARS / EYES ─────────────────────────
                     ctx.fillStyle = '#1c1c2a';
-                    ctx.beginPath(); ctx.arc(lx, GROUND_Y - 72 + bob, 11, 0, Math.PI * 2); ctx.fill();
-                    // bat ears (two small triangles)
-                    ctx.fillStyle = '#1c1c2a';
+                    ctx.beginPath(); ctx.arc(lx, dy - 72 + bob, 11, 0, Math.PI * 2); ctx.fill();
                     ctx.beginPath();
-                    ctx.moveTo(lx - 8, GROUND_Y - 80 + bob);
-                    ctx.lineTo(lx - 4, GROUND_Y - 93 + bob);
-                    ctx.lineTo(lx - 1, GROUND_Y - 80 + bob);
+                    ctx.moveTo(lx - 8, dy - 80 + bob);
+                    ctx.lineTo(lx - 4, dy - 93 + bob);
+                    ctx.lineTo(lx - 1, dy - 80 + bob);
                     ctx.closePath(); ctx.fill();
                     ctx.beginPath();
-                    ctx.moveTo(lx + 1, GROUND_Y - 80 + bob);
-                    ctx.lineTo(lx + 4, GROUND_Y - 93 + bob);
-                    ctx.lineTo(lx + 8, GROUND_Y - 80 + bob);
+                    ctx.moveTo(lx + 1, dy - 80 + bob);
+                    ctx.lineTo(lx + 4, dy - 93 + bob);
+                    ctx.lineTo(lx + 8, dy - 80 + bob);
                     ctx.closePath(); ctx.fill();
-                    // white eye slits
                     ctx.fillStyle = '#ddeeff';
                     const ed = darkWing.faceDir * 2;
-                    ctx.fillRect(lx - 5 + ed, GROUND_Y - 74 + bob, 4, 2);
-                    ctx.fillRect(lx + 1 + ed, GROUND_Y - 74 + bob, 4, 2);
+                    ctx.fillRect(lx - 5 + ed, dy - 74 + bob, 4, 2);
+                    ctx.fillRect(lx + 1 + ed, dy - 74 + bob, 4, 2);
                     // greeting bubble / name
                     if (darkWing.greeting > 20) {
                         const cl = clues[activeClueIndex];
                         const hint = darkWing.fightMode ? 'Stay close — they\'re everywhere!' : (cl && !cl.found ? 'That clue is nearby.' : 'Keep moving.');
-                        const bw = 160, bh = 26, bx = lx - bw / 2, bby = GROUND_Y - 112 + bob;
+                        const bw = 160, bh = 26, bx = lx - bw / 2, bby = dy - 112 + bob;
                         ctx.fillStyle = 'rgba(10,10,20,0.92)';
                         ctx.strokeStyle = '#e0c020'; ctx.lineWidth = 1.5;
                         ctx.fillRect(bx, bby, bw, bh);
@@ -5229,22 +5355,29 @@
                         const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
                         ctx.globalAlpha = pulse;
                         ctx.fillStyle = '#e0c020'; ctx.font = 'bold 9px Arial';
-                        ctx.fillText('Press B for intel', lx, GROUND_Y - 125 + bob);
+                        ctx.fillText('Press B for intel', lx, dy - 125 + bob);
                         ctx.globalAlpha = 1;
                     } else {
                         ctx.fillStyle = 'rgba(180,200,255,0.4)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
-                        ctx.fillText('Dark Wing', lx, GROUND_Y - 100 + bob);
+                        ctx.fillText('Dark Wing', lx, dy - 100 + bob);
+                    }
+                    // glide indicator
+                    if (darkWing._gliding) {
+                        ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+                        ctx.fillStyle = '#a0c8ff'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                        ctx.fillText('GLIDING', lx, dy - 106 + bob);
+                        ctx.globalAlpha = 1;
                     }
                     // block shield indicator
                     if (darkWing.blocking) {
                         ctx.fillStyle = 'rgba(220,200,50,0.45)';
-                        ctx.beginPath(); ctx.arc(lx, GROUND_Y - 55 + bob, 22, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(lx, dy - 55 + bob, 22, 0, Math.PI * 2); ctx.fill();
                     }
                     // hp bar in fight mode
                     if (darkWing.fightMode) {
-                        ctx.fillStyle = '#333'; ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36, 5);
+                        ctx.fillStyle = '#333'; ctx.fillRect(lx - 18, dy - 100 + bob, 36, 5);
                         ctx.fillStyle = '#4cfc4c';
-                        ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36 * (darkWing.hp / darkWing.maxHp), 5);
+                        ctx.fillRect(lx - 18, dy - 100 + bob, 36 * (darkWing.hp / darkWing.maxHp), 5);
                     }
                     ctx.restore();
                     } // end else (on-foot)
@@ -5853,21 +5986,20 @@
             { x: 5900, w: 520 },
             { x: 9300, w: 260 },
         ];
-        const l2Platforms = [];
         const l2Buildings = [
             { x: 180,   w: 140, h: 170, type: 'pawnshop',  district: 'ruins',      name: 'PAWN KING' },
             { x: 560,   w: 130, h: 150, type: 'diner',     district: 'ruins',      name: 'RUSTY SPOON' },
-            { x: 1200,  w: 155, h: 190, type: 'warehouse', district: 'ruins',      name: 'ABANDONED DEPOT' },
+            { x: 1200,  w: 155, h: 240, type: 'warehouse', district: 'ruins',      name: 'ABANDONED DEPOT', rooftop: true },
             { x: 1950,  w: 120, h: 145, type: 'shop',      district: 'ruins',      name: 'IRON HORSE BAR' },
-            { x: 2900,  w: 160, h: 200, type: 'warehouse', district: 'ruins',      name: 'SCRAP & SALVAGE' },
+            { x: 2900,  w: 160, h: 260, type: 'warehouse', district: 'ruins',      name: 'SCRAP & SALVAGE', rooftop: true },
             { x: 3700,  w: 130, h: 160, type: 'pawnshop',  district: 'ruins',      name: 'CHEAP DEALS' },
-            { x: 4800,  w: 180, h: 220, type: 'warehouse', district: 'industrial', name: 'LEXCORP DEPOT A' },
-            { x: 6200,  w: 160, h: 195, type: 'warehouse', district: 'industrial', name: 'REFINERY BLOCK 3' },
-            { x: 7400,  w: 140, h: 175, type: 'diner',     district: 'industrial', name: "WORKER'S REST" },
-            { x: 8600,  w: 170, h: 210, type: 'warehouse', district: 'industrial', name: 'FUEL STORAGE' },
-            { x: 10200, w: 150, h: 185, type: 'warehouse', district: 'badlands',   name: 'BLACKSITE EAST' },
-            { x: 12800, w: 165, h: 200, type: 'pawnshop',  district: 'badlands',   name: 'STRIPPED PARTS' },
-            { x: 15500, w: 200, h: 260, type: 'warehouse', district: 'badlands',   name: 'LEXCORP CENTRAL' },
+            { x: 4800,  w: 180, h: 320, type: 'warehouse', district: 'industrial', name: 'LEXCORP DEPOT A',   rooftop: true },
+            { x: 6200,  w: 160, h: 340, type: 'warehouse', district: 'industrial', name: 'REFINERY BLOCK 3',  rooftop: true },
+            { x: 7400,  w: 140, h: 240, type: 'diner',     district: 'industrial', name: "WORKER'S REST",     rooftop: true },
+            { x: 8600,  w: 170, h: 380, type: 'warehouse', district: 'industrial', name: 'FUEL STORAGE',      rooftop: true },
+            { x: 10200, w: 150, h: 350, type: 'warehouse', district: 'badlands',   name: 'BLACKSITE EAST',    rooftop: true },
+            { x: 12800, w: 165, h: 300, type: 'pawnshop',  district: 'badlands',   name: 'STRIPPED PARTS',    rooftop: true },
+            { x: 15500, w: 200, h: 420, type: 'warehouse', district: 'badlands',   name: 'LEXCORP CENTRAL',   rooftop: true },
         ];
         const l2Hazards = [];  // laser barriers removed
         const l2Emitters = [
@@ -5949,7 +6081,7 @@
             buildings.splice(0, buildings.length, ...l2Buildings);
             hazards.splice(0, hazards.length, ...l2Hazards);
             orbs.splice(0, orbs.length, ...l2Orbs);
-            platforms.splice(0, platforms.length, ...l2Platforms);
+            platforms.splice(0, platforms.length, ...L2_PLATFORMS);
             emitters.splice(0, emitters.length, ...l2Emitters);
             clues.splice(0, clues.length, ...l2Clues);
             // reset quest state
@@ -5974,6 +6106,13 @@
             // init Dark Wing near the first clue
             darkWing.x = l2Clues[0].x - 70;
             darkWing._targetX = darkWing.x;
+            darkWing.y = GROUND_Y;
+            darkWing.vy = 0;
+            darkWing._onGround = true;
+            darkWing._gliding = false;
+            darkWing._swinging = false;
+            darkWing._anchorX = 0; darkWing._anchorY = 0;
+            darkWing._swingAngle = 0; darkWing._swingAngVel = 0; darkWing._ropeLen = 0;
             darkWing.fightMode = false;
             darkWing.driving = false;
             darkWing.zoneCombat = false;
@@ -6032,11 +6171,45 @@
             _smokeCD: 0, _grappleCD: 0, _targetEnemy: null,
             hp: 20, maxHp: 20, blocking: false,
             driving: false, _driveTrailX: 200,
-            zoneCombat: false
+            zoneCombat: false,
+            // vertical physics
+            y: GROUND_Y, vy: 0, _onGround: true,
+            _gliding: false,
+            _swinging: false, _anchorX: 0, _anchorY: 0,
+            _swingAngle: 0, _swingAngVel: 0, _ropeLen: 0,
+            // limb animation timers
+            _punchTimer: 0, _kickTimer: 0, _throwTimer: 0,
+            _grappleAnimTimer: 0, _smokeAnimTimer: 0,
+            _animSide: 1
         };
 
         // projectiles from Dark Wing gadgets
         const dwProjectiles = [];
+
+        function dwInitSwing() {
+            // Find the nearest rooftop platform in the direction DW is facing
+            let best = null, bestDist = Infinity;
+            for (const p of platforms) {
+                const cx = p.x + p.w / 2;
+                const dir = cx > darkWing.x ? 1 : -1;
+                const d = Math.abs(cx - darkWing.x);
+                if (dir === darkWing.faceDir && d < 650 && d < bestDist && p.y < GROUND_Y - 80) {
+                    bestDist = d; best = p;
+                }
+            }
+            if (!best) return;
+            darkWing._anchorX = best.x + best.w / 2;
+            darkWing._anchorY = best.y - 8;
+            const dx = darkWing.x - darkWing._anchorX;
+            const dy = darkWing.y - darkWing._anchorY;
+            darkWing._ropeLen = Math.min(Math.max(Math.hypot(dx, dy), 100), 420);
+            darkWing._swingAngle = Math.atan2(dx, dy);
+            darkWing._swingAngVel = darkWing.faceDir * 0.055;
+            darkWing._swinging = true;
+            darkWing._onGround = false;
+            darkWing._grappleCD = 260;
+            darkWing._grappleAnimTimer = 22;
+        }
 
         function updateDarkWing() {
             if (currentLevel !== 2) return;
@@ -6061,6 +6234,57 @@
                 return;
             }
 
+            // ── VERTICAL PHYSICS ──────────────────────────────────────────────
+            if (darkWing._swinging) {
+                // Pendulum arc around grapple anchor
+                const g = 0.038;
+                darkWing._swingAngVel += -g * Math.sin(darkWing._swingAngle);
+                darkWing._swingAngVel *= 0.996;
+                darkWing._swingAngle += darkWing._swingAngVel;
+                darkWing.x = darkWing._anchorX + Math.sin(darkWing._swingAngle) * darkWing._ropeLen;
+                darkWing.y = darkWing._anchorY + Math.cos(darkWing._swingAngle) * darkWing._ropeLen;
+                darkWing.faceDir = darkWing._swingAngVel > 0 ? 1 : -1;
+                darkWing.phase += 0.07;
+                // Release past apex on the target side
+                if (Math.abs(darkWing._swingAngle) > 0.8 || darkWing.y > GROUND_Y - 20) {
+                    darkWing._swinging = false;
+                    darkWing._gliding = true;
+                    darkWing._onGround = false;
+                    darkWing.vy = darkWing._swingAngVel * darkWing._ropeLen * -0.25;
+                }
+                return;
+            }
+
+            if (!darkWing._onGround) {
+                const grav = darkWing._gliding ? 0.16 : 0.52;
+                darkWing.vy = Math.min(darkWing.vy + grav, darkWing._gliding ? 2.2 : 16);
+                darkWing.y += darkWing.vy;
+                // Land on GROUND_Y
+                if (darkWing.y >= GROUND_Y) {
+                    darkWing.y = GROUND_Y; darkWing.vy = 0;
+                    darkWing._onGround = true; darkWing._gliding = false;
+                }
+                // Land on rooftop platforms
+                for (const p of platforms) {
+                    if (darkWing.x > p.x && darkWing.x < p.x + p.w && darkWing.vy > 0) {
+                        const prevY = darkWing.y - darkWing.vy;
+                        if (prevY <= p.y + 4 && darkWing.y >= p.y) {
+                            darkWing.y = p.y; darkWing.vy = 0;
+                            darkWing._onGround = true; darkWing._gliding = false;
+                        }
+                    }
+                }
+            } else if (darkWing.y < GROUND_Y) {
+                // Check still supported by a platform
+                let supported = false;
+                for (const p of platforms) {
+                    if (darkWing.x > p.x && darkWing.x < p.x + p.w && Math.abs(darkWing.y - p.y) < 6) {
+                        supported = true; break;
+                    }
+                }
+                if (!supported) { darkWing._onGround = false; darkWing.vy = 0; }
+            }
+
             if (!darkWing.fightMode) {
                 // ── zone combat: stay at zone and fight until quest resolves ─
                 if (darkWing.zoneCombat) {
@@ -6081,13 +6305,26 @@
                         const enDist = Math.abs(enMid - darkWing.x);
                         darkWing.faceDir = enMid < darkWing.x ? -1 : 1;
 
-                        // Always move toward target — no competing zone-anchor
-                        if (enDist > 90) {
+                        // Jump to reach elevated enemy
+                        if (darkWing._onGround && darkWing.y >= GROUND_Y - 5 && (target.y + target.h) < GROUND_Y - 100 && enDist < 220) {
+                            darkWing.vy = -13; darkWing._onGround = false;
+                        }
+
+                        // Grapple to close large distance
+                        if (darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 320) {
+                            dwInitSwing();
+                        }
+
+                        // Move toward target (only on ground or gliding in)
+                        if (enDist > 90 && !darkWing._swinging) {
                             darkWing.x += Math.sign(enMid - darkWing.x) * 3.2;
                         }
 
                         if (darkWing._attackCD <= 0) {
-                            if (enDist < 90) {
+                            const attackY = darkWing.y - 30; // approx DW center Y
+                            const enCenterY = target.y + target.h / 2;
+                            const vertClose = Math.abs(attackY - enCenterY) < 60;
+                            if (enDist < 90 && vertClose) {
                                 // melee combo
                                 const r = Math.random();
                                 const dmg = r < 0.5 ? 2 : 3;
@@ -6095,11 +6332,14 @@
                                 if (r >= 0.5) target.vx = darkWing.faceDir * 4;
                                 tryHitEnemy(target, dmg, ky, 'punch', darkWing);
                                 darkWing._attackCD = r < 0.5 ? 28 : 42;
+                                if (r < 0.5) { darkWing._punchTimer = 18; darkWing._animSide = darkWing.faceDir; }
+                                else { darkWing._kickTimer = 22; darkWing._animSide = darkWing.faceDir; }
                             } else if (enDist < 300 && darkWing._gadgetCD <= 0) {
                                 // batarang at range
-                                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 55, dmg: 3, type: 'batarang' });
+                                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 55, dmg: 3, type: 'batarang' });
                                 darkWing._gadgetCD = 50;
                                 darkWing._attackCD = 18;
+                                darkWing._throwTimer = 24; darkWing._animSide = darkWing.faceDir;
                             }
                         }
                     }
@@ -6127,6 +6367,7 @@
                     if (d < 110) {
                         tryHitEnemy(en, 2, 7, 'punch', darkWing);
                         darkWing._attackCD = 65;
+                        darkWing._punchTimer = 18; darkWing._animSide = darkWing.faceDir;
                         break;
                     }
                 }
@@ -6173,6 +6414,15 @@
             const enMid = best.x + best.w / 2;
             const enDist = Math.abs(enMid - darkWing.x);
 
+            // Jump toward elevated enemy
+            if (darkWing._onGround && darkWing.y >= GROUND_Y - 5 && (best.y + best.h) < GROUND_Y - 100 && enDist < 250) {
+                darkWing.vy = -14; darkWing._onGround = false;
+            }
+            // Grapple swing across large gaps
+            if (darkWing._grappleCD <= 0 && darkWing._onGround && enDist > 400) {
+                dwInitSwing();
+            }
+
             const PREF_DIST = 80;
             if (darkWing._dodgeTimer <= 0) {
                 const wantX = enMid - darkWing.faceDir * PREF_DIST;
@@ -6196,25 +6446,28 @@
                             en.frozen = Math.max(en.frozen, 90);
                         }
                     }
-                    spawnImpact(darkWing.x, GROUND_Y - 40, 'freeze', false);
+                    spawnImpact(darkWing.x, darkWing.y - 40, 'freeze', false);
                     darkWing._smokeCD = 280;
                     darkWing._gadgetCD = 30;
+                    darkWing._smokeAnimTimer = 30;
                     return;
                 }
             }
 
             // grapple hook
             if (darkWing._grappleCD <= 0 && enDist > 280) {
-                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 40, vx: darkWing.faceDir * 14, vy: 0, life: 40, dmg: 1, type: 'grapple' });
+                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 40, vx: darkWing.faceDir * 14, vy: 0, life: 40, dmg: 1, type: 'grapple' });
                 darkWing._grappleCD = 220;
                 darkWing._gadgetCD = 20;
+                darkWing._grappleAnimTimer = 28; darkWing._animSide = darkWing.faceDir;
                 return;
             }
 
             // batarang
             if (darkWing._gadgetCD <= 0 && enDist > 100 && enDist < 300) {
-                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
+                dwProjectiles.push({ x: darkWing.x, y: darkWing.y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
                 darkWing._gadgetCD = 55;
+                darkWing._throwTimer = 26; darkWing._animSide = darkWing.faceDir;
                 return;
             }
 
@@ -6232,12 +6485,15 @@
                 let dmg = 2, ky = 5;
                 if (r < 0.5) {
                     dmg = 2; ky = 6;
+                    darkWing._punchTimer = 18; darkWing._animSide = darkWing.faceDir;
                 } else if (r < 0.8) {
                     dmg = 3; ky = 9;
                     best.vx = darkWing.faceDir * 4;
+                    darkWing._kickTimer = 24; darkWing._animSide = darkWing.faceDir;
                 } else {
                     dmg = 2; ky = 15;
                     best.vy = -7;
+                    darkWing._kickTimer = 30; darkWing._animSide = darkWing.faceDir;
                 }
                 tryHitEnemy(best, dmg, ky, 'punch', darkWing);
                 darkWing._attackCD = r < 0.5 ? 28 : (r < 0.8 ? 40 : 55);
