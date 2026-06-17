@@ -594,6 +594,397 @@
         let mapOpen = false;
         let caseFileOpen = false;   // N: review all case-file clues found so far
         let grabbedEnemy = null;   // enemy currently held by the hero
+
+        // ---------- DINING INTERIORS (diners & shops) ----------
+        // A small shared room template, reskinned per building type. Holds a
+        // reference to the actual building so eatCooldown stays per-building.
+        let diningScene = null;   // { building, saved: {...} } or null when not inside
+        const DINING_ROOM = {
+            w: 480, h: 540, floorY: 420, ceilingY: 40,
+            exitDoor: { x: 24, w: 50 },
+            counter: { x: 280, w: 130 }
+        };
+        function enterDining(b) {
+            diningScene = {
+                building: b,
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive,
+                    dx: hound.x, dy: hound.y, dvx: hound.vx, dvy: hound.vy, df: hound.facing
+                }
+            };
+            hero.x = DINING_ROOM.exitDoor.x + 90; hero.y = DINING_ROOM.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true; hero.facing = 1;
+            hound.x = DINING_ROOM.exitDoor.x + 40; hound.y = DINING_ROOM.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            enterCooldown = 30;
+            titleCard = { text: b.name, sub: 'Press F at the counter to order — ENTER at the door to leave.', timer: 180 };
+        }
+        function exitDining() {
+            const s = diningScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = 0; hero.vy = 0; hero.facing = s.hf;
+            hero.flightActive = false; hero.onGround = true; hero.takeoffPhase = 0;
+            hound.x = s.dx; hound.y = s.dy; hound.vx = 0; hound.vy = 0; hound.facing = s.df;
+            hound.flightActive = false; hound.onGround = true;
+            diningScene = null;
+            enterCooldown = 30;
+            titleCard = { text: 'BACK ON THE STREETS', sub: '', timer: 90 };
+        }
+        // Order food / grab a bite at the counter — same reward as before, just
+        // moved inside the room instead of an instant popup at the door.
+        function handleDiningEat() {
+            const b = diningScene.building;
+            if ((b.eatCooldown || 0) > 0) {
+                titleCard = { text: b.name, sub: "CK already ate here recently — give it a bit.", timer: 90 };
+            } else {
+                b.eatCooldown = 600;
+                hero.orbBoost = 240;
+                const food = b.type === 'diner' ? 'digs into a hot meal' : 'grabs some snacks';
+                titleCard = { text: b.name, sub: 'CK ' + food + "... refueled! (brief speed boost)", timer: 160 };
+            }
+        }
+        function clampToDining(e) {
+            if (e.x < 20) { e.x = 20; if (e.vx < 0) e.vx = 0; }
+            if (e.x + e.w > DINING_ROOM.w - 20) { e.x = DINING_ROOM.w - 20 - e.w; if (e.vx > 0) e.vx = 0; }
+            if (e.y < DINING_ROOM.ceilingY) { e.y = DINING_ROOM.ceilingY; if (e.vy < 0) e.vy = 0; }
+            if (e.y + e.h >= DINING_ROOM.floorY) {
+                e.y = DINING_ROOM.floorY - e.h;
+                if (e.vy > 0) e.vy = 0;
+                e.onGround = true;
+                if (e.flightActive && e.vy >= -0.05) { e.flightActive = false; e.landing = false; e.takeoffPhase = 0; }
+            } else {
+                e.onGround = false;
+            }
+        }
+        function updateDiningScene() {
+            clampToDining(hero);
+            clampToDining(hound);
+        }
+
+        function drawDiningScene() {
+            const b = diningScene.building;
+            const isDiner = b.type === 'diner';
+            const R = DINING_ROOM;
+            ctx.save();
+
+            // ── BACKGROUND WALL ──────────────────────────────────────────────
+            if (isDiner) {
+                // warm cream walls with red stripe
+                ctx.fillStyle = '#f5ead8';
+                ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#c8282a';
+                ctx.fillRect(0, R.ceilingY + 60, W, 18);
+                ctx.fillRect(0, R.ceilingY + 82, W, 6);
+                // ceiling
+                ctx.fillStyle = '#e8dcc8';
+                ctx.fillRect(0, 0, W, R.ceilingY + 60);
+                // neon sign
+                const signPulse = 0.75 + Math.sin(Date.now() * 0.004) * 0.25;
+                ctx.save();
+                ctx.shadowColor = '#ff4466'; ctx.shadowBlur = 12 * signPulse;
+                ctx.fillStyle = `rgba(255,60,80,${signPulse})`;
+                ctx.font = 'bold italic 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('✦ ' + b.name.toUpperCase() + ' ✦', W / 2, R.ceilingY + 48);
+                ctx.restore();
+            } else {
+                // shop: green/beige walls
+                ctx.fillStyle = '#e8f0e0';
+                ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#5a8a5a';
+                ctx.fillRect(0, R.ceilingY + 50, W, 14);
+                ctx.fillStyle = '#d8ecd0';
+                ctx.fillRect(0, 0, W, R.ceilingY + 50);
+                // store sign
+                ctx.fillStyle = '#2a5a2a';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(b.name.toUpperCase(), W / 2, R.ceilingY + 38);
+            }
+
+            // ── FLOOR ────────────────────────────────────────────────────────
+            if (isDiner) {
+                // classic red-and-white checkerboard
+                const tileW = 48;
+                for (let tx = 0; tx < W; tx += tileW) {
+                    for (let ty = R.floorY; ty < H; ty += tileW) {
+                        const col = Math.floor(tx / tileW) + Math.floor((ty - R.floorY) / tileW);
+                        ctx.fillStyle = col % 2 === 0 ? '#f8f0e8' : '#d42020';
+                        ctx.fillRect(tx, ty, tileW, tileW);
+                    }
+                }
+                // baseboard
+                ctx.fillStyle = '#a01818';
+                ctx.fillRect(0, R.floorY, W, 5);
+            } else {
+                // shop: wood-plank floor
+                ctx.fillStyle = '#c4a070';
+                ctx.fillRect(0, R.floorY, W, H - R.floorY);
+                ctx.strokeStyle = '#a08050'; ctx.lineWidth = 2;
+                for (let tx = 0; tx < W; tx += 80) {
+                    ctx.beginPath(); ctx.moveTo(tx, R.floorY); ctx.lineTo(tx, H); ctx.stroke();
+                }
+                // baseboard
+                ctx.fillStyle = '#7a5030';
+                ctx.fillRect(0, R.floorY, W, 5);
+            }
+
+            // ── EXIT DOOR (left wall) ────────────────────────────────────────
+            const dr = R.exitDoor;
+            ctx.fillStyle = isDiner ? '#8b4513' : '#4a7a4a';
+            ctx.fillRect(dr.x, R.floorY - 100, dr.w, 100);
+            ctx.fillStyle = isDiner ? '#6b2a00' : '#2a5a2a';
+            ctx.fillRect(dr.x + 5, R.floorY - 94, dr.w - 10, 94);
+            // door knob
+            ctx.fillStyle = '#f0d060';
+            ctx.beginPath(); ctx.arc(dr.x + dr.w - 10, R.floorY - 48, 4, 0, Math.PI * 2); ctx.fill();
+            // EXIT label
+            ctx.fillStyle = '#7fff9f'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('EXIT', dr.x + dr.w / 2, R.floorY - 108);
+            // leave prompt when near door
+            const heroMid = hero.x + hero.w / 2;
+            if (Math.abs(heroMid - (dr.x + dr.w / 2)) < 80) {
+                const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial';
+                ctx.fillText('Press ENTER to leave', dr.x + dr.w / 2, R.floorY - 122);
+                ctx.globalAlpha = 1;
+            }
+
+            // ── DINER: booths + counter ──────────────────────────────────────
+            if (isDiner) {
+                // two booth tables
+                for (let bi = 0; bi < 2; bi++) {
+                    const bx = 90 + bi * 140;
+                    const by = R.floorY - 72;
+                    // bench back (far)
+                    ctx.fillStyle = '#c41e2a';
+                    ctx.fillRect(bx, by - 20, 80, 10);
+                    // bench seat (far)
+                    ctx.fillStyle = '#e02030';
+                    ctx.fillRect(bx, by - 10, 80, 14);
+                    // table
+                    ctx.fillStyle = '#e8e0c8';
+                    ctx.fillRect(bx + 8, by + 4, 64, 8);
+                    ctx.fillStyle = '#c8b89a';
+                    ctx.fillRect(bx + 8, by + 4, 64, 3);
+                    // ketchup + mustard
+                    ctx.fillStyle = '#c41e2a'; ctx.fillRect(bx + 20, by - 2, 6, 8);
+                    ctx.fillStyle = '#e0c020'; ctx.fillRect(bx + 30, by - 2, 6, 8);
+                    // bench seat (near, same row as hero)
+                    ctx.fillStyle = '#c41e2a';
+                    ctx.fillRect(bx, R.floorY - 22, 80, 14);
+                    ctx.fillStyle = '#e02030';
+                    ctx.fillRect(bx, R.floorY - 34, 80, 14);
+                }
+                // lunch counter
+                const ctr = R.counter;
+                ctx.fillStyle = '#c8b098';
+                ctx.fillRect(ctr.x, R.floorY - 52, ctr.w, 52);
+                ctx.fillStyle = '#e0c8a8';
+                ctx.fillRect(ctr.x, R.floorY - 52, ctr.w, 8);
+                // stools
+                for (let si = 0; si < 3; si++) {
+                    const sx = ctr.x + 18 + si * 36;
+                    ctx.fillStyle = '#c41e2a';
+                    ctx.beginPath(); ctx.arc(sx, R.floorY - 56, 10, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#7a4040';
+                    ctx.fillRect(sx - 2, R.floorY - 46, 4, 26);
+                    ctx.fillRect(sx - 7, R.floorY - 22, 14, 3);
+                }
+                // pie display on counter
+                ctx.fillStyle = '#e8c880'; ctx.fillRect(ctr.x + 10, R.floorY - 64, 30, 12);
+                ctx.fillStyle = '#c07830'; ctx.fillRect(ctr.x + 12, R.floorY - 68, 26, 6);
+                // coffee mug silhouette
+                ctx.fillStyle = '#6a4030';
+                ctx.fillRect(ctr.x + 60, R.floorY - 60, 14, 10);
+                ctx.strokeStyle = '#6a4030'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(ctr.x + 76, R.floorY - 56, 5, -Math.PI * 0.4, Math.PI * 0.4); ctx.stroke();
+                // jukebox silhouette (far right)
+                ctx.fillStyle = '#1a1a2a';
+                ctx.fillRect(W - 60, R.floorY - 110, 44, 110);
+                ctx.fillStyle = '#c41e2a'; ctx.fillRect(W - 56, R.floorY - 106, 36, 30);
+                ctx.fillStyle = 'rgba(200,220,255,0.6)'; ctx.fillRect(W - 52, R.floorY - 102, 28, 22);
+                ctx.fillStyle = '#f0d060'; ctx.font = '7px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('♪', W - 38, R.floorY - 88);
+            } else {
+                // ── SHOP: shelves + checkout counter ────────────────────────
+                // two shelf racks
+                for (let si = 0; si < 2; si++) {
+                    const sx = 90 + si * 170;
+                    // upright posts
+                    ctx.fillStyle = '#8a7a6a';
+                    ctx.fillRect(sx, R.floorY - 160, 8, 160);
+                    ctx.fillRect(sx + 100, R.floorY - 160, 8, 160);
+                    // three shelves
+                    for (let sh = 0; sh < 3; sh++) {
+                        const sy = R.floorY - 50 - sh * 50;
+                        ctx.fillStyle = '#a09080';
+                        ctx.fillRect(sx, sy, 108, 6);
+                        // goods on shelf
+                        const colors = ['#e04040','#40a040','#4060d0','#e0c040','#c040c0'];
+                        for (let g = 0; g < 5; g++) {
+                            ctx.fillStyle = colors[(g + si * 3 + sh) % 5];
+                            ctx.fillRect(sx + 8 + g * 18, sy - 18, 12, 18);
+                            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                            ctx.fillRect(sx + 10 + g * 18, sy - 16, 4, 6);
+                        }
+                    }
+                }
+                // checkout counter + register
+                const ctr = R.counter;
+                ctx.fillStyle = '#7a6a5a';
+                ctx.fillRect(ctr.x, R.floorY - 58, ctr.w, 58);
+                ctx.fillStyle = '#9a8a78';
+                ctx.fillRect(ctr.x, R.floorY - 58, ctr.w, 6);
+                // cash register
+                ctx.fillStyle = '#2a2a2a'; ctx.fillRect(ctr.x + 20, R.floorY - 84, 36, 28);
+                ctx.fillStyle = '#404040'; ctx.fillRect(ctr.x + 24, R.floorY - 80, 28, 20);
+                ctx.fillStyle = '#e0e0e0'; ctx.font = '6px monospace'; ctx.textAlign = 'left';
+                ctx.fillText('$', ctr.x + 28, R.floorY - 66);
+                // screen glow
+                ctx.fillStyle = 'rgba(100,255,100,0.4)'; ctx.fillRect(ctr.x + 26, R.floorY - 78, 24, 14);
+            }
+
+            // ── COUNTER INTERACTION PROMPT ───────────────────────────────────
+            const ctr = R.counter;
+            const nearCounter = heroMid > ctr.x - 20 && heroMid < ctr.x + ctr.w + 20;
+            if (nearCounter) {
+                const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = (b.eatCooldown || 0) > 0 ? '#ffaa55' : '#ffe072';
+                ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                const prompt = (b.eatCooldown || 0) > 0
+                    ? 'Already ordered recently...'
+                    : (isDiner ? 'Press F to order food' : 'Press F to grab snacks');
+                ctx.fillText(prompt, ctr.x + ctr.w / 2, R.floorY - 70);
+                ctx.globalAlpha = 1;
+            }
+
+            // ── ENTITIES ────────────────────────────────────────────────────
+            drawEntity(hound);
+            drawEntity(hero);
+            drawHitFX();
+
+            // ── SCREEN-SPACE OVERLAYS ───────────────────────────────────────
+            drawTitleCard();
+            ctx.restore();
+        }
+
+        // ── LOIS LANE ───────────────────────────────────────────────────────
+        function drawLois(n) {
+            const x = n.x, y = interior.floorY;
+            const bob = Math.sin(n.phase) * 1.2;
+            ctx.save();
+            // legs
+            const moving = n.greeting <= 20;
+            const sw = moving ? Math.sin(n.phase * 3) * 4 : 0;
+            ctx.fillStyle = '#1a1a30';
+            ctx.fillRect(x - 7, y - 20 - Math.max(0, sw), 6, 20);
+            ctx.fillRect(x + 1, y - 20 - Math.max(0, -sw), 6, 20);
+            // heels
+            ctx.fillStyle = '#c01820';
+            ctx.fillRect(x - 8, y - 3, 8, 4);
+            ctx.fillRect(x + 1, y - 3, 8, 4);
+            // red blazer body
+            ctx.fillStyle = '#b81c2c';
+            ctx.fillRect(x - 12, y - 55 + bob, 24, 36);
+            // white blouse collar
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(x - 5, y - 54 + bob, 10, 10);
+            // lapels
+            ctx.fillStyle = '#941420';
+            ctx.beginPath();
+            ctx.moveTo(x - 12, y - 54 + bob); ctx.lineTo(x - 2, y - 44 + bob); ctx.lineTo(x - 12, y - 44 + bob);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 12, y - 54 + bob); ctx.lineTo(x + 2, y - 44 + bob); ctx.lineTo(x + 12, y - 44 + bob);
+            ctx.closePath(); ctx.fill();
+            // head
+            ctx.fillStyle = '#e8c0a0';
+            ctx.beginPath(); ctx.arc(x, y - 66 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            // dark bob hair
+            ctx.fillStyle = '#1a1010';
+            ctx.beginPath(); ctx.arc(x, y - 68 + bob, 11, Math.PI * 0.75, Math.PI * 2.25); ctx.fill();
+            // side bob sweeping left
+            ctx.beginPath();
+            ctx.moveTo(x - 10, y - 68 + bob);
+            ctx.quadraticCurveTo(x - 18, y - 60 + bob, x - 12, y - 56 + bob);
+            ctx.lineTo(x - 10, y - 58 + bob);
+            ctx.closePath(); ctx.fill();
+            // eyes
+            ctx.fillStyle = '#1a1a1a';
+            const ed = (n.faceDir || 1) * 2.5;
+            ctx.fillRect(x - 4 + ed, y - 68 + bob, 2, 2.5);
+            ctx.fillRect(x + 2 + ed, y - 68 + bob, 2, 2.5);
+            // press badge
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(x - 4, y - 46 + bob, 12, 8);
+            ctx.fillStyle = '#1a1a80'; ctx.font = '4px Arial'; ctx.textAlign = 'left';
+            ctx.fillText('PRESS', x - 3, y - 41 + bob);
+            // notepad in hand
+            ctx.fillStyle = '#f5f0e0';
+            ctx.fillRect(x + 10, y - 44 + bob, 10, 14);
+            ctx.strokeStyle = '#888'; ctx.lineWidth = 0.5;
+            for (let li = 0; li < 3; li++) ctx.strokeRect(x + 11, y - 42 + bob + li * 4, 8, 1);
+            // name label or greeting bubble
+            if (n.greeting > 20) {
+                const lines = "I've got information for you.";
+                const bw = 160, bh = 28, bx = x - bw / 2, by = y - 100 + bob;
+                ctx.fillStyle = 'rgba(255,240,245,0.95)';
+                ctx.strokeStyle = '#b81c2c'; ctx.lineWidth = 1.5;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.beginPath(); ctx.moveTo(x - 5, by + bh); ctx.lineTo(x + 5, by + bh); ctx.lineTo(x, by + bh + 8); ctx.fill();
+                ctx.fillStyle = '#1a1a1a'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(lines, x, by + 17);
+                ctx.fillStyle = '#b81c2c'; ctx.font = 'bold 8px Arial';
+                ctx.fillText('Press F or P to talk', x, by + 27);
+            } else {
+                ctx.fillStyle = 'rgba(200,180,210,0.5)';
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('Lois', x, y - 82 + bob);
+            }
+            ctx.restore();
+        }
+
+        function clueRecap(cl) {
+            if (!cl || !cl.found) return null;
+            const summaries = {
+                bank: 'Clue 1 — Bank alarm: the escapee financed his next move through armed robbery.',
+                rescue: 'Clue 2 — Prison records: pinstripe suit, corner-office photo, company logo torn away.',
+                lockdown: 'Clue 3 — Guard report: bald, calm, said he had a score to settle with the man who flies.',
+                cargo: 'Clue 4 — Docks crate stamped "L", forced from inside, still warm — stolen tech.',
+                chase: 'Clue 5 — Uptown tower: reactor tech, abandoned servers. All threads point to one man.',
+            };
+            return summaries[cl.questType] || null;
+        }
+
+        function talkToLois() {
+            const found = clues.filter(c => c.found);
+            const lines = ['LOIS LANE — Investigative Reporter'];
+            if (!interior.note.read) {
+                lines.push("CK — you haven't even read your case file yet. Check your desk first.");
+            } else if (found.length === 0) {
+                lines.push("The city's quiet right now, but it won't stay that way.");
+                lines.push("Get out there and look for clues. I'll be here when you find something.");
+            } else {
+                lines.push("Here's what the clues are telling us so far:");
+                for (const cl of found) {
+                    const s = clueRecap(cl);
+                    if (s) lines.push(s);
+                }
+                if (pendingTrapCiv && !pendingTrapCiv.rescued) {
+                    lines.push("⚠ Active mission: get that objective clear of the scene — then the next clue drops.");
+                }
+                if (activeClueIndex >= clues.length) {
+                    lines.push("We have everything we need. He's close — go bring him in.");
+                } else if (found.length < clues.length) {
+                    lines.push("There's still more out there. Keep searching — the next clue is waiting.");
+                }
+            }
+            showStory(lines);
+        }
+
         // ── BANK ROBBERY MISSION ──────────────────────────────────────────
         // Drives the bank building's alarm-light visual only — the actual heist
         // is Quest 1, spawned by spawnBankQuest() when the first clue is read.
@@ -692,8 +1083,9 @@
                 { x: 1120, baseX: 1120, type: 'sit', name: 'Photographer', phase: 0.7 },
                 { x: 1320, baseX: 1320, type: 'sit', name: 'Intern', phase: 2.2 },
                 { x: 1520, baseX: 1520, type: 'sit', name: 'Columnist', phase: 4.1 },
-                { x: 950, baseX: 950, type: 'walk', name: 'Editor-in-Chief', phase: 0, dir: 1, range: 220, speed: 0.8 },
-                { x: 480, baseX: 480, type: 'walk', name: 'Copy Editor', phase: 0, dir: -1, range: 160, speed: 0.6 },
+                { x: 950, baseX: 950, type: 'walk', name: 'Editor-in-Chief', phase: 0, dir: 1, range: 220, speed: 0.8, greeting: 0, faceDir: 1 },
+                { x: 480, baseX: 480, type: 'walk', name: 'Copy Editor', phase: 0, dir: -1, range: 160, speed: 0.6, greeting: 0, faceDir: 1 },
+                { x: 680, baseX: 680, type: 'walk', lois: true, name: 'Lois', phase: 0, dir: 1, range: 80, speed: 0.5, greeting: 0, faceDir: 1 },
             ],
             // rescued civilians who now live here safely (filled as you rescue them)
             residents: [],
@@ -867,12 +1259,28 @@
                 return;
             }
 
+            // ---- dining interior intercept: ENTER = leave, F = order food ----
+            if (diningScene) {
+                if (e.code === 'Enter' && enterCooldown <= 0) { exitDining(); e.preventDefault(); }
+                if (e.code === 'KeyF') {
+                    const heroMid = hero.x + hero.w / 2;
+                    const ctr = DINING_ROOM.counter;
+                    if (heroMid > ctr.x - 20 && heroMid < ctr.x + ctr.w + 20) {
+                        handleDiningEat(); e.preventDefault();
+                    }
+                }
+                keys[e.code] = true;
+                return;
+            }
+
             keys[e.code] = true;
             if (e.code === 'KeyQ') hero.persona = hero.persona === 'super' ? 'civilian' : 'super';
             if (e.code === 'KeyT') p2Mode = (p2Mode === 'ai') ? 'coop' : 'ai';
             if (e.code === 'KeyR') { hound.forceLand = true; hound.flightActive = false; }
             if (e.code === 'KeyM') mapOpen = !mapOpen;
             if (e.code === 'KeyN' && interior.note.read) caseFileOpen = !caseFileOpen;
+            // P: talk to Lois from anywhere (interior or city), or F near her in interior
+            if (e.code === 'KeyP' && interior.note.read && !storyModal) { talkToLois(); e.preventDefault(); }
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
             // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
             if (e.code === 'Enter' && enterCooldown <= 0) {
@@ -887,8 +1295,7 @@
                             enterInterior(b); e.preventDefault(); handled = true; break;
                         }
                     }
-                    // Grab a quick bite at a diner or shop — small flavor interaction
-                    // with a brief speed boost as a "fed and ready" reward.
+                    // Enter a diner or shop — walk inside the actual interior room.
                     if (!handled) {
                         for (const b of buildings) {
                             if (b.type !== 'diner' && b.type !== 'shop') continue;
@@ -896,18 +1303,7 @@
                             const doorMid = b.x + b.w / 2;
                             const nearGround = (hero.y + hero.h) >= GROUND_Y - 50;
                             if (Math.abs(heroMid - doorMid) < b.w / 2 + 16 && nearGround) {
-                                if ((b.eatCooldown || 0) > 0) {
-                                    titleCard = { text: b.name, sub: "CK already ate here recently — give it a bit.", timer: 90 };
-                                } else {
-                                    b.eatCooldown = 600;  // ~10s before he can eat again here
-                                    hero.orbBoost = 240;  // brief speed boost, "fed and ready"
-                                    const food = b.type === 'diner' ? 'grabs a quick bite' : 'picks up a snack';
-                                    titleCard = { text: b.name, sub: 'CK ' + food + "... refueled! (brief speed boost)", timer: 160 };
-                                }
-                                // Without this, holding ENTER fires a repeat keydown within
-                                // the same press, which would immediately see the cooldown
-                                // we just set and stomp the success message with "already ate".
-                                enterCooldown = 30;
+                                enterDining(b);
                                 e.preventDefault(); handled = true; break;
                             }
                         }
@@ -916,6 +1312,13 @@
                     const heroMid = hero.x + hero.w / 2;
                     const doorMid = interior.exitDoor.x + interior.exitDoor.w / 2;
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
+                }
+            }
+            // F: talk to Lois when nearby in the interior
+            if (e.code === 'KeyF' && scene === 'interior' && interior.note.read) {
+                const loisNPC = interior.npcs.find(n => n.lois);
+                if (loisNPC && Math.abs((hero.x + hero.w / 2) - loisNPC.x) < 70 && !storyModal) {
+                    talkToLois(); e.preventDefault();
                 }
             }
             // F: read the case-file note on the hero's desk (kicks off the story)
@@ -955,6 +1358,29 @@
                 const sz = interior.safeZone;
                 if (heroMid > sz.x && heroMid < sz.x + sz.w) {
                     dropOffCivilian();
+                    e.preventDefault();
+                }
+            }
+            // F: set down any quest objective that's reached a safe distance from
+            // its crime scene — the player picks the exact spot, not an instant trigger
+            if (e.code === 'KeyF' && scene === 'city' && carriedCivilians.length > 0) {
+                let droppedAny = false;
+                const names = [];
+                for (let i = carriedCivilians.length - 1; i >= 0; i--) {
+                    const c = carriedCivilians[i];
+                    if (!c.inSafeZone) continue;
+                    c.rescued = true; c.carried = false;
+                    carriedCivilians.splice(i, 1);
+                    spawnRescueFX(c.x + c.w / 2, c.y - 10);
+                    names.push(c.name);
+                    droppedAny = true;
+                }
+                if (droppedAny) {
+                    titleCard = {
+                        text: names.join(' & ') + (names.length > 1 ? ' are' : ' is') + ' safe!',
+                        sub: 'Set down clear of the scene — quest complete.',
+                        timer: 180
+                    };
                     e.preventDefault();
                 }
             }
@@ -1575,22 +2001,15 @@
                 });
 
                 // Quest objectives (civilian/crate/car) don't need a trip all the
-                // way back to the Weekly Planet — carrying them a safe distance
-                // away from where they were found is enough to mark them rescued.
+                // way back to the Weekly Planet — once carried far enough from
+                // where they were found, they're IN a safe zone. The player still
+                // chooses exactly where to set them down (press F) rather than
+                // having them yanked out of his arms the instant he crosses the
+                // line — see the KeyF handler and isInSafeZone() below.
                 if (e === hero && scene === 'city') {
-                    for (let i = carriedCivilians.length - 1; i >= 0; i--) {
-                        const c = carriedCivilians[i];
-                        if (!c.trapVictim || c.crimeX === undefined) continue;
-                        if (Math.abs((e.x + e.w / 2) - c.crimeX) >= SAFE_RESCUE_DIST) {
-                            c.rescued = true; c.carried = false;
-                            carriedCivilians.splice(i, 1);
-                            spawnRescueFX(c.x + c.w / 2, c.y - 10);
-                            titleCard = {
-                                text: c.name + ' is safe!',
-                                sub: 'Carried clear of the scene — quest complete.',
-                                timer: 180
-                            };
-                        }
+                    for (const c of carriedCivilians) {
+                        c.inSafeZone = c.trapVictim && c.crimeX !== undefined &&
+                            Math.abs((e.x + e.w / 2) - c.crimeX) >= SAFE_RESCUE_DIST;
                     }
                 }
             }
@@ -4444,8 +4863,19 @@
 
             // ---- carried civilians (up to 3, held in the hero's arms) ----
             if (!cutscene.active) {
+                let anyInSafeZone = false;
                 for (const c of carriedCivilians) {
                     drawCivilianFigure(c, c.x + c.w / 2, c.y, 1.05, 0, false);
+                    if (c.inSafeZone) anyInSafeZone = true;
+                }
+                if (anyInSafeZone) {
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.save();
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#9fffa0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Safe zone reached — Press F to set down', hero.x + hero.w / 2, hero.y - 18);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
                 }
             }
 
@@ -5300,7 +5730,7 @@
 
             // working NPCs (drawn as simple seated/standing figures)
             for (const n of interior.npcs) {
-                drawWorkerNPC(n);
+                if (n.lois) drawLois(n); else drawWorkerNPC(n);
             }
             // rescued residents (relieved, milling around)
             for (const r of interior.residents) {
@@ -5681,6 +6111,20 @@
             }
 
             if (enterCooldown > 0) enterCooldown--;
+
+            // ---- DINING INTERIOR: diner / shop room ----
+            if (diningScene) {
+                const pin = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInputInterior() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                updateDiningScene();
+                updateHitFX();
+                drawDiningScene();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
 
             // ---- INTERIOR SCENE: the Weekly Planet (its own update/draw path) ----
             if (scene === 'interior') {
