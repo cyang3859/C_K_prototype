@@ -2454,24 +2454,10 @@
         // unless they're being carried or already rescued.
         function updateCivilians() {
             for (const c of civilians) {
-                // Draw rescued civilians that were dropped in the city (safeDropped)
-                // with a calm happy pose instead of skipping them entirely
                 if (c.carried) continue;
                 if (c.rescued && !c.safeDropped) continue;
-                if (c.rescued && c.safeDropped) {
-                    // happy standing civilian — green tint, wave animation
-                    const wavePhase = Math.sin(Date.now() * 0.006 + c.x) * 0.5;
-                    ctx.save();
-                    ctx.globalAlpha = 0.92;
-                    drawCivilianFigure(c, c.x + c.w / 2, civTopY, 1.05, wavePhase, false);
-                    ctx.textAlign = 'center';
-                    ctx.fillStyle = '#4cfc4c';
-                    ctx.font = 'bold 11px Arial';
-                    ctx.fillText('✓ SAFE', c.x + c.w / 2, civTopY - 18);
-                    ctx.globalAlpha = 1;
-                    ctx.restore();
-                    continue;
-                }
+                // safeDropped civs just stand still — no roaming logic needed
+                if (c.rescued && c.safeDropped) continue;
                 c.roamPhase = (c.roamPhase || 0) + 1;
 
                 // Idle pause: stand still briefly (natural behaviour)
@@ -4993,7 +4979,22 @@
             const civFigH = 42 * civS + 1;
             const civTopY = GROUND_Y - civFigH;
             for (const c of civilians) {
-                if (c.rescued || c.carried) continue;
+                if (c.carried) continue;
+                if (c.rescued && !c.safeDropped) continue;
+                // safeDropped: draw with calm pose + green SAFE label
+                if (c.rescued && c.safeDropped) {
+                    const wavePhase = Math.sin(Date.now() * 0.006 + c.x) * 0.5;
+                    ctx.save();
+                    ctx.globalAlpha = 0.92;
+                    drawCivilianFigure(c, c.x + c.w / 2, civTopY, 1.05, wavePhase, false);
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#4cfc4c';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.fillText('✓ SAFE', c.x + c.w / 2, civTopY - 18);
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                    continue;
+                }
                 const threat = c.threatLevel || 0;
                 // Cornered: rapid arm-wave; threatened: arm swing while fleeing; calm: relaxed
                 const walkPhase = threat === 2
