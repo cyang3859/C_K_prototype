@@ -5251,7 +5251,8 @@
                     } // end else (on-foot)
                     // draw gadget projectiles
                     for (const p of dwProjectiles) {
-                        const px = p.x - camX, py = p.y;
+                        // canvas is already translated by camera — use world coords directly
+                        const px = p.x, py = p.y;
                         ctx.save();
                         if (p.type === 'batarang') {
                             ctx.fillStyle = '#e0c020';
@@ -5262,9 +5263,9 @@
                             ctx.fillRect(-2, -7, 4, 14);
                             ctx.restore();
                         } else {
-                            // grapple hook
+                            // grapple hook — draw cable from Dark Wing to hook head
                             ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1.5;
-                            ctx.beginPath(); ctx.moveTo(lx - camX, GROUND_Y - 40); ctx.lineTo(px, py); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(lx, GROUND_Y - 40); ctx.lineTo(px, py); ctx.stroke();
                             ctx.fillStyle = '#ccc';
                             ctx.fillRect(px - 4, py - 4, 8, 8);
                         }
