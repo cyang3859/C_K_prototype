@@ -2105,23 +2105,77 @@
             const dist = Math.hypot(dx, dy);
             const input = { left: false, right: false, jumpHeld: false, moveDown: false, dash: false, punch: false, laser: false, freeze: false };
 
-            // Preferred standoff: trail the hero by ~140px on the side they're facing.
+            // ── FINAL BATTLE free-roam: hound picks its own target and grab-throws ──
+            if (darkWing.fightMode) {
+                // pick closest alive enemy as hound's personal target
+                let hTarget = null, hTargetD = Infinity;
+                const hcx = hound.x + hound.w / 2, hcy = hound.y + hound.h / 2;
+                for (const en of enemies) {
+                    if (!en.alive || en.grabbed) continue;
+                    const d = Math.hypot((en.x + en.w / 2) - hcx, (en.y + en.h / 2) - hcy);
+                    if (d < hTargetD) { hTargetD = d; hTarget = en; }
+                }
+                if (hTarget) {
+                    const tdx = (hTarget.x + hTarget.w / 2) - hcx;
+                    const tdy = (hTarget.y + hTarget.h / 2) - hcy;
+                    // chase
+                    if (Math.abs(tdx) > 30) {
+                        if (tdx > 0) { input.right = true; hound.facing = 1; }
+                        else { input.left = true; hound.facing = -1; }
+                        if (hTargetD > 350) input.dash = true;
+                    }
+                    // match altitude for energy enemies
+                    if (hound.flightActive) {
+                        if (tdy < -30) input.jumpHeld = true;
+                        else if (tdy > 30) input.moveDown = true;
+                    } else if (tdy < -80) {
+                        input.jumpHeld = true;
+                    }
+                    // grab when close
+                    if (hTargetD < 70 && !hound._grabCooldown) {
+                        // grab: freeze enemy briefly and toss them
+                        hTarget.vx = hound.facing * 8;
+                        hTarget.vy = -6;
+                        tryHitEnemy(hTarget, 2, 10, 'punch', hound);
+                        spawnImpact(hTarget.x + hTarget.w / 2, hTarget.y, 'punch', false);
+                        hound._grabCooldown = 80;
+                        titleCard = { text: 'SCATTER!', sub: '', timer: 60 };
+                    }
+                }
+                if ((hound._grabCooldown || 0) > 0) hound._grabCooldown--;
+                // still drag nearby enemies
+                let best = null, bestD = Infinity;
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    const ex = en.x + en.w / 2, ey2 = en.y + en.h / 2;
+                    const d = Math.hypot(ex - hcx, ey2 - hcy);
+                    const inFront = (ex - hcx) * hound.facing > -20;
+                    if (d < bestD && d < 160 && inFront && Math.abs(ey2 - hcy) < 80) { bestD = d; best = en; }
+                }
+                if (best && (hound._dragCD || 0) <= 0) {
+                    const dragDir = best.x < hound.x ? -1 : 1;
+                    best.vx = dragDir * 3.5;
+                    best.x += dragDir * 14;
+                    tryHitEnemy(best, 1, 3, 'punch', hound);
+                    hound._dragCD = 55;
+                }
+                if ((hound._dragCD || 0) > 0) hound._dragCD--;
+                return input;
+            }
+
+            // ── NORMAL MODE: trail the hero ──────────────────────────────────
             const FOLLOW_GAP = 140;
             const desiredX = hero.x - hero.facing * FOLLOW_GAP;
-            const desiredY = hero.y;                 // match the hero's altitude
-
+            const desiredY = hero.y;
             const hdx = desiredX - hound.x;
             const hdy = desiredY - hound.y;
 
-            // horizontal: move toward the standoff point, with a deadzone so it settles
             if (Math.abs(hdx) > 40) {
                 if (hdx > 0) { input.right = true; hound.facing = 1; }
                 else { input.left = true; hound.facing = -1; }
-                // dash only to catch up over a big distance
                 if (Math.abs(hdx) > 320) input.dash = true;
             }
 
-            // vertical: fly to match the hero's altitude when the hero is airborne
             const heroAirborne = !hero.onGround;
             if (heroAirborne || hound.flightActive) {
                 if (hdy < -40 && !hound.flightActive) input.jumpHeld = true;
@@ -2130,43 +2184,37 @@
                     else if (hdy > 35) input.moveDown = true;
                 }
             }
-            // if hero lands and hound is low enough, let it settle to the ground
             if (!heroAirborne && hound.flightActive && hound.y > GROUND_Y - 160) {
                 input.moveDown = true;
             }
 
-            // ---- hazard avoidance: if an active barrier is between hound and hero, fly over it ----
+            // hazard avoidance
             for (const hz of hazards) {
                 if (!hazardActive(hz)) continue;
-                const hcx = hound.x + hound.w / 2;
+                const hcx2 = hound.x + hound.w / 2;
                 const heroCx = hero.x + hero.w / 2;
-                // barrier sits between them
-                const blocked = (hcx < hz.x && heroCx > hz.x + hz.w) ||
-                                (hcx > hz.x + hz.w && heroCx < hz.x);
+                const blocked = (hcx2 < hz.x && heroCx > hz.x + hz.w) ||
+                                (hcx2 > hz.x + hz.w && heroCx < hz.x);
                 if (blocked) {
-                    // fly high enough to clear it — barriers go floor-to-ceiling so
-                    // the hound must go WAY above (y < 80) to navigate around by air
                     if (hound.y > 100) {
                         input.jumpHeld = true;
-                        input.left = false; input.right = false;  // pause horizontal until clear
+                        input.left = false; input.right = false;
                     }
                     break;
                 }
             }
 
-            // ---- attack: drag nearby enemies — no laser/freeze, just a shove + tiny damage ----
+            // drag nearby enemies
             let best = null, bestD = Infinity;
+            const hcxN = hound.x + hound.w / 2, hcyN = hound.y + hound.h / 2;
             for (const en of enemies) {
                 if (!en.alive) continue;
-                const ex = en.x + en.w / 2, ey = en.y + en.h / 2;
-                const hx = hound.x + hound.w / 2, hy = hound.y + hound.h / 2;
-                const d = Math.hypot(ex - hx, ey - hy);
-                const inFront = (ex - hx) * hound.facing > -20;
-                if (d < bestD && d < 160 && inFront && Math.abs(ey - hy) < 80) { bestD = d; best = en; }
+                const ex = en.x + en.w / 2, ey2 = en.y + en.h / 2;
+                const d = Math.hypot(ex - hcxN, ey2 - hcyN);
+                const inFront = (ex - hcxN) * hound.facing > -20;
+                if (d < bestD && d < 160 && inFront && Math.abs(ey2 - hcyN) < 80) { bestD = d; best = en; }
             }
             if (best && (hound._dragCD || 0) <= 0) {
-                // drag: shove the enemy away from the hero (create separation) and
-                // deal a small amount of damage — no laser beam, no freeze cone.
                 const dragDir = best.x < hound.x ? -1 : 1;
                 best.vx = dragDir * 3.5;
                 best.x += dragDir * 14;
@@ -2176,7 +2224,6 @@
             if ((hound._dragCD || 0) > 0) hound._dragCD--;
             return input;
         }
-
         // ── Grab: latch onto nearest enemy within 70 px ─────────────────
         function tryGrabEnemy() {
             let best = null, bestD = 70;
@@ -5140,7 +5187,39 @@
                         ctx.fillStyle = 'rgba(180,200,255,0.4)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
                         ctx.fillText('Dark Wing', lx, GROUND_Y - 100 + bob);
                     }
+                    // block shield indicator
+                    if (darkWing.blocking) {
+                        ctx.fillStyle = 'rgba(220,200,50,0.45)';
+                        ctx.beginPath(); ctx.arc(lx, GROUND_Y - 55 + bob, 22, 0, Math.PI * 2); ctx.fill();
+                    }
+                    // hp bar in fight mode
+                    if (darkWing.fightMode) {
+                        ctx.fillStyle = '#333'; ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36, 5);
+                        ctx.fillStyle = '#4cfc4c';
+                        ctx.fillRect(lx - 18, GROUND_Y - 100 + bob, 36 * (darkWing.hp / darkWing.maxHp), 5);
+                    }
                     ctx.restore();
+                    // draw gadget projectiles
+                    for (const p of dwProjectiles) {
+                        const px = p.x - camX, py = p.y;
+                        ctx.save();
+                        if (p.type === 'batarang') {
+                            ctx.fillStyle = '#e0c020';
+                            ctx.save();
+                            ctx.translate(px, py);
+                            ctx.rotate(p.life * 0.4);
+                            ctx.fillRect(-7, -2, 14, 4);
+                            ctx.fillRect(-2, -7, 4, 14);
+                            ctx.restore();
+                        } else {
+                            // grapple hook
+                            ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1.5;
+                            ctx.beginPath(); ctx.moveTo(lx - camX, GROUND_Y - 40); ctx.lineTo(px, py); ctx.stroke();
+                            ctx.fillStyle = '#ccc';
+                            ctx.fillRect(px - 4, py - 4, 8, 8);
+                        }
+                        ctx.restore();
+                    }
                 }
             }
 
@@ -5823,6 +5902,7 @@
                 dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'badlands'
             });
             darkWing.fightMode = true;
+            darkWing._gadgetCD = 0; darkWing._dodgeTimer = 0; darkWing._blockTimer = 0;
             titleCard = {
                 text: '⚠ LEX LUTHOR ⚠',
                 sub: 'He\'s been planning this since day one. Thirty men and a grudge. Finish it.',
@@ -5832,41 +5912,166 @@
 
         // ── Dark Wing NPC ─────────────────────────────────────────────────────
         const darkWing = {
-            x: 200, _targetX: 200, phase: 0, dir: 1, faceDir: 1,
-            greeting: 0, _attackCD: 0, fightMode: false
+            x: 200, _targetX: 200, y: 0, phase: 0, dir: 1, faceDir: 1,
+            greeting: 0, _attackCD: 0, fightMode: false,
+            _gadgetCD: 0, _dodgeTimer: 0, _blockTimer: 0,
+            _smokeCD: 0, _grappleCD: 0, _targetEnemy: null,
+            hp: 20, maxHp: 20, blocking: false
         };
+
+        // projectiles from Dark Wing gadgets
+        const dwProjectiles = [];
+
         function updateDarkWing() {
             if (currentLevel !== 2) return;
             const cl = clues[activeClueIndex];
+
             if (!darkWing.fightMode) {
+                // ── clue-following mode ──────────────────────────────────
                 darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
-            } else {
-                // in fight mode: rush to be near the hero
-                darkWing._targetX = hero.x - 80;
+                const dx = darkWing._targetX - darkWing.x;
+                if (Math.abs(dx) > 900) {
+                    darkWing.x = darkWing._targetX;
+                } else if (Math.abs(dx) > 12) {
+                    darkWing.x += Math.sign(dx) * 1.6;
+                    darkWing.faceDir = Math.sign(dx);
+                }
+                darkWing.phase += 0.05;
+                const heroMid = hero.x + hero.w / 2;
+                const near = Math.abs(heroMid - darkWing.x) < 90;
+                darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
+                if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
+                // basic attack nearby enemies even before fight mode
+                if (darkWing._attackCD > 0) { darkWing._attackCD--; return; }
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    const d = Math.abs((en.x + en.w / 2) - darkWing.x);
+                    if (d < 110) {
+                        tryHitEnemy(en, 2, 7, 'punch', darkWing);
+                        darkWing._attackCD = 65;
+                        break;
+                    }
+                }
+                return;
             }
-            const dx = darkWing._targetX - darkWing.x;
-            if (Math.abs(dx) > 900) {
-                darkWing.x = darkWing._targetX;
-            } else if (Math.abs(dx) > 12) {
-                darkWing.x += Math.sign(dx) * (darkWing.fightMode ? 2.8 : 1.6);
-                darkWing.faceDir = Math.sign(dx);
+
+            // ── FIGHT MODE: full Batman-style combat AI ──────────────────
+            darkWing.phase += 0.06;
+            if (darkWing._dodgeTimer > 0) darkWing._dodgeTimer--;
+            if (darkWing._blockTimer > 0) { darkWing._blockTimer--; darkWing.blocking = true; } else { darkWing.blocking = false; }
+            if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
+            if (darkWing._smokeCD  > 0) darkWing._smokeCD--;
+            if (darkWing._grappleCD > 0) darkWing._grappleCD--;
+            if (darkWing._attackCD > 0) { darkWing._attackCD--; }
+
+            // update batarang projectiles
+            for (let i = dwProjectiles.length - 1; i >= 0; i--) {
+                const p = dwProjectiles[i];
+                p.x += p.vx; p.y += p.vy;
+                p.life--;
+                if (p.life <= 0) { dwProjectiles.splice(i, 1); continue; }
+                // hit enemy
+                for (const en of enemies) {
+                    if (!en.alive) continue;
+                    if (p.x > en.x && p.x < en.x + en.w && p.y > en.y && p.y < en.y + en.h) {
+                        tryHitEnemy(en, p.dmg, 6, 'punch', darkWing);
+                        spawnImpact(p.x, p.y, 'punch', false);
+                        dwProjectiles.splice(i, 1);
+                        break;
+                    }
+                }
             }
-            darkWing.phase += 0.05;
-            const heroMid = hero.x + hero.w / 2;
-            const near = Math.abs(heroMid - darkWing.x) < 90;
-            darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
-            if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
-            // attack nearby enemies
-            if (darkWing._attackCD > 0) { darkWing._attackCD--; return; }
-            const cd = darkWing.fightMode ? 40 : 65;
+
+            // pick best enemy target: prefer un-boss, closest alive
+            let best = null, bestScore = Infinity;
             for (const en of enemies) {
                 if (!en.alive) continue;
                 const d = Math.abs((en.x + en.w / 2) - darkWing.x);
-                if (d < (darkWing.fightMode ? 160 : 110)) {
-                    tryHitEnemy(en, 2, 7, 'punch', darkWing);
-                    darkWing._attackCD = cd;
-                    break;
+                const score = d + (en.boss ? 0 : 500) * 0; // prefer boss in late fight
+                if (score < bestScore) { bestScore = score; best = en; }
+            }
+            darkWing._targetEnemy = best;
+
+            if (!best) return;
+
+            const enMid = best.x + best.w / 2;
+            const enDist = Math.abs(enMid - darkWing.x);
+
+            // keep a preferred separation of ~80px unless dodging
+            const PREF_DIST = 80;
+            if (darkWing._dodgeTimer <= 0) {
+                const wantX = enMid - darkWing.faceDir * PREF_DIST;
+                const ddx = wantX - darkWing.x;
+                if (Math.abs(ddx) > 15) {
+                    darkWing.x += Math.sign(ddx) * 2.8;
+                    darkWing.faceDir = Math.sign(enMid - darkWing.x);
                 }
+            } else {
+                // dodge roll: slide away fast
+                darkWing.x -= darkWing.faceDir * 4.5;
+            }
+            darkWing.faceDir = enMid < darkWing.x ? -1 : 1;
+
+            // ── gadget selection ─────────────────────────────────────────
+            // smoke bomb: if 3+ enemies within 200px, drop a smoke bomb to stun them
+            if (darkWing._smokeCD <= 0) {
+                let nearby = 0;
+                for (const en of enemies) { if (en.alive && Math.abs((en.x+en.w/2) - darkWing.x) < 200) nearby++; }
+                if (nearby >= 3) {
+                    // smoke: freeze all nearby enemies briefly
+                    for (const en of enemies) {
+                        if (en.alive && Math.abs((en.x+en.w/2) - darkWing.x) < 220) {
+                            en.frozen = Math.max(en.frozen, 90);
+                        }
+                    }
+                    spawnImpact(darkWing.x, GROUND_Y - 40, 'freeze', false);
+                    darkWing._smokeCD = 280;
+                    darkWing._gadgetCD = 30;
+                    return;
+                }
+            }
+
+            // grapple hook: if enemy is far (>300px), fire a grapple to pull them in
+            if (darkWing._grappleCD <= 0 && enDist > 280) {
+                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 40, vx: darkWing.faceDir * 14, vy: 0, life: 40, dmg: 1, type: 'grapple' });
+                darkWing._grappleCD = 220;
+                darkWing._gadgetCD = 20;
+                return;
+            }
+
+            // batarang: throw at mid-range (120-280px)
+            if (darkWing._gadgetCD <= 0 && enDist > 100 && enDist < 300) {
+                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
+                darkWing._gadgetCD = 55;
+                return;
+            }
+
+            // ── melee combo: punch → kick → uppercut ──────────────────────
+            if (darkWing._attackCD <= 0 && enDist < 95) {
+                // dodge incoming if enemy is very close and we haven't dodged recently
+                if (Math.random() < 0.12 && darkWing._dodgeTimer <= 0) {
+                    darkWing._dodgeTimer = 22;
+                    return;
+                }
+                // block briefly before counter
+                if (Math.random() < 0.08 && darkWing._blockTimer <= 0) {
+                    darkWing._blockTimer = 18;
+                    return;
+                }
+                // choose attack: punch (50%), kick (30%), uppercut (20%)
+                const r = Math.random();
+                let dmg = 2, ky = 5;
+                if (r < 0.5) {
+                    dmg = 2; ky = 6;        // punch
+                } else if (r < 0.8) {
+                    dmg = 3; ky = 9;        // kick — stronger
+                    best.vx = darkWing.faceDir * 4;
+                } else {
+                    dmg = 2; ky = 15;       // uppercut — launches up
+                    best.vy = -7;
+                }
+                tryHitEnemy(best, dmg, ky, 'punch', darkWing);
+                darkWing._attackCD = r < 0.5 ? 28 : (r < 0.8 ? 40 : 55);
             }
         }
         function talkToDarkWing() {
@@ -6937,6 +7142,7 @@
                 document.getElementById('hud').style.display = 'none';
                 document.getElementById('controls').style.display = 'none';
                 document.getElementById('ctrlHint').style.display = 'none';
+                document.getElementById('controls').style.display = 'none';
                 if (gameScreen === 'title') drawTitleScreen();
                 else drawHowToScreen();
                 requestAnimationFrame(loop);
