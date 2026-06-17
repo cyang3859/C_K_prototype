@@ -490,6 +490,7 @@
         let currentDistrict = 'downtown';
         let titleCard = { text: '', sub: '', timer: 0 };
         let bossDefeated = false;
+        let currentLevel = 1;
 
         // ---------- STORY MODE: case-file clues about the escaped inmate ----------
         // A modal dialog used for the intro note and each clue pickup. Freezes
@@ -533,6 +534,8 @@
             },
         ];
         let cluesFound = 0;
+        let activeClueIndex = 0;   // only this clue is present in the world right now
+        let pendingTrapCiv = null; // civilian from in-progress trap quest
         let mapOpen = false;
         let grabbedEnemy = null;   // enemy currently held by the hero
         // ── BANK ROBBERY MISSION ──────────────────────────────────────────
@@ -814,6 +817,7 @@
             if (e.code === 'KeyT') p2Mode = (p2Mode === 'ai') ? 'coop' : 'ai';
             if (e.code === 'KeyR') { hound.forceLand = true; hound.flightActive = false; }
             if (e.code === 'KeyM') mapOpen = !mapOpen;
+            if (e.code === 'KeyB' && currentLevel === 2 && !storyModal) { talkToDarkWing(); e.preventDefault(); }
             if (e.code === 'F1') { gameScreen = 'howto'; e.preventDefault(); }  // reopen help
             // ENTER: at a building door (city) go inside; at the exit door (interior) leave.
             if (e.code === 'Enter' && enterCooldown <= 0) {
@@ -848,7 +852,7 @@
                 }
             }
             // F: read a case-file clue found out in the city
-            if (e.code === 'KeyF' && scene === 'city' && interior.note.read) {
+            if (e.code === 'KeyF' && scene === 'city' && (interior.note.read || currentLevel === 2)) {
                 const heroMid = hero.x + hero.w / 2;
                 for (const cl of clues) {
                     if (cl.found) continue;
@@ -4104,7 +4108,7 @@
         // ---------- DRAW ----------
         function draw() {
             const frameNow = Date.now();
-            drawManhattan();
+            if (currentLevel === 2) drawGrungeCity(); else drawManhattan();
 
             ctx.save();
             // screen shake offset (decays in updateHitFX)
@@ -4113,7 +4117,7 @@
             ctx.translate(-camera.x + shx, -camera.y + shy);
 
             // ground / street
-            ctx.fillStyle = '#2c3340';
+            ctx.fillStyle = currentLevel === 2 ? '#1a1a14' : '#2c3340';
             let cursor = 0;
             for (const g of gaps) {
                 ctx.fillRect(cursor, GROUND_Y, g.x - cursor, GROUND_H);
@@ -4139,13 +4143,94 @@
                     ctx.fillStyle = '#0a0f18';
                     ctx.fillRect(g.x, GROUND_Y, g.w, GROUND_H);
                 }
-                ctx.fillStyle = '#2c3340';
+                ctx.fillStyle = currentLevel === 2 ? '#1a1a14' : '#2c3340';
                 cursor = g.x + g.w;
             }
             ctx.fillRect(cursor, GROUND_Y, WORLD_WIDTH - cursor, GROUND_H);
             // curb highlight
-            ctx.fillStyle = '#3f4a5c';
+            ctx.fillStyle = currentLevel === 2 ? '#2a2a1e' : '#3f4a5c';
             ctx.fillRect(0, GROUND_Y, WORLD_WIDTH, 4);
+
+            // ---- Level 2 grunge set-pieces ----
+            if (currentLevel === 2) {
+                // Dumpsters
+                const dumpsterXs = [320, 1800, 3500, 5200, 7400, 10200, 12800, 15600];
+                for (const dx of dumpsterXs) {
+                    ctx.fillStyle = '#2a3a2a';
+                    ctx.fillRect(dx, GROUND_Y - 40, 50, 40);
+                    ctx.fillStyle = '#1a2a1a';
+                    ctx.fillRect(dx + 2, GROUND_Y - 42, 46, 6); // lid base
+                    // jagged lid
+                    ctx.fillStyle = '#222e22';
+                    ctx.beginPath();
+                    ctx.moveTo(dx + 2, GROUND_Y - 42);
+                    for (let ji = 0; ji < 5; ji++) {
+                        ctx.lineTo(dx + 2 + ji * 9, GROUND_Y - 42 - (ji % 2 === 0 ? 4 : 0));
+                    }
+                    ctx.lineTo(dx + 48, GROUND_Y - 42);
+                    ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#3a5a3a';
+                    ctx.font = '7px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('WASTE', dx + 25, GROUND_Y - 18);
+                }
+                // Oil drums
+                const drumXs = [600, 2500, 5900, 9300, 11300, 14600];
+                for (const ox of drumXs) {
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.beginPath(); ctx.ellipse(ox, GROUND_Y - 20, 14, 22, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#cc4400';
+                    ctx.fillRect(ox - 14, GROUND_Y - 28, 28, 4);
+                    ctx.fillRect(ox - 14, GROUND_Y - 16, 28, 4);
+                }
+                // Broken fences
+                const fenceXs = [950, 2200, 4100, 6800, 8600, 11800, 13400, 16200];
+                for (const fx of fenceXs) {
+                    ctx.fillStyle = '#3a2a1a';
+                    for (let fp = 0; fp < 5; fp++) {
+                        const leanX = fx + fp * 14 + (fp % 3 === 1 ? 3 : 0);
+                        const leanA = (fp % 2 === 0 ? -0.08 : 0.12);
+                        ctx.save();
+                        ctx.translate(leanX + 4, GROUND_Y);
+                        ctx.rotate(leanA);
+                        ctx.fillRect(-3, -44, 6, 44);
+                        ctx.restore();
+                    }
+                    ctx.fillStyle = '#2a1a0a';
+                    ctx.fillRect(fx, GROUND_Y - 34, 70, 5);
+                    ctx.fillRect(fx, GROUND_Y - 18, 70, 5);
+                }
+                // Smoke stacks
+                const stackXs = [4600, 8100, 12200];
+                for (let si = 0; si < stackXs.length; si++) {
+                    const sx = stackXs[si];
+                    ctx.fillStyle = '#1a1a18';
+                    ctx.fillRect(sx - 10, GROUND_Y - 160, 20, 160);
+                    ctx.fillStyle = '#141412';
+                    ctx.fillRect(sx - 12, GROUND_Y - 168, 24, 14);
+                    // animated smoke puffs
+                    const puffT = (frameNow * 0.0008 + si * 0.5) % 1;
+                    const puffY = GROUND_Y - 170 - puffT * 80;
+                    const puffA = (1 - puffT) * 0.4;
+                    const puffR = 8 + puffT * 20;
+                    ctx.globalAlpha = puffA;
+                    ctx.fillStyle = '#3a3a38';
+                    ctx.beginPath(); ctx.arc(sx, puffY, puffR, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(sx + 10, puffY - 12, puffR * 0.7, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                // Oil slick shimmer at gap edges
+                for (const g of gaps) {
+                    const slickColors = ['rgba(80,40,0,0.3)', 'rgba(40,80,20,0.25)', 'rgba(20,40,80,0.2)'];
+                    for (let oi = 0; oi < 3; oi++) {
+                        const slickX = g.x - 60 + oi * 12;
+                        const shimmer = 0.5 + Math.sin(frameNow * 0.003 + oi) * 0.3;
+                        ctx.globalAlpha = shimmer * 0.6;
+                        ctx.fillStyle = slickColors[oi % slickColors.length];
+                        ctx.fillRect(slickX, GROUND_Y - 3, 40, 5);
+                    }
+                    ctx.globalAlpha = 1;
+                }
+            }
 
             // ---- rooftop / floating platforms ----
             for (const p of platforms) {
@@ -4258,7 +4343,7 @@
             }
 
             // ---- STORY CLUES: case-file pickups revealing the escapee's identity ----
-            if (interior.note.read) {
+            if (interior.note.read || currentLevel === 2) {
                 for (const cl of clues) {
                     if (cl.found) continue;
                     const bob = Math.sin(Date.now() * 0.004 + cl.x) * 5;
@@ -4379,6 +4464,86 @@
             // heroes
             drawEntity(hero);
             drawEntity(hound);
+
+            // ---- DARK WING NPC (Level 2 only) ----
+            if (currentLevel === 2 && darkWing) {
+                const dw = darkWing;
+                const dwx = dw.x, dwy = GROUND_Y - 80;
+                const bob = Math.sin(dw.phase) * 1.0;
+                ctx.save();
+                // cape (behind body)
+                ctx.fillStyle = '#1a1a22';
+                ctx.beginPath();
+                ctx.moveTo(dwx - 14, dwy + bob);
+                // scalloped bottom edge
+                for (let sc = 0; sc < 5; sc++) {
+                    const scx = dwx - 14 + sc * 7;
+                    ctx.quadraticCurveTo(scx + 2, dwy + 56 + bob, scx + 7, dwy + 50 + bob);
+                }
+                ctx.lineTo(dwx + 20, dwy + bob);
+                ctx.closePath(); ctx.fill();
+                // body/suit
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(dwx - 10, dwy + 20 + bob, 20, 32);
+                // yellow utility belt
+                ctx.fillStyle = '#c8a000';
+                ctx.fillRect(dwx - 11, dwy + 42 + bob, 22, 5);
+                // legs
+                ctx.fillStyle = '#111111';
+                ctx.fillRect(dwx - 8, dwy + 52 + bob, 7, 28);
+                ctx.fillRect(dwx + 1, dwy + 52 + bob, 7, 28);
+                // boots
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(dwx - 9, dwy + 72 + bob, 9, 8);
+                ctx.fillRect(dwx, dwy + 72 + bob, 9, 8);
+                // cowl
+                ctx.fillStyle = '#111118';
+                ctx.beginPath(); ctx.arc(dwx, dwy + 10 + bob, 11, 0, Math.PI * 2); ctx.fill();
+                // bat ears
+                ctx.fillStyle = '#0a0a14';
+                ctx.beginPath();
+                ctx.moveTo(dwx - 10, dwy + 4 + bob);
+                ctx.lineTo(dwx - 14, dwy - 8 + bob);
+                ctx.lineTo(dwx - 5, dwy + 2 + bob);
+                ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(dwx + 10, dwy + 4 + bob);
+                ctx.lineTo(dwx + 14, dwy - 8 + bob);
+                ctx.lineTo(dwx + 5, dwy + 2 + bob);
+                ctx.closePath(); ctx.fill();
+                // white eye slits
+                ctx.fillStyle = '#ffffff';
+                const ew = dw.faceDir * 2;
+                ctx.fillRect(dwx - 7 + ew, dwy + 8 + bob, 5, 2);
+                ctx.fillRect(dwx + 1 + ew, dwy + 8 + bob, 5, 2);
+                // greeting bubble or name
+                if (dw.greeting > 20) {
+                    const hints = [
+                        "I've tracked him for years.",
+                        "Stay sharp — he's close.",
+                        "Press B for intel.",
+                        "Don't let his men surround you."
+                    ];
+                    const hint = hints[Math.floor(Date.now() / 4000) % hints.length];
+                    const bw = 160, bh = 26, bx = dwx - bw / 2, bby = dwy - 18 + bob;
+                    ctx.fillStyle = 'rgba(10,10,20,0.95)';
+                    ctx.strokeStyle = '#4488ff'; ctx.lineWidth = 1.5;
+                    ctx.fillRect(bx, bby, bw, bh);
+                    ctx.strokeRect(bx, bby, bw, bh);
+                    ctx.beginPath(); ctx.moveTo(dwx - 5, bby + bh); ctx.lineTo(dwx + 5, bby + bh); ctx.lineTo(dwx, bby + bh + 8); ctx.fill();
+                    ctx.fillStyle = '#aaddff'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(hint, dwx, bby + 16);
+                    const pulse = 0.6 + Math.sin(Date.now() * 0.006) * 0.4;
+                    ctx.globalAlpha = pulse;
+                    ctx.fillStyle = '#4488ff'; ctx.font = 'bold 9px Arial';
+                    ctx.fillText('Press B for intel', dwx, dwy - 30 + bob);
+                    ctx.globalAlpha = 1;
+                } else {
+                    ctx.fillStyle = 'rgba(100,160,255,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Dark Wing', dwx, dwy - 6 + bob);
+                }
+                ctx.restore();
+            }
 
             // impact animations on top
             drawHitFX();
@@ -4786,11 +4951,21 @@
             // emitter animation phase
             for (const em of emitters) em.phase = (em.phase || 0) + 0.08;
 
+            // Level 2: spawn final battle once all clues are found (and no boss yet)
+            if (currentLevel === 2 && cluesFound >= clues.length && !enemies.find(e => e.boss) && !bossDefeated) {
+                spawnFinalBattle();
+            }
+
             // boss defeated?
             const boss = enemies.find(e => e.boss);
             if (boss && !boss.alive && !bossDefeated) {
                 bossDefeated = true;
-                titleCard = { text: 'CITY SAVED', sub: 'The Warlord has fallen. You win!', timer: 600 };
+                if (currentLevel === 1) {
+                    titleCard = { text: 'CITY SAVED', sub: 'The Warlord has fallen. Heading to the Badlands...', timer: 240 };
+                    setTimeout(() => startLevel2(), 4000);
+                } else {
+                    titleCard = { text: '★ YOU WIN ★', sub: 'Lex Luthor is defeated. The Badlands are clear!', timer: 600 };
+                }
             }
         }
 
@@ -4809,6 +4984,354 @@
             document.getElementById('objCount').textContent =
                 (civDone + emiDone) + '/' + (civilians.length + emitters.length);
             document.getElementById('clueCount').textContent = cluesFound + '/' + clues.length;
+        }
+
+        // ============================================================
+        //  LEVEL 2 — THE BADLANDS
+        // ============================================================
+
+        // ---- Level 2 world data ----
+        const l2Gaps = [
+            { x: 600,  w: 160 },
+            { x: 2400, w: 220 },
+            { x: 5800, w: 500 },   // oil pit
+            { x: 9200, w: 280 },
+        ];
+
+        const l2Districts = [
+            { id: 'ruins',      name: 'THE RUINS',       x0: 0,    x1: 4500,  color: '#4a3a2a', intro: 'Crumbling streets. Something was here.',        unlocked: true },
+            { id: 'industrial', name: 'INDUSTRIAL ZONE', x0: 4500, x1: 9500,  color: '#3a4a3a', intro: 'Oil fields and smoke. Eyes watching.',            unlocked: true },
+            { id: 'badlands',   name: 'THE BADLANDS',    x0: 9500, x1: 18000, color: '#2a2a2a', intro: 'His fortress. End it here.',                      unlocked: true },
+        ];
+
+        const l2Gateways = [
+            { x: 4500, name: 'INDUSTRIAL ZONE', to: 'industrial' },
+            { x: 9500, name: 'THE BADLANDS',    to: 'badlands',  locked: false },
+        ];
+
+        const l2Buildings = [
+            { x: 150,   w: 160, h: 155, type: 'pawnshop',  district: 'ruins',      name: 'PAWN KING' },
+            { x: 680,   w: 140, h: 165, type: 'diner',     district: 'ruins',      name: 'IRON HORSE BAR' },
+            { x: 1500,  w: 170, h: 185, type: 'warehouse', district: 'ruins',      name: 'EAST SIDE WAREHOUSE' },
+            { x: 2700,  w: 150, h: 175, type: 'shop',      district: 'ruins',      name: 'SCRAP & SALVAGE' },
+            { x: 3800,  w: 155, h: 160, type: 'warehouse', district: 'ruins',      name: 'RUST DEPOT' },
+            { x: 5000,  w: 165, h: 175, type: 'warehouse', district: 'industrial', name: 'ABANDONED FACTORY' },
+            { x: 6400,  w: 148, h: 155, type: 'pawnshop',  district: 'industrial', name: 'IRON WORKS' },
+            { x: 7600,  w: 160, h: 170, type: 'diner',     district: 'industrial', name: 'GREASE PIT DINER' },
+            { x: 8700,  w: 145, h: 160, type: 'warehouse', district: 'industrial', name: 'CHEMICAL PLANT' },
+            { x: 10200, w: 155, h: 165, type: 'shop',      district: 'badlands',   name: 'SUPPLY DEPOT' },
+            { x: 12000, w: 170, h: 185, type: 'warehouse', district: 'badlands',   name: 'ARMORY BLOCK' },
+            { x: 14200, w: 180, h: 210, type: 'warehouse', district: 'badlands',   name: 'LEXCORP COMMAND' },
+            { x: 16000, w: 165, h: 195, type: 'warehouse', district: 'badlands',   name: 'CENTRAL TOWER' },
+        ];
+
+        const l2Hazards = [
+            { x: 1600,  y: 0, w: 18, h: 900, activatesOnClue: 0, hp: 3, destroyed: false, phase: 0 },
+            { x: 4500,  y: 0, w: 18, h: 900, activatesOnClue: 1, hp: 3, destroyed: false, phase: 0 },
+            { x: 7800,  y: 0, w: 18, h: 900, activatesOnClue: 2, hp: 3, destroyed: false, phase: 0 },
+            { x: 11200, y: 0, w: 18, h: 900, activatesOnClue: 3, hp: 3, destroyed: false, phase: 0 },
+            { x: 14500, y: 0, w: 18, h: 900, activatesOnClue: 4, hp: 3, destroyed: false, phase: 0 },
+        ];
+
+        const l2Orbs = [
+            { x: 300,   y: 700, r: 12, taken: false }, { x: 750,   y: 550, r: 12, taken: false },
+            { x: 1200,  y: 480, r: 12, taken: false }, { x: 1700,  y: 620, r: 12, taken: false },
+            { x: 2100,  y: 380, r: 12, taken: false }, { x: 2600,  y: 500, r: 12, taken: false },
+            { x: 3100,  y: 660, r: 12, taken: false }, { x: 3600,  y: 420, r: 12, taken: false },
+            { x: 4200,  y: 580, r: 12, taken: false }, { x: 4900,  y: 340, r: 12, taken: false },
+            { x: 5500,  y: 640, r: 12, taken: false }, { x: 6200,  y: 480, r: 12, taken: false },
+            { x: 6900,  y: 360, r: 12, taken: false }, { x: 7500,  y: 520, r: 12, taken: false },
+            { x: 8300,  y: 680, r: 12, taken: false }, { x: 9000,  y: 440, r: 12, taken: false },
+            { x: 9700,  y: 300, r: 12, taken: false }, { x: 10500, y: 600, r: 12, taken: false },
+            { x: 11400, y: 420, r: 12, taken: false }, { x: 12200, y: 560, r: 12, taken: false },
+            { x: 13000, y: 360, r: 12, taken: false }, { x: 13800, y: 500, r: 12, taken: false },
+            { x: 14600, y: 680, r: 12, taken: false }, { x: 15400, y: 320, r: 12, taken: false },
+            { x: 16200, y: 460, r: 12, taken: false }, { x: 17000, y: 600, r: 12, taken: false },
+        ];
+
+        const l2Platforms = [];
+
+        const l2Emitters = [
+            { x: 4800,  y: 440, hp: 3, destroyed: false, phase: 0 },
+            { x: 12400, y: 400, hp: 3, destroyed: false, phase: 0 },
+        ];
+
+        const l2Clues = [
+            {
+                x: 800, found: false, questType: 'rescue',
+                civName: 'Stranded Worker', trapTypes: ['brute', 'brute'], lines: [
+                    "BADLANDS FILE — CLUE 1 OF 5",
+                    "A torn business card in the rubble. Barely legible: '...LEXCORP INDUSTRIES'. The escapee wasn't running from prison — he was running to something."
+                ]
+            },
+            {
+                x: 3200, found: false, questType: 'lockdown',
+                civName: 'Security Guard', trapTypes: ['brute', 'genius'], lines: [
+                    "BADLANDS FILE — CLUE 2 OF 5",
+                    "A hidden ledger: weapons purchases, reactor parts, mercenary contracts. Every line signed with a stylized 'L'. This operation has deep pockets."
+                ]
+            },
+            {
+                x: 6100, found: false, questType: 'cargo',
+                civName: 'Stolen Reactor Core', trapTypes: ['genius', 'genius', 'energy'], isObject: true, lines: [
+                    "BADLANDS FILE — CLUE 3 OF 5",
+                    "Surveillance still: a bald man in a power suit, standing at the center of a makeshift command post. He's not hiding anymore — he's building."
+                ]
+            },
+            {
+                x: 9800, found: false, questType: 'chase',
+                civName: 'Armored Convoy', trapTypes: ['genius', 'energy', 'energy', 'energy'], isVehicle: true, lines: [
+                    "BADLANDS FILE — CLUE 4 OF 5",
+                    "LexCorp branding on every crate, every vehicle. \"He was funding an army,\" Dark Wing says grimly. \"And now that army is here.\""
+                ]
+            },
+            {
+                x: 14000, found: false, questType: 'rescue',
+                civName: 'Captured Informant', trapTypes: ['genius', 'genius', 'energy', 'energy'], lines: [
+                    "BADLANDS FILE — CLUE 5 OF 5",
+                    "The informant gasps: \"He's in the central tower — Lex Luthor. He never escaped to hide. He escaped to FINISH what he started.\"",
+                    "\"He has thirty of his best men down there,\" Dark Wing says. \"We go in together.\""
+                ]
+            },
+        ];
+
+        // ---- Dark Wing NPC ----
+        let darkWing = null;
+
+        function initDarkWing() {
+            darkWing = {
+                x: 200, y: GROUND_Y - 80, phase: 0, dir: 1, faceDir: 1,
+                greeting: 0, _targetX: 200, _attackCD: 0, fightMode: false
+            };
+        }
+
+        function updateDarkWing() {
+            if (currentLevel !== 2 || !darkWing) return;
+            const cl = clues[activeClueIndex];
+            if (cl) darkWing._targetX = cl.x - 70;
+            const dx = darkWing._targetX - darkWing.x;
+            if (Math.abs(dx) > 800) {
+                darkWing.x = darkWing._targetX;
+            } else if (Math.abs(dx) > 10) {
+                darkWing.x += Math.sign(dx) * 1.8;
+                darkWing.faceDir = Math.sign(dx);
+            }
+            darkWing.phase += 0.05;
+            const heroMid = hero.x + hero.w / 2;
+            const near = Math.abs(heroMid - darkWing.x) < 90;
+            darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
+            if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
+            // attack nearby enemies
+            if ((darkWing._attackCD || 0) > 0) { darkWing._attackCD--; return; }
+            for (const en of enemies) {
+                if (!en.alive) continue;
+                const d = Math.abs((en.x + en.w / 2) - darkWing.x);
+                if (d < 120) {
+                    tryHitEnemy(en, 2, 6, 'punch', darkWing);
+                    darkWing._attackCD = 60;
+                    break;
+                }
+            }
+        }
+
+        function talkToDarkWing() {
+            const found = clues.filter(c => c.found);
+            const lines = ['DARK WING — The Night Vigilante'];
+            if (found.length === 0) {
+                lines.push("I've been tracking Lex Luthor for years. He's not just escaped — he's executing a plan.");
+                lines.push("Find the clues. I'll back you up.");
+            } else {
+                lines.push("Here's what we know about Lex Luthor's operation:");
+                for (const cl of found) {
+                    if (cl.lines && cl.lines[1]) lines.push('• ' + cl.lines[1].slice(0, 80) + (cl.lines[1].length > 80 ? '...' : ''));
+                }
+                if (activeClueIndex >= clues.length) {
+                    lines.push("We have everything. He's in the central tower. Let's finish this — together.");
+                } else {
+                    lines.push("Keep moving. The next clue is out there. He won't stop until we stop him.");
+                }
+            }
+            showStory(lines);
+        }
+
+        function spawnFinalBattle() {
+            // 30 enemies clustered around Lex's fortress
+            const enemyTypes = ['brute', 'genius', 'brute', 'genius', 'energy'];
+            for (let i = 0; i < 30; i++) {
+                const ex = 14500 + (i % 10) * 150 + Math.random() * 60;
+                const t = enemyTypes[i % enemyTypes.length];
+                const base = {
+                    x: ex, alive: true, frozen: 0, dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
+                    vx: (Math.random() < 0.5 ? -1 : 1) * 1.2, maxHp: 3, hp: 3
+                };
+                if (t === 'energy') {
+                    enemies.push(Object.assign(base, {
+                        y: 500 + Math.random() * 200, w: 44, h: 44,
+                        minX: ex - 140, maxX: ex + 140,
+                        vy: (Math.random() < 0.5 ? -0.5 : 0.5), minY: 400, maxY: 700, type: 'energy'
+                    }));
+                } else if (t === 'genius') {
+                    enemies.push(Object.assign(base, {
+                        y: GROUND_Y - 50, w: 38, h: 50,
+                        minX: ex - 140, maxX: ex + 140, type: 'genius'
+                    }));
+                } else {
+                    enemies.push(Object.assign(base, {
+                        y: GROUND_Y - 52, w: 40, h: 52,
+                        minX: ex - 140, maxX: ex + 140, type: 'brute'
+                    }));
+                }
+            }
+            // Lex Luthor boss
+            enemies.push({
+                x: 15200, y: GROUND_Y - 96, w: 76, h: 96, hp: 12, maxHp: 12,
+                type: 'genius', boss: true, alive: true, frozen: 0,
+                dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0,
+                vx: 0.8, minX: 15000, maxX: 15400
+            });
+            titleCard = {
+                text: '⚠ LEX LUTHOR ⚠',
+                sub: 'He has been planning this since day one. Finish it.',
+                timer: 300
+            };
+            if (darkWing) darkWing.fightMode = true;
+        }
+
+        function startLevel2() {
+            // Swap all world arrays to level 2 content
+            gaps.splice(0, gaps.length, ...l2Gaps);
+            districts.splice(0, districts.length, ...l2Districts);
+            gateways.splice(0, gateways.length, ...l2Gateways);
+            buildings.splice(0, buildings.length, ...l2Buildings);
+            hazards.splice(0, hazards.length, ...l2Hazards);
+            orbs.splice(0, orbs.length, ...l2Orbs);
+            platforms.splice(0, platforms.length, ...l2Platforms);
+            emitters.splice(0, emitters.length, ...l2Emitters);
+            clues.splice(0, clues.length, ...l2Clues);
+
+            // Reset clue / quest state
+            activeClueIndex = 0;
+            cluesFound = 0;
+            pendingTrapCiv = null;
+
+            // Clear dynamic objects
+            enemies.splice(0);
+            civilians.splice(0);
+            carriedCivilians = [];
+            orbsCollected = 0;
+
+            // Place hero & hound at start
+            hero.x = 200; hero.y = GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true;
+            hound.x = 150; hound.y = GROUND_Y - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.flightActive = false; hound.onGround = true;
+
+            // Reset camera
+            camera.x = 0; camera.y = 0;
+
+            // Reset level state
+            currentLevel = 2;
+            currentDistrict = 'ruins';
+            bossDefeated = false;
+
+            // Show title card
+            titleCard = {
+                text: 'LEVEL 2 — THE BADLANDS',
+                sub: 'Something worse is lurking in the shadows...',
+                timer: 300
+            };
+
+            // Init Dark Wing
+            initDarkWing();
+        }
+
+        // ---- drawGrungeCity: Level 2 background ----
+        function drawGrungeCity() {
+            // Always stormy, overcast — no sun/moon visible
+            const sky = ctx.createLinearGradient(0, 0, 0, H);
+            sky.addColorStop(0, '#1a1208');
+            sky.addColorStop(0.35, '#2a1e0e');
+            sky.addColorStop(0.65, '#3a2c14');
+            sky.addColorStop(1, '#4a3818');
+            ctx.fillStyle = sky;
+            ctx.fillRect(0, 0, W, H);
+
+            // Storm cloud layer
+            ctx.fillStyle = 'rgba(10,8,4,0.55)';
+            ctx.fillRect(0, 0, W, H * 0.45);
+
+            // Smog / haze at horizon
+            const smog = ctx.createLinearGradient(0, H * 0.45, 0, H * 0.72);
+            smog.addColorStop(0, 'rgba(40,30,10,0)');
+            smog.addColorStop(0.5, 'rgba(60,45,15,0.35)');
+            smog.addColorStop(1, 'rgba(80,60,20,0)');
+            ctx.fillStyle = smog;
+            ctx.fillRect(0, H * 0.45, W, H * 0.27);
+
+            // Distant ruined building silhouettes (parallax)
+            ctx.fillStyle = '#120e06';
+            const silhouettes = [
+                { ox: 0.05, w: 90, h: 180, jagged: true },
+                { ox: 0.14, w: 60, h: 120, jagged: false },
+                { ox: 0.22, w: 110, h: 200, jagged: true },
+                { ox: 0.31, w: 75, h: 155, jagged: false },
+                { ox: 0.40, w: 95, h: 170, jagged: true },
+                { ox: 0.50, w: 80, h: 140, jagged: false },
+                { ox: 0.60, w: 115, h: 190, jagged: true },
+                { ox: 0.70, w: 70, h: 130, jagged: false },
+                { ox: 0.80, w: 100, h: 175, jagged: true },
+                { ox: 0.90, w: 85, h: 160, jagged: false },
+            ];
+            for (const s of silhouettes) {
+                const bx = (s.ox * W * 3 - camera.x * 0.08) % (W * 1.2) - 60;
+                const bh = s.h;
+                const by = H - bh - 50;
+                if (s.jagged) {
+                    // broken roofline
+                    ctx.beginPath();
+                    ctx.moveTo(bx, H);
+                    ctx.lineTo(bx, by + 30);
+                    ctx.lineTo(bx + s.w * 0.2, by + 10);
+                    ctx.lineTo(bx + s.w * 0.3, by + 25);
+                    ctx.lineTo(bx + s.w * 0.5, by);
+                    ctx.lineTo(bx + s.w * 0.6, by + 15);
+                    ctx.lineTo(bx + s.w * 0.75, by + 5);
+                    ctx.lineTo(bx + s.w * 0.85, by + 20);
+                    ctx.lineTo(bx + s.w, by + 35);
+                    ctx.lineTo(bx + s.w, H);
+                    ctx.closePath(); ctx.fill();
+                } else {
+                    ctx.fillRect(bx, by, s.w, bh);
+                }
+                // dim windows on some
+                ctx.fillStyle = 'rgba(80,60,10,0.3)';
+                for (let wi = 0; wi < 3; wi++) {
+                    ctx.fillRect(bx + 12 + wi * 18, by + 20, 10, 14);
+                }
+                ctx.fillStyle = '#120e06';
+            }
+
+            // Rolling storm clouds
+            const t = Date.now() * 0.0003;
+            for (let ci = 0; ci < 8; ci++) {
+                const cx2 = ((ci * 220 + t * 40) % (W + 300)) - 150;
+                const cy2 = 60 + (ci % 3) * 55;
+                const cr = 55 + (ci % 3) * 25;
+                const alpha = 0.18 + (ci % 2) * 0.1;
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = '#0a0804';
+                ctx.beginPath(); ctx.arc(cx2, cy2, cr, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 + cr * 0.6, cy2 + 10, cr * 0.7, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 - cr * 0.5, cy2 + 8, cr * 0.65, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            // Faint red/orange glow near horizon (fires in the distance)
+            const fireGlow = ctx.createRadialGradient(W * 0.5, H * 0.72, 0, W * 0.5, H * 0.72, W * 0.5);
+            fireGlow.addColorStop(0, 'rgba(180,60,10,0.18)');
+            fireGlow.addColorStop(1, 'rgba(180,60,10,0)');
+            ctx.fillStyle = fireGlow;
+            ctx.fillRect(0, H * 0.4, W, H * 0.35);
         }
 
         // ---------- LOOP ----------
@@ -5497,6 +6020,7 @@
             updateCivilians();
             updateAmbientNPCs();
             updateBankRobbery();
+            if (currentLevel === 2) updateDarkWing();
             updateWorldState();
             updateHitFX();
             updateCamera();
