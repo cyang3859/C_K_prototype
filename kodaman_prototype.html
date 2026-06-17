@@ -140,7 +140,7 @@
             . Punch &nbsp; , Laser &nbsp; ' Freeze &nbsp; R: land Hound
             <div class="grp">M: map &nbsp; N: case file &nbsp; T: P1/P2 &nbsp; H: hide panel &nbsp; F1: help</div>
         </div>
-        <div id="ctrlHint" style="display:none;">H: show controls</div>
+        <div id="ctrlHint" style="display:none;"></div>
     </div>
 
     <script>
@@ -1472,7 +1472,6 @@
             if (e.code === 'KeyH') {
                 controlsVisible = !controlsVisible;
                 document.getElementById('controls').classList.toggle('hidden', !controlsVisible);
-                document.getElementById('ctrlHint').style.display = controlsVisible ? 'none' : 'block';
             }
             // prevent page scroll on arrows/space
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -2145,7 +2144,6 @@
                         tryHitEnemy(hTarget, 2, 10, 'punch', hound);
                         spawnImpact(hTarget.x + hTarget.w / 2, hTarget.y, 'punch', false);
                         hound._grabCooldown = 80;
-                        titleCard = { text: 'SCATTER!', sub: '', timer: 60 };
                     }
                 }
                 if ((hound._grabCooldown || 0) > 0) hound._grabCooldown--;
@@ -7323,7 +7321,7 @@
             if (!loop._uiShown) {
                 document.getElementById('hud').style.display = '';
                 document.getElementById('controls').style.display = controlsVisible ? '' : 'none';
-                document.getElementById('ctrlHint').style.display = controlsVisible ? 'none' : 'block';
+                // ctrlHint permanently hidden
                 titleCard = { text: 'THE WEEKLY PLANET', sub: 'Your city needs you. Head to EXIT to begin!', timer: 240 };
                 loop._uiShown = true;
             }
