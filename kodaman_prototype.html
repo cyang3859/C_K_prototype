@@ -1419,7 +1419,14 @@
                 for (let i = carriedCivilians.length - 1; i >= 0; i--) {
                     const c = carriedCivilians[i];
                     if (!c.inSafeZone) continue;
-                    c.rescued = true; c.carried = false;
+                    // Place the civilian visibly on the ground next to the hero
+                    c.rescued = true;
+                    c.carried = false;
+                    c.x = hero.x + hero.facing * 30;
+                    c.y = GROUND_Y - c.h;
+                    c.roamDir = -hero.facing;
+                    c.stopTimer = 120;   // stand still for 2 sec so player can see them
+                    c.safeDropped = true; // flag: render with happy wave, don't wander far
                     carriedCivilians.splice(i, 1);
                     spawnRescueFX(c.x + c.w / 2, c.y - 10);
                     names.push(c.name);
@@ -5784,6 +5791,7 @@
                 }
                 pendingTrapCiv = null;
                 questZone = null;
+                darkWing.zoneCombat = false;
                 activeClueIndex++;
                 if (activeClueIndex >= clues.length) {
                     if (currentLevel === 2) spawnFinalBattle(); else spawnBoss();
@@ -5951,6 +5959,7 @@
             darkWing._targetX = darkWing.x;
             darkWing.fightMode = false;
             darkWing.driving = false;
+            darkWing.zoneCombat = false;
             titleCard = { text: 'LEVEL 2 — THE BADLANDS', sub: 'Something worse is lurking in the shadows. Dark Wing is with you.', timer: 360 };
         }
 
@@ -6005,7 +6014,8 @@
             _gadgetCD: 0, _dodgeTimer: 0, _blockTimer: 0,
             _smokeCD: 0, _grappleCD: 0, _targetEnemy: null,
             hp: 20, maxHp: 20, blocking: false,
-            driving: false, _driveTrailX: 200
+            driving: false, _driveTrailX: 200,
+            zoneCombat: false
         };
 
         // projectiles from Dark Wing gadgets
@@ -6027,12 +6037,55 @@
                 } else {
                     // arrived — switch to zone combat
                     darkWing.driving = false;
+                    darkWing.zoneCombat = true;
+                    darkWing._targetX = darkWing.x;  // anchor here
                     titleCard = { text: 'DARK WING ARRIVED', sub: 'Fighting alongside you at ' + (questZone ? questZone.label : 'the zone') + '!', timer: 150 };
                 }
                 return;
             }
 
             if (!darkWing.fightMode) {
+                // ── zone combat: stay at zone and fight until quest resolves ─
+                if (darkWing.zoneCombat) {
+                    const zx = questZone ? questZone.x : darkWing._targetX;
+                    const zdx = zx - darkWing.x;
+                    if (Math.abs(zdx) > 40) {
+                        darkWing.x += Math.sign(zdx) * 2.2;
+                        darkWing.faceDir = Math.sign(zdx);
+                    }
+                    darkWing.phase += 0.05;
+                    if (darkWing._attackCD > 0) { darkWing._attackCD--; }
+                    else {
+                        // Attack any enemy within 180px of the zone center
+                        let target = null, tDist = Infinity;
+                        for (const en of enemies) {
+                            if (!en.alive) continue;
+                            const d = Math.abs((en.x + en.w / 2) - zx);
+                            if (d < 180 && d < tDist) { tDist = d; target = en; }
+                        }
+                        if (target) {
+                            const enDist = Math.abs((target.x + target.w/2) - darkWing.x);
+                            darkWing.faceDir = (target.x + target.w/2) < darkWing.x ? -1 : 1;
+                            if (enDist < 95) {
+                                const r = Math.random();
+                                const dmg = r < 0.5 ? 2 : 3;
+                                const ky  = r < 0.5 ? 6  : 9;
+                                if (r >= 0.5) target.vx = darkWing.faceDir * 4;
+                                tryHitEnemy(target, dmg, ky, 'punch', darkWing);
+                                darkWing._attackCD = r < 0.5 ? 30 : 45;
+                            } else if (enDist < 280 && darkWing._gadgetCD <= 0) {
+                                dwProjectiles.push({ x: darkWing.x, y: GROUND_Y - 55, vx: darkWing.faceDir * 9, vy: -1, life: 50, dmg: 3, type: 'batarang' });
+                                darkWing._gadgetCD = 55;
+                                darkWing._attackCD = 20;
+                            } else {
+                                // chase the target
+                                darkWing.x += Math.sign(target.x - darkWing.x) * 2.5;
+                            }
+                        }
+                    }
+                    if (darkWing._gadgetCD > 0) darkWing._gadgetCD--;
+                    return;
+                }
                 // ── clue-following mode ──────────────────────────────────
                 darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
                 const dx = darkWing._targetX - darkWing.x;
