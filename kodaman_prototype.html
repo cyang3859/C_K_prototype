@@ -2818,10 +2818,11 @@
                         e.preventDefault(); break;
                     }
                 }
-                // Exit door — trigger when hero is near the left-side door (x<160)
-                if (hero.x < 160) { exitLexlab(); e.preventDefault(); }
-                else if (labExitReady) {
-                    titleCard = { text: 'EXIT THE BUILDING', sub: 'Walk all the way to the left wall, then press F.', timer: 140 };
+                // Exit door — once labExitReady any F press leaves; before that only the door area works
+                if (labExitReady) {
+                    exitLexlab(); e.preventDefault();
+                } else if (hero.x < 160) {
+                    exitLexlab(); e.preventDefault();
                 }
             }
             // LexCorp Research Lab entry
@@ -9646,6 +9647,7 @@
 
         function updateLabLois() {
             if (!labLois.active || scene !== 'lab') return;
+            if (activeDialogue) return;   // freeze Lois while any dialogue is playing
             labLois.phase += 0.05;
             // Simple gravity
             if (!labLois._onGround) {
