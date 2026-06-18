@@ -559,6 +559,186 @@
         let prisonEnemyCount   = 0;
         let prisonEnemiesSpawned = false;
 
+        // ── PHASE 5: CONSTRUCTION YARD ───────────────────────────────────────
+        const CONSTRUCTION_X = 8400;
+        let constructionSpawned = false;
+        let workersInterrogated = 0;
+
+        // 3 workers + 1 henchman (index 3 is the henchman)
+        const yardWorkers = [
+            { x: CONSTRUCTION_X - 280, y: GROUND_Y, faceDir: 1, phase: 0, isHenchman: false, interrogated: false, name: 'WORKER' },
+            { x: CONSTRUCTION_X + 60,  y: GROUND_Y, faceDir:-1, phase: 1, isHenchman: false, interrogated: false, name: 'WORKER' },
+            { x: CONSTRUCTION_X + 280, y: GROUND_Y, faceDir: 1, phase: 2, isHenchman: false, interrogated: false, name: 'WORKER' },
+            { x: CONSTRUCTION_X - 80,  y: GROUND_Y, faceDir:-1, phase: 0.5, isHenchman: true,  interrogated: false, name: 'WORKER', _fleeing: false, _vx: 0 },
+        ];
+
+        function initConstructionYard() {
+            if (constructionSpawned) return;
+            constructionSpawned = true;
+            workersInterrogated = 0;
+            titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — find the henchman hiding among them.', timer: 240 };
+        }
+
+        function updateYardWorkers() {
+            if (!constructionSpawned || scene !== 'city' || currentLevel !== 1) return;
+            for (const w of yardWorkers) {
+                w.phase += 0.04;
+                w.y = GROUND_Y;
+                if (w.isHenchman && w._fleeing) {
+                    // Flee rightward
+                    w._vx = Math.min(w._vx + 0.4, 6.5);
+                    w.x += w._vx;
+                    w.faceDir = 1;
+                    // Hero catches henchman
+                    if (questPhase === 'henchman_flee') {
+                        const heroMid = hero.x + hero.w / 2;
+                        if (Math.abs(heroMid - w.x) < 70) {
+                            w._fleeing = false;
+                            advanceQuest('henchman_caught');
+                            startDialogue({
+                                speaker: 'CK', portrait: 'hero',
+                                lines: ['Stop right there!'],
+                                onDone: () => startHenchmanInterrogation()
+                            });
+                        }
+                    }
+                } else if (!w.isHenchman || !w.interrogated) {
+                    // Idle wander
+                    const drift = Math.sin(w.phase * 0.4 + w.x * 0.001) * 0.5;
+                    w.x += drift;
+                    if (Math.abs(drift) > 0.05) w.faceDir = drift > 0 ? 1 : -1;
+                }
+            }
+        }
+
+        function startHenchmanInterrogation() {
+            advanceQuest('henchman_interrogate');
+            startDialogue({
+                speaker: 'HENCHMAN', portrait: 'npc',
+                lines: [
+                    'Alright, alright! Don\'t hurt me!',
+                    'Dr. Chen paid us to rob the bank — said the money was going to fund something big.',
+                    'But Luthor — Lex — he wasn\'t in prison like everyone thought. He was already in Gotham City.',
+                    'Chen\'s been running everything from here while Lex sets up shop there. That\'s all I know, I swear!'
+                ],
+                onDone: () => {
+                    advanceQuest('travel_lexcorp2');
+                    startDialogue({
+                        speaker: 'CK', portrait: 'hero',
+                        lines: [
+                            'Lex Luthor is in Gotham. He\'s been one step ahead this whole time.',
+                            'I need to go back to LexCorp — there may be evidence pointing to his exact location.'
+                        ],
+                        onDone: () => {
+                            titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
+                            loisCar.x = CONSTRUCTION_X + 60;
+                            loisCar.y = GROUND_Y;
+                            driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
+                        }
+                    });
+                }
+            });
+        }
+
+        function drawYardWorkers() {
+            if (!constructionSpawned || scene !== 'city' || currentLevel !== 1) return;
+            const t = Date.now() * 0.001;
+            for (const w of yardWorkers) {
+                const sx = w.x - camera.x;
+                if (sx < -80 || sx > W + 80) continue;
+                const fy = w.y - camera.y;
+                const bob = Math.sin(w.phase) * 1.0;
+                const fd = w.faceDir;
+                const done = w.interrogated;
+                ctx.save();
+                // Hard hat
+                ctx.fillStyle = w.isHenchman ? '#ff6600' : '#ffcc00';
+                ctx.beginPath();
+                ctx.ellipse(sx, fy - 84 + bob, 13, 7, 0, Math.PI, 0);
+                ctx.fill();
+                ctx.fillRect(sx - 14, fy - 84 + bob, 28, 4);
+                // Head
+                ctx.fillStyle = '#d4a070';
+                ctx.beginPath(); ctx.arc(sx, fy - 76 + bob, 10, 0, Math.PI * 2); ctx.fill();
+                // Eyes
+                ctx.fillStyle = '#333';
+                ctx.fillRect(sx - 4 + fd, fy - 78 + bob, 3, 2);
+                ctx.fillRect(sx + 1 + fd, fy - 78 + bob, 3, 2);
+                // Body — orange hi-vis vest
+                ctx.fillStyle = '#e05a00';
+                ctx.fillRect(sx - 12, fy - 64 + bob, 24, 32);
+                // Vest stripes
+                ctx.fillStyle = 'rgba(255,255,80,0.6)';
+                ctx.fillRect(sx - 12, fy - 60 + bob, 24, 3);
+                ctx.fillRect(sx - 12, fy - 50 + bob, 24, 3);
+                // Legs
+                ctx.fillStyle = '#334';
+                ctx.fillRect(sx - 8, fy - 32, 7, 32);
+                ctx.fillRect(sx + 1, fy - 32, 7, 32);
+                // Boots
+                ctx.fillStyle = '#8b5a1a';
+                ctx.fillRect(sx - 10, fy - 4, 10, 4);
+                ctx.fillRect(sx + 1, fy - 4, 10, 4);
+                // Tool (shovel or wrench) — held in leading hand
+                if (!w._fleeing) {
+                    ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(sx + fd * 12, fy - 56 + bob);
+                    ctx.lineTo(sx + fd * 22, fy - 16 + bob);
+                    ctx.stroke();
+                    ctx.fillStyle = '#aaa';
+                    ctx.fillRect(sx + fd * 18, fy - 62 + bob, fd > 0 ? 8 : -8, 6);
+                }
+                // Name label and interaction prompt
+                const heroDist = Math.abs((hero.x + hero.w/2) - w.x);
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                if (done) {
+                    ctx.fillStyle = 'rgba(80,200,80,0.7)'; ctx.fillText('✓ Questioned', sx, fy - 95 + bob);
+                } else if (heroDist < 70 && !w._fleeing && questPhase === 'construction_interrogate') {
+                    ctx.fillStyle = '#ffe040';
+                    ctx.fillText('E — Question', sx, fy - 95 + bob);
+                }
+                ctx.restore();
+            }
+            // Draw scaffolding / construction site dressing
+            drawConstructionDressing();
+        }
+
+        function drawConstructionDressing() {
+            const bx = CONSTRUCTION_X - 350 - camera.x;
+            if (bx > W + 400 || bx + 700 < 0) return;
+            const gy = GROUND_Y - camera.y;
+            ctx.save();
+            // Site boundary fence
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2;
+            for (let fx = CONSTRUCTION_X - 350; fx < CONSTRUCTION_X + 350; fx += 40) {
+                const fx2 = fx - camera.x;
+                ctx.beginPath(); ctx.moveTo(fx2, gy); ctx.lineTo(fx2, gy - 50); ctx.stroke();
+            }
+            ctx.beginPath(); ctx.moveTo(CONSTRUCTION_X - 350 - camera.x, gy - 50);
+            ctx.lineTo(CONSTRUCTION_X + 350 - camera.x, gy - 50); ctx.stroke();
+            // Scaffolding tower
+            const tx = CONSTRUCTION_X + 150 - camera.x;
+            ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+            for (let ry = 0; ry < 3; ry++) {
+                ctx.beginPath(); ctx.moveTo(tx, gy - 60 - ry*60); ctx.lineTo(tx + 60, gy - 60 - ry*60); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx, gy - ry*60); ctx.lineTo(tx, gy - 60 - ry*60); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx + 60, gy - ry*60); ctx.lineTo(tx + 60, gy - 60 - ry*60); ctx.stroke();
+            }
+            // Stacked materials
+            ctx.fillStyle = '#b87333';
+            ctx.fillRect(CONSTRUCTION_X - 320 - camera.x, gy - 30, 60, 30);
+            ctx.fillRect(CONSTRUCTION_X - 320 - camera.x, gy - 50, 60, 18);
+            // Cement mixer
+            ctx.fillStyle = '#666'; ctx.beginPath();
+            ctx.arc(CONSTRUCTION_X + 240 - camera.x, gy - 30, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#888'; ctx.fillRect(CONSTRUCTION_X + 218 - camera.x, gy - 60, 44, 30);
+            // Caution sign
+            ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X - camera.x, gy - 58);
+            ctx.restore();
+        }
+
         function initPrisonQuest() {
             if (prisonEnemiesSpawned) return;
             prisonEnemiesSpawned = true;
@@ -632,6 +812,38 @@
 
         // E-key interrogation check — called from keydown handler
         function tryInteract() {
+            // Construction yard: question workers / catch henchman
+            if (scene === 'city' && questPhase === 'construction_interrogate' && constructionSpawned) {
+                const heroMid = hero.x + hero.w / 2;
+                for (const w of yardWorkers) {
+                    if (w.interrogated) continue;
+                    if (Math.abs(heroMid - w.x) < 70) {
+                        w.interrogated = true;
+                        if (w.isHenchman) {
+                            // Henchman recognizes CK — panics and flees
+                            w._fleeing = true; w._vx = 2;
+                            advanceQuest('henchman_flee');
+                            startDialogue({
+                                speaker: 'HENCHMAN', portrait: 'npc',
+                                lines: ['You! You\'re CK — I\'ve seen your picture. I\'m not saying anything!'],
+                                onDone: () => {
+                                    titleCard = { text: 'HENCHMAN FLEEING', sub: 'Chase him down before he escapes!', timer: 200 };
+                                }
+                            });
+                        } else {
+                            workersInterrogated++;
+                            startDialogue({
+                                speaker: 'WORKER', portrait: 'npc',
+                                lines: workersInterrogated === 1
+                                    ? ['I just lay bricks, man. Don\'t know nothing about no robbery.']
+                                    : ['Look, there\'s a guy — orange hard hat, nervous-looking. Been acting weird all morning.'],
+                                onDone: () => {}
+                            });
+                        }
+                        return true;
+                    }
+                }
+            }
             // Bank interior: question suspects
             if (scene === 'bank' && questPhase === 'bank_interrogate') {
                 for (const suspect of bankSuspects) {
@@ -6428,6 +6640,7 @@
             if (scene === 'temple') drawTemple();
             if (scene === 'lab') drawLab();
             if (scene === 'bank') drawBank();
+            if (scene === 'city') drawYardWorkers();
 
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
@@ -11295,6 +11508,14 @@
                     titleCard = { text: 'LEXCORP LAB — ENTER', sub: 'Both have arrived. Press F near the door to enter.', timer: 200 };
                 }
             }
+            // Trigger construction yard when hero arrives
+            if (questPhase === 'travel_construction' && !constructionSpawned) {
+                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 700) {
+                    initConstructionYard();
+                    advanceQuest('construction_interrogate');
+                }
+            }
+            updateYardWorkers();
             // Trigger bank robbery enemies when hero arrives near the bank
             if (questPhase === 'travel_bank' && !bankEnemiesSpawned) {
                 if (Math.abs((hero.x + hero.w/2) - BANK_DOOR_X) < 600) {
