@@ -7641,8 +7641,8 @@
                 ctx.restore();
             }
 
-            // ---- LOIS LANE in the city — level 1 only ----
-            if (currentLevel === 1 && interior.note.read && clues[activeClueIndex]) {
+            // ---- LOIS LANE in the city — level 1 only (old clue-follower; hidden on new story path) ----
+            if (currentLevel === 1 && interior.note.read && clues[activeClueIndex] && questPhase === 'lexcorp2_clues') {
                 const lx = cityLois.x, ly = cityLois.y;
                 const bob = Math.sin(cityLois.phase) * 1.2;
                 ctx.save();
@@ -7746,8 +7746,8 @@
                 }
             }
 
-            // ---- STORY CLUES: only the currently-active clue is in the world ----
-            if (interior.note.read) {
+            // ---- STORY CLUES: old ground-clue markers (only shown on old lexcorp2_clues path) ----
+            if (interior.note.read && questPhase === 'lexcorp2_clues') {
                 const cl = clues[activeClueIndex];
                 if (cl && !cl.found) {
                     const bob = Math.sin(Date.now() * 0.004 + cl.x) * 5;
@@ -9525,7 +9525,7 @@
                 labExitReady = false;
                 loisCar.x = LEXLAB_X + 30;
                 loisCar.y = GROUND_Y;
-                driveLoisCar(BANK_DOOR_X - 60, () => {
+                driveLoisCar(BANK_X - 90, () => {
                     advanceQuest('travel_bank');
                 }, 2.8);
                 titleCard = { text: 'HEAD TO FIRST NATIONAL BANK', sub: 'Fly Downtown — Lois is following in her car.', timer: 260 };
@@ -9588,14 +9588,14 @@
                 bankEnemiesSpawned = false;
                 advanceQuest('bank_enter');
                 bankEntryUnlocked = true;
-                titleCard = { text: 'ROBBERS DEFEATED', sub: 'Enter the bank — question the witnesses inside. Press F at the door.', timer: 240 };
+                titleCard = { text: 'ROBBERS DEFEATED', sub: 'Entering the bank — witness inside may have answers.', timer: 180 };
                 startDialogue({
                     speaker: 'CK', portrait: 'hero',
                     lines: [
                         'That\'s the last of them. But Dr. Chen\'s operation goes deeper than this...',
                         'There may be witnesses inside who saw something. I need to go in.'
                     ],
-                    onDone: () => {}
+                    onDone: () => { enterBank(); }
                 });
             }
         }
