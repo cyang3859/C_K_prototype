@@ -554,6 +554,264 @@
             });
         }
 
+        // ── DIALOGUE ENGINE ────────────────────────────────────────────────────────
+        // A conversation is: { speaker, portrait, lines[], onDone() }
+        // portrait is a string key: 'hero' | 'lois' | 'darkwing' | 'npc'
+        let activeDialogue = null;   // current conversation object, null when idle
+        let _dlgLine   = 0;          // which line we're on
+        let _dlgChar   = 0;          // typewriter: chars revealed so far
+        const DLG_SPEED = 2;         // chars per frame
+
+        function startDialogue(conversation) {
+            activeDialogue = conversation;
+            _dlgLine = 0; _dlgChar = 0;
+        }
+
+        function advanceDialogue() {
+            if (!activeDialogue) return;
+            const lines = activeDialogue.lines;
+            if (_dlgChar < lines[_dlgLine].length) {
+                _dlgChar = lines[_dlgLine].length; // skip typewriter → show full line
+                return;
+            }
+            _dlgLine++;
+            _dlgChar = 0;
+            if (_dlgLine >= lines.length) {
+                const cb = activeDialogue.onDone;
+                activeDialogue = null;
+                if (cb) cb();
+            }
+        }
+
+        function tickDialogue() {
+            if (!activeDialogue) return;
+            const line = activeDialogue.lines[_dlgLine];
+            if (_dlgChar < line.length) _dlgChar = Math.min(_dlgChar + DLG_SPEED, line.length);
+        }
+
+        function drawDialogueBox() {
+            if (!activeDialogue) return;
+            const BOX_H = 130;
+            const PAD = 16;
+            const PORTRAIT_W = 90;
+            const by = H - BOX_H;
+
+            // semi-transparent dark panel
+            ctx.save();
+            ctx.fillStyle = 'rgba(8,8,18,0.92)';
+            ctx.fillRect(0, by, W, BOX_H);
+            ctx.strokeStyle = '#e0c020'; ctx.lineWidth = 2;
+            ctx.strokeRect(2, by + 2, W - 4, BOX_H - 4);
+
+            // portrait box
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(PAD, by + PAD, PORTRAIT_W, BOX_H - PAD * 2);
+            ctx.strokeStyle = 'rgba(200,180,60,0.6)'; ctx.lineWidth = 1.5;
+            ctx.strokeRect(PAD, by + PAD, PORTRAIT_W, BOX_H - PAD * 2);
+
+            // draw portrait figure (simple iconic faces)
+            const px = PAD + PORTRAIT_W / 2;
+            const py = by + PAD + (BOX_H - PAD * 2) / 2;
+            _drawDialoguePortrait(activeDialogue.portrait, px, py);
+
+            // speaker name
+            ctx.fillStyle = '#e0c020'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'left';
+            ctx.fillText(activeDialogue.speaker, PAD + PORTRAIT_W + PAD, by + PAD + 16);
+
+            // typewriter text — wrap at ~55 chars per line
+            const text = activeDialogue.lines[_dlgLine].slice(0, _dlgChar);
+            ctx.fillStyle = '#e8f0ff'; ctx.font = '12px Arial';
+            const maxW = W - PAD * 3 - PORTRAIT_W;
+            const words = text.split(' ');
+            let row = 0, buf = '';
+            for (const word of words) {
+                const test = buf ? buf + ' ' + word : word;
+                if (ctx.measureText(test).width > maxW && buf) {
+                    ctx.fillText(buf, PAD + PORTRAIT_W + PAD, by + PAD + 36 + row * 18);
+                    buf = word; row++;
+                } else { buf = test; }
+            }
+            if (buf) ctx.fillText(buf, PAD + PORTRAIT_W + PAD, by + PAD + 36 + row * 18);
+
+            // advance prompt
+            if (_dlgChar >= activeDialogue.lines[_dlgLine].length) {
+                const blink = Math.sin(Date.now() * 0.008) > 0;
+                if (blink) {
+                    ctx.fillStyle = '#a0b0ff'; ctx.font = '10px Arial'; ctx.textAlign = 'right';
+                    ctx.fillText('ENTER to continue ▶', W - PAD, by + BOX_H - PAD);
+                }
+            }
+            ctx.restore();
+        }
+
+        function _drawDialoguePortrait(key, cx, cy) {
+            ctx.save();
+            if (key === 'hero') {
+                ctx.fillStyle = '#3a6fd9'; ctx.fillRect(cx - 18, cy - 10, 36, 28);
+                ctx.fillStyle = '#e3bd9c'; ctx.beginPath(); ctx.arc(cx, cy - 18, 14, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#15151c'; ctx.beginPath(); ctx.arc(cx, cy - 21, 15, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+                ctx.fillStyle = '#e0c020'; ctx.beginPath(); ctx.moveTo(cx, cy - 26); ctx.lineTo(cx + 8, cy - 18); ctx.lineTo(cx - 8, cy - 18); ctx.closePath(); ctx.fill();
+            } else if (key === 'lois') {
+                ctx.fillStyle = '#8b2252'; ctx.fillRect(cx - 16, cy - 8, 32, 26);
+                ctx.fillStyle = '#e3bd9c'; ctx.beginPath(); ctx.arc(cx, cy - 16, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#3a2010'; ctx.beginPath(); ctx.arc(cx, cy - 18, 13, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+                ctx.fillRect(cx - 10, cy - 28, 20, 10);
+            } else if (key === 'darkwing') {
+                ctx.fillStyle = '#1c1c2a'; ctx.fillRect(cx - 16, cy - 8, 32, 26);
+                ctx.fillStyle = '#1c1c2a'; ctx.beginPath(); ctx.arc(cx, cy - 18, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#ddeeff'; ctx.fillRect(cx - 5, cy - 20, 4, 2); ctx.fillRect(cx + 1, cy - 20, 4, 2);
+                ctx.fillStyle = '#1c1c2a';
+                ctx.beginPath(); ctx.moveTo(cx - 8, cy - 28); ctx.lineTo(cx - 4, cy - 38); ctx.lineTo(cx - 1, cy - 28); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(cx + 1, cy - 28); ctx.lineTo(cx + 4, cy - 38); ctx.lineTo(cx + 8, cy - 28); ctx.closePath(); ctx.fill();
+            } else {
+                // generic NPC
+                ctx.fillStyle = '#4a4060'; ctx.fillRect(cx - 14, cy - 8, 28, 24);
+                ctx.fillStyle = '#d4b090'; ctx.beginPath(); ctx.arc(cx, cy - 16, 11, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#2a1a08'; ctx.beginPath(); ctx.arc(cx, cy - 18, 12, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // ── L1 QUEST STATE MACHINE ─────────────────────────────────────────────────
+        // Replaces the old clues[] index system for Level 1.
+        // questPhase gates all Level 1 progression; L2 / L3 are unaffected.
+        let questPhase = 'idle';   // starts idle; set to 'intro' when L1 starts
+
+        const QUEST_PHASES = [
+            'idle',
+            'intro',            // game just started, note on desk unread
+            'desk_note',        // hero reads note → first clue revealed
+            'travel_prison',    // nav arrow to prison zone
+            'prison_fight',     // enemies active around Lois at prison
+            'prison_rescued',   // all prison enemies cleared
+            'lois_dialogue_1',  // Lois explains why she was at prison
+            'lois_clue_lab',    // Lois gives next clue: head to LexCorp Lab
+            'travel_lab',       // both travel to lab; Lois drives there
+            'lab_explore',      // inside lab, find 3 clues
+            'lab_clue_1_found',
+            'lab_clue_2_found',
+            'lab_clue_3_found', // reveals bank robbery → dialogue triggers
+            'lab_dialogue',     // hero says we must stop the robbery
+            'travel_bank',      // head to bank exterior
+            'bank_fight',       // defeat enemies at bank exterior
+            'bank_enter',       // enter bank interior
+            'bank_interrogate', // interrogate 2 NPCs
+            'bank_exit',        // exiting bank, NPC reveals construction yard
+            'travel_construction',
+            'construction_interrogate', // interrogate 2 workers
+            'henchman_flee',    // henchman runs
+            'henchman_caught',  // hero catches henchman
+            'henchman_interrogate',
+            'travel_lexcorp2',  // return to LexCorp
+            'lexcorp2_fight',   // enemy wave
+            'lexcorp2_clues',   // find 2 more clues
+            'lexcorp2_final_dialogue', // Lex escaped to Gotham
+            'lois_departs',     // Lois drives back to Weekly Planet
+            'level1_complete',
+        ];
+
+        function advanceQuest(toPhase) {
+            questPhase = toPhase;
+            console.log('[QUEST]', toPhase);
+        }
+
+        // ── LOIS VEHICLE ───────────────────────────────────────────────────────────
+        const loisCar = {
+            active:    false,
+            x:         800,     // world X of car center
+            y:         GROUND_Y,
+            faceDir:   1,
+            targetX:   0,
+            arrived:   false,
+            speed:     2.4,     // px per frame — slower than Batmobile (6.5)
+            phase:     0,       // animation phase for wheel spin
+            waitForHero: false, // when true, door only opens once hero is also near
+        };
+
+        function driveLoisCar(targetX, onArrived, speedOverride) {
+            loisCar.active    = true;
+            loisCar.arrived   = false;
+            loisCar.targetX   = targetX;
+            loisCar.speed     = speedOverride || 2.4;
+            loisCar._onArrived = onArrived || null;
+        }
+
+        function updateLoisCar() {
+            if (!loisCar.active) return;
+            loisCar.phase += 0.08;
+            const dx = loisCar.targetX - loisCar.x;
+            if (Math.abs(dx) > 8) {
+                loisCar.faceDir = Math.sign(dx);
+                loisCar.x += Math.sign(dx) * Math.min(loisCar.speed, Math.abs(dx));
+                loisCar.arrived = false;
+            } else {
+                loisCar.x = loisCar.targetX;
+                if (!loisCar.arrived) {
+                    loisCar.arrived = true;
+                    if (loisCar._onArrived) loisCar._onArrived();
+                }
+            }
+        }
+
+        function drawLoisCar() {
+            if (!loisCar.active) return;
+            const cx = loisCar.x;
+            const by = loisCar.y;   // ground level (feet)
+            const fd = loisCar.faceDir;
+            const sx = cx - camera.x;
+            if (sx < -150 || sx > W + 150) return;   // off-screen cull
+
+            ctx.save();
+            ctx.translate(cx, by);   // world → screen handled by existing camera translate
+
+            // ── Car body — civilian sedan ──────────────────────────────────────
+            // Main body (lower rectangle)
+            ctx.fillStyle = '#8b2252';    // Lois's signature burgundy/maroon
+            ctx.fillRect(-46 * fd, -20, 92, 20);
+            // Roof cabin
+            ctx.fillRect(-28 * fd, -38, 56, 18);
+            // Front hood slope
+            ctx.fillStyle = '#701a40';
+            ctx.beginPath();
+            ctx.moveTo(28 * fd, -20); ctx.lineTo(46 * fd, -20);
+            ctx.lineTo(46 * fd, -10); ctx.lineTo(28 * fd, -14);
+            ctx.closePath(); ctx.fill();
+            // Windshield (forward-facing glass)
+            ctx.fillStyle = 'rgba(160,220,255,0.55)';
+            ctx.fillRect(12 * fd, -38, 16 * fd, 16);
+            // Rear window
+            ctx.fillRect(-28 * fd, -38, 14 * fd, 14);
+            // Headlight
+            ctx.fillStyle = '#ffe88a';
+            ctx.fillRect(40 * fd, -16, 6 * fd, 6);
+            // Tail-light
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(-46 * fd, -16, -4 * fd, 6);
+            // Lois portrait in driver seat
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(4 * fd, -28, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#3a2010';
+            ctx.beginPath(); ctx.arc(4 * fd, -30, 7, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+            // Wheels
+            const wheelAng = loisCar.phase;
+            for (const wx of [-28, 28]) {
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath(); ctx.arc(wx * fd, 0, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(wx * fd, 0, 10, 0, Math.PI * 2); ctx.stroke();
+                // wheel spokes
+                ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5;
+                for (let s = 0; s < 4; s++) {
+                    const a = wheelAng * fd + s * Math.PI / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(wx * fd + Math.cos(a) * 3, Math.sin(a) * 3);
+                    ctx.lineTo(wx * fd + Math.cos(a) * 9, Math.sin(a) * 9);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+
         // ---- QUEST DISPATCH ----
         function spawnQuestForClue(cl) {
             questZone = cl.zone || { x: cl.x, label: 'INCIDENT ZONE', spread: 120 };
@@ -1565,6 +1823,8 @@
         // ---------- INPUT ----------
         const keys = {};
         window.addEventListener('keydown', e => {
+            // ---- dialogue engine intercepts ENTER before anything else ----
+            if (activeDialogue) { advanceDialogue(); e.preventDefault(); return; }
             // ---- story modal (case-file note/clue) intercepts all input ----
             if (storyModal) {
                 if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF') {
@@ -5637,6 +5897,7 @@
                 }
                 ctx.restore();
             }
+            drawLoisCar();
 
             // ---- STORY CLUES: only the currently-active clue is in the world ----
             if (interior.note.read) {
@@ -6204,6 +6465,7 @@
             drawQuestZoneArrow();
             drawTitleCard();
             if (cutscene.active) drawCutscene();
+            drawDialogueBox();
         }
 
         // ---- building-entry cut-scene: letterboxed, hero walks into the doorway ----
@@ -10027,6 +10289,8 @@
             updateCivilians();
             updateAmbientNPCs();
             updateCityLois();
+            updateLoisCar();
+            tickDialogue();
             updateDarkWing();
             updatePowerGirl();
             updateWonderWoman();
