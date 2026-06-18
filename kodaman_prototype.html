@@ -2224,6 +2224,9 @@
         // Front-end screen flow: 'title' -> 'howto' -> 'playing'
         let gameScreen = 'title';
         let levelComplete = false;
+        let gamePaused = false;
+        let pauseSelected = 0;  // 0=Resume 1=Title 2=L1 3=L2 4=L3
+        const PAUSE_ITEMS = ['RESUME', 'EXIT TO TITLE', 'LEVEL 1', 'LEVEL 2', 'LEVEL 3'];
 
         // ---------- SCENE SYSTEM: city <-> Weekly Planet interior ----------
         // Game starts INSIDE the Weekly Planet — hero exits to the city when ready.
@@ -2419,6 +2422,19 @@
         // ---------- INPUT ----------
         const keys = {};
         window.addEventListener('keydown', e => {
+            // ---- ESC: toggle pause (only during gameplay) ----
+            if (e.code === 'Escape' && gameScreen !== 'title' && gameScreen !== 'howto') {
+                gamePaused = !gamePaused;
+                pauseSelected = 0;
+                e.preventDefault(); return;
+            }
+            // ---- pause menu navigation ----
+            if (gamePaused) {
+                if (e.code === 'ArrowUp')   { pauseSelected = (pauseSelected - 1 + PAUSE_ITEMS.length) % PAUSE_ITEMS.length; e.preventDefault(); return; }
+                if (e.code === 'ArrowDown') { pauseSelected = (pauseSelected + 1) % PAUSE_ITEMS.length; e.preventDefault(); return; }
+                if (e.code === 'Enter' || e.code === 'Space') { activatePauseItem(pauseSelected); e.preventDefault(); return; }
+                return;
+            }
             // ---- dialogue engine intercepts ENTER before anything else ----
             if (activeDialogue) { advanceDialogue(); e.preventDefault(); return; }
             // ---- story modal (case-file note/clue) intercepts all input ----
@@ -2715,10 +2731,25 @@
 
         // click/tap on title: detect which level button was hit; on howto, start game
         canvas.addEventListener('click', (ev) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = (ev.clientX - rect.left) * (W / rect.width);
+            const my = (ev.clientY - rect.top) * (H / rect.height);
+            // ---- pause menu click ----
+            if (gamePaused) {
+                const pw = 320, ph = 310;
+                const px = (W - pw) / 2, py = (H - ph) / 2;
+                const itemH = 38, startY = py + 80;
+                for (let i = 0; i < PAUSE_ITEMS.length; i++) {
+                    const iy = startY + i * itemH;
+                    if (mx >= px + 16 && mx <= px + pw - 16 && my >= iy - 20 && my <= iy - 20 + itemH - 4) {
+                        pauseSelected = i;
+                        activatePauseItem(i);
+                        return;
+                    }
+                }
+                return;
+            }
             if (gameScreen === 'title') {
-                const rect = canvas.getBoundingClientRect();
-                const mx = (ev.clientX - rect.left) * (W / rect.width);
-                const my = (ev.clientY - rect.top) * (H / rect.height);
                 const btnW2 = 130, btnH2 = 50, btnGap2 = 16;
                 const totalW2 = btnW2 * 3 + btnGap2 * 2;
                 const btn1x2 = W/2 - totalW2/2, btn2x2 = btn1x2 + btnW2 + btnGap2, btn3x2 = btn2x2 + btnW2 + btnGap2;
@@ -6784,7 +6815,17 @@
             if (scene === 'temple') drawTemple();
             if (scene === 'lab') drawLab();
             if (scene === 'bank') drawBank();
-            if (scene === 'city') { drawYardWorkers(); drawLexcorp2Clues(); }
+            if (scene === 'city') {
+                // only draw quest overlays when on L1 and camera is near the relevant world X
+                if (currentLevel === 1 && constructionSpawned &&
+                    camera.x + W > CONSTRUCTION_X - 500 && camera.x < CONSTRUCTION_X + 500) {
+                    drawYardWorkers();
+                }
+                if (currentLevel === 1 && lexcorp2Spawned &&
+                    camera.x + W > LEXLAB_X - 200 && camera.x < LEXLAB_X + 600) {
+                    drawLexcorp2Clues();
+                }
+            }
 
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
@@ -7635,6 +7676,118 @@
             ctx.font = '10px Arial';
             ctx.fillText(Math.round(dist / 100) * 100 + 'm away', labelX, screenY + 10);
 
+            ctx.restore();
+        }
+
+        function activatePauseItem(idx) {
+            if (idx === 0) {
+                // Resume
+                gamePaused = false;
+            } else if (idx === 1) {
+                // Exit to title
+                gamePaused = false;
+                gameScreen = 'title';
+                loop._uiShown = false;
+            } else {
+                // Jump to level 1/2/3 fresh
+                gamePaused = false;
+                loop._uiShown = false;
+                const lvl = idx - 1; // 2→1, 3→2, 4→3
+                titleSelectedLevel = lvl;
+                if (lvl === 3) startLevel3();
+                else if (lvl === 2) startLevel2();
+                else {
+                    // Level 1: reload interior start state
+                    scene = 'interior';
+                    currentLevel = 1;
+                    questPhase = 'idle';
+                    activeDialogue = null;
+                    // reset all L1 quest flags
+                    prisonEnemiesSpawned = false; prisonEnemyCount = 0;
+                    lexlabEntryUnlocked = false;
+                    labCluesFound = 0; labScene = null;
+                    labClues.forEach(c => { c.found = false; c.foundBy = null; });
+                    bankEnemiesSpawned = false; bankEnemyCount = 0;
+                    bankInterrogated = 0; bankEntryUnlocked = false;
+                    bankSuspects.forEach(s => { s.interrogated = false; });
+                    bankScene = null;
+                    constructionSpawned = false; workersInterrogated = 0;
+                    yardWorkers.forEach(w => { w.interrogated = false; w._fleeing = false; w._vx = 0; w.x = w === yardWorkers[3] ? CONSTRUCTION_X - 80 : w.x; });
+                    lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0;
+                    lexcorp2Clues.forEach(c => { c.found = false; });
+                    prisonLois.active = false; prisonLois.rescued = false;
+                    labLois.active = false;
+                    loisCar.active = false; loisCar.arrived = false;
+                    enemies.splice(0); civilians.splice(0); carriedCivilians = [];
+                    gaps.splice(0, gaps.length, ...L1_GAPS);
+                    platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+                    hero.x = 800; hero.y = GROUND_Y - hero.h;
+                    hero.vx = 0; hero.vy = 0; hero.flightActive = false;
+                    camera.x = 0; camera.y = 0;
+                }
+            }
+        }
+
+        function drawPauseMenu() {
+            if (!gamePaused) return;
+            const t = Date.now() * 0.001;
+            // Dim overlay
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,8,0.72)';
+            ctx.fillRect(0, 0, W, H);
+
+            // Panel
+            const pw = 320, ph = 310;
+            const px = (W - pw) / 2, py = (H - ph) / 2;
+            ctx.fillStyle = '#0a0c18';
+            ctx.strokeStyle = '#4060c0';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(px, py, pw, ph, 12);
+            ctx.fill(); ctx.stroke();
+
+            // Title
+            ctx.fillStyle = '#c8d8ff';
+            ctx.font = 'bold 22px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('PAUSED', W / 2, py + 44);
+
+            // Divider
+            ctx.strokeStyle = '#2a3860'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(px + 24, py + 58); ctx.lineTo(px + pw - 24, py + 58); ctx.stroke();
+
+            // Menu items
+            const itemH = 38, startY = py + 80;
+            for (let i = 0; i < PAUSE_ITEMS.length; i++) {
+                const iy = startY + i * itemH;
+                const selected = i === pauseSelected;
+                if (selected) {
+                    ctx.fillStyle = 'rgba(40,80,200,0.45)';
+                    ctx.beginPath();
+                    ctx.roundRect(px + 16, iy - 20, pw - 32, itemH - 4, 6);
+                    ctx.fill();
+                    // Animated selector dot
+                    const blink = 0.6 + Math.sin(t * 6) * 0.4;
+                    ctx.fillStyle = `rgba(100,160,255,${blink})`;
+                    ctx.beginPath(); ctx.arc(px + 36, iy - 3, 4, 0, Math.PI * 2); ctx.fill();
+                }
+                // Level items get a small number badge
+                if (i >= 2) {
+                    const badgeColors = ['#3a8a3a','#2a4a9a','#7a3a1a'];
+                    ctx.fillStyle = badgeColors[i - 2];
+                    ctx.beginPath(); ctx.roundRect(px + pw - 56, iy - 18, 36, 22, 4); ctx.fill();
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial';
+                    ctx.fillText('LVL ' + (i - 1), px + pw - 38, iy - 2);
+                }
+                ctx.fillStyle = selected ? '#ffffff' : '#8090b8';
+                ctx.font = selected ? 'bold 14px Arial' : '13px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(PAUSE_ITEMS[i], px + 50, iy - 2);
+            }
+
+            // Footer hint
+            ctx.fillStyle = '#404868'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('↑ ↓ Navigate   Enter Select   ESC Resume', W / 2, py + ph - 14);
             ctx.restore();
         }
 
@@ -11479,7 +11632,14 @@
         }
 
         function loop() {
-            updateAtmosphere();   // always runs — clouds/planes animate on title screen too
+            updateAtmosphere();
+            // ---- PAUSED: draw current frame frozen + pause overlay ----
+            if (gamePaused) {
+                if (scene === 'interior') drawInterior(); else draw();
+                drawPauseMenu();
+                requestAnimationFrame(loop);
+                return;
+            }
             // ---- front-end screens: render and wait for the player ----
             if (gameScreen === 'title' || gameScreen === 'howto') {
                 // keep the on-page HUD/controls hidden behind the screens
@@ -11630,6 +11790,7 @@
                 updateHitFX();
                 drawInterior();
                 if (caseFileOpen) drawCaseFile();
+                drawDialogueBox();
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
@@ -11667,7 +11828,7 @@
                     advanceQuest('construction_interrogate');
                 }
             }
-            updateYardWorkers();
+            if (currentLevel === 1 && constructionSpawned) updateYardWorkers();
             // Trigger bank robbery enemies when hero arrives near the bank
             if (questPhase === 'travel_bank' && !bankEnemiesSpawned) {
                 if (Math.abs((hero.x + hero.w/2) - BANK_DOOR_X) < 600) {
