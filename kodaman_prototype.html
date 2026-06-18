@@ -948,13 +948,20 @@
                 powerGirl.flightActive = false;
                 powerGirl.vx *= 0.85;
                 powerGirl.vy = Math.min(powerGirl.vy + 0.5, 14);
+                // L3 formation: stay ~330px behind hero when no enemies around
+                if (currentLevel === 3) {
+                    const _pgTarget = (hero.x + hero.w / 2) - Math.sign(hero.facing || 1) * 330;
+                    const _pgDx = _pgTarget - (powerGirl.x + powerGirl.w / 2);
+                    if (Math.abs(_pgDx) > 600) { powerGirl.x = _pgTarget - powerGirl.w / 2; }
+                    else if (Math.abs(_pgDx) > 20) { powerGirl.vx = Math.sign(_pgDx) * 3.2; }
+                }
             }
 
             powerGirl.x += powerGirl.vx;
             powerGirl.y += powerGirl.vy;
 
             // Landing on floor
-            const flr = scene === 'factory' ? FACTORY.floorY : GROUND_Y;
+            const flr = scene === 'factory' ? FACTORY.floorY : (currentLevel === 3 ? L3_GROUND_Y : GROUND_Y);
             if (powerGirl.y + powerGirl.h >= flr) {
                 powerGirl.y = flr - powerGirl.h; powerGirl.vy = 0;
                 powerGirl.onGround = true; powerGirl.flightActive = false;
@@ -973,7 +980,7 @@
                 }
             }
             // Clamp
-            const maxX = scene === 'factory' ? FACTORY.w - powerGirl.w : WORLD_WIDTH - powerGirl.w;
+            const maxX = scene === 'factory' ? FACTORY.w - powerGirl.w : (currentLevel === 3 ? L3_WORLD_WIDTH - powerGirl.w : WORLD_WIDTH - powerGirl.w);
             powerGirl.x = Math.max(0, Math.min(powerGirl.x, maxX));
         }
 
@@ -7559,7 +7566,7 @@
                 darkWing.faceDir = darkWing._swingAngVel > 0 ? 1 : -1;
                 darkWing.phase += 0.07;
                 // Release past apex on the target side
-                if (Math.abs(darkWing._swingAngle) > 0.8 || darkWing.y > GROUND_Y - 20) {
+                if (Math.abs(darkWing._swingAngle) > 0.8 || darkWing.y > (currentLevel === 3 ? L3_GROUND_Y : GROUND_Y) - 20) {
                     darkWing._swinging = false;
                     darkWing._gliding = true;
                     darkWing._onGround = false;
@@ -7573,8 +7580,9 @@
                 darkWing.vy = Math.min(darkWing.vy + grav, darkWing._gliding ? 2.2 : 16);
                 darkWing.y += darkWing.vy;
                 // Land on GROUND_Y
-                if (darkWing.y >= GROUND_Y) {
-                    darkWing.y = GROUND_Y; darkWing.vy = 0;
+                const _dwFloor = currentLevel === 3 ? L3_GROUND_Y : GROUND_Y;
+                if (darkWing.y >= _dwFloor) {
+                    darkWing.y = _dwFloor; darkWing.vy = 0;
                     darkWing._onGround = true; darkWing._gliding = false;
                 }
                 // Land on rooftop platforms
@@ -7587,7 +7595,7 @@
                         }
                     }
                 }
-            } else if (darkWing.y < GROUND_Y) {
+            } else if (darkWing.y < (currentLevel === 3 ? L3_GROUND_Y : GROUND_Y)) {
                 // Check still supported by a platform
                 let supported = false;
                 for (const p of platforms) {
@@ -7615,6 +7623,7 @@
                         if (d < tDist) { tDist = d; target = en; }
                     }
 
+                    if (!target) { darkWing.zoneCombat = false; }
                     if (target) {
                         const enMid = target.x + target.w / 2;
                         const enDist = Math.abs(enMid - darkWing.x);
@@ -7683,10 +7692,10 @@
                     darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
                 }
                 const dx = darkWing._targetX - darkWing.x;
-                if (Math.abs(dx) > 900) {
-                    darkWing.x = darkWing._targetX;
+                if (Math.abs(dx) > 600) {
+                    darkWing.x = darkWing._targetX;  // teleport snap if too far behind
                 } else if (Math.abs(dx) > 12) {
-                    darkWing.x += Math.sign(dx) * 1.6;
+                    darkWing.x += Math.sign(dx) * 3.8;
                     darkWing.faceDir = Math.sign(dx);
                 }
                 darkWing.phase += 0.05;
@@ -7694,9 +7703,17 @@
                 const near = Math.abs(heroMid - darkWing.x) < 90;
                 darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
                 if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
-                // On L3, auto-enter zoneCombat when quest zone active
-                if (currentLevel === 3 && questZone && Math.abs(darkWing.x - questZone.x) < 400) {
+                // On L3, auto-enter zoneCombat when quest zone active OR any enemy nearby
+                if (currentLevel === 3 && questZone && Math.abs(darkWing.x - questZone.x) < 700) {
                     darkWing.zoneCombat = true;
+                }
+                if (currentLevel === 3 && !darkWing.zoneCombat) {
+                    for (const _en of enemies) {
+                        if (!_en.alive) continue;
+                        if (Math.abs((_en.x + _en.w / 2) - darkWing.x) < 600) {
+                            darkWing.zoneCombat = true; break;
+                        }
+                    }
                 }
                 // basic attack nearby enemies even before fight mode
                 if (darkWing._attackCD > 0) { darkWing._attackCD--; return; }
@@ -8038,85 +8055,203 @@
         }
 
                 function drawGrungeCity() {
-            // overcast stormy sky — no sun, always dark orange-grey
+            const t = Date.now() * 0.001;
+
+            // ── Sky: deep Gotham night, sickly amber-purple glow ─────────────
             const sky = ctx.createLinearGradient(0, 0, 0, H);
-            sky.addColorStop(0, '#0e0a06');
-            sky.addColorStop(0.35, '#1e1408');
-            sky.addColorStop(0.7, '#2e1e0e');
-            sky.addColorStop(1, '#3a2a14');
-            ctx.fillStyle = sky;
-            ctx.fillRect(0, 0, W, H);
+            sky.addColorStop(0,    '#060410');
+            sky.addColorStop(0.25, '#0c0818');
+            sky.addColorStop(0.55, '#1a0e10');
+            sky.addColorStop(0.8,  '#2a1408');
+            sky.addColorStop(1,    '#3c200c');
+            ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
 
-            // smog / haze layer near horizon
-            const smog = ctx.createLinearGradient(0, H * 0.5, 0, H * 0.85);
-            smog.addColorStop(0, 'rgba(60,40,10,0)');
-            smog.addColorStop(1, 'rgba(80,50,10,0.45)');
-            ctx.fillStyle = smog;
-            ctx.fillRect(0, H * 0.5, W, H * 0.35);
+            // Subtle lightning flicker in clouds
+            const ltFlash = Math.max(0, Math.sin(t * 7.3) * Math.sin(t * 3.1));
+            if (ltFlash > 0.92) {
+                ctx.globalAlpha = (ltFlash - 0.92) * 6 * 0.18;
+                ctx.fillStyle = '#c8d8ff';
+                ctx.fillRect(0, 0, W, H);
+                ctx.globalAlpha = 1;
+            }
 
-            // fire glow on horizon
-            const fireX = W * 0.65 - camera.x * 0.03;
-            const fireGlow = ctx.createRadialGradient(fireX, H * 0.72, 10, fireX, H * 0.72, 260);
-            fireGlow.addColorStop(0, 'rgba(255,100,10,0.35)');
-            fireGlow.addColorStop(1, 'rgba(255,60,0,0)');
-            ctx.fillStyle = fireGlow;
-            ctx.fillRect(0, 0, W, H);
+            // ── Bat Signal ───────────────────────────────────────────────────
+            const bsX = W * 0.72 - camera.x * 0.015;  // slow parallax
+            const bsY = H * 0.12;
+            const bsR = 80 + Math.sin(t * 0.4) * 4;   // slight breathe
+            ctx.save();
+            // Outer cone of light from rooftop below
+            const coneGrad = ctx.createLinearGradient(bsX, H * 0.82, bsX, bsY);
+            coneGrad.addColorStop(0, 'rgba(200,220,255,0.18)');
+            coneGrad.addColorStop(1, 'rgba(200,220,255,0)');
+            ctx.fillStyle = coneGrad;
+            ctx.beginPath();
+            ctx.moveTo(bsX - 14, H * 0.82);
+            ctx.lineTo(bsX - bsR * 0.7, bsY + bsR);
+            ctx.lineTo(bsX + bsR * 0.7, bsY + bsR);
+            ctx.lineTo(bsX + 14, H * 0.82);
+            ctx.closePath(); ctx.fill();
+            // Spotlight circle glow
+            const bsGlow = ctx.createRadialGradient(bsX, bsY, bsR * 0.1, bsX, bsY, bsR * 1.6);
+            bsGlow.addColorStop(0, 'rgba(210,225,255,0.55)');
+            bsGlow.addColorStop(0.45, 'rgba(180,200,255,0.28)');
+            bsGlow.addColorStop(1, 'rgba(150,170,255,0)');
+            ctx.fillStyle = bsGlow;
+            ctx.beginPath(); ctx.arc(bsX, bsY, bsR * 1.6, 0, Math.PI * 2); ctx.fill();
+            // Inner lit circle
+            ctx.fillStyle = 'rgba(220,235,255,0.72)';
+            ctx.beginPath(); ctx.arc(bsX, bsY, bsR, 0, Math.PI * 2); ctx.fill();
+            // Bat silhouette cut-out (dark shape inside the beam)
+            ctx.fillStyle = 'rgba(10,6,20,0.88)';
+            ctx.save(); ctx.translate(bsX, bsY); const bsS = bsR * 0.56;
+            // Bat body + wings using bezier curves
+            ctx.beginPath();
+            ctx.moveTo(0, bsS * 0.22);
+            // right wing
+            ctx.bezierCurveTo(bsS * 0.18, -bsS * 0.05, bsS * 0.85, -bsS * 0.55, bsS, -bsS * 0.15);
+            ctx.bezierCurveTo(bsS * 0.9, -bsS * 0.45, bsS * 0.55, bsS * 0.0, bsS * 0.28, bsS * 0.18);
+            // wing tip notch
+            ctx.bezierCurveTo(bsS * 0.22, bsS * 0.08, bsS * 0.12, bsS * 0.28, 0, bsS * 0.22);
+            // left wing (mirrored)
+            ctx.bezierCurveTo(-bsS * 0.12, bsS * 0.28, -bsS * 0.22, bsS * 0.08, -bsS * 0.28, bsS * 0.18);
+            ctx.bezierCurveTo(-bsS * 0.55, bsS * 0.0, -bsS * 0.9, -bsS * 0.45, -bsS, -bsS * 0.15);
+            ctx.bezierCurveTo(-bsS * 0.85, -bsS * 0.55, -bsS * 0.18, -bsS * 0.05, 0, bsS * 0.22);
+            ctx.closePath(); ctx.fill();
+            // Ears
+            ctx.beginPath();
+            ctx.moveTo(-bsS * 0.14, -bsS * 0.08);
+            ctx.lineTo(-bsS * 0.22, -bsS * 0.52);
+            ctx.lineTo(-bsS * 0.04, -bsS * 0.12);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(bsS * 0.14, -bsS * 0.08);
+            ctx.lineTo(bsS * 0.22, -bsS * 0.52);
+            ctx.lineTo(bsS * 0.04, -bsS * 0.12);
+            ctx.closePath(); ctx.fill();
+            ctx.restore(); ctx.restore();
 
-            // rolling dark clouds
-            const t = Date.now() * 0.00008;
-            for (let i = 0; i < 12; i++) {
-                const cx = ((i * 317 - camera.x * 0.04 + t * 40) % (W + 300)) - 150;
-                const cy = 60 + (i % 4) * 55;
-                const cr = 70 + (i % 3) * 30;
+            // ── Smog / acid-rain haze near horizon ───────────────────────────
+            const smog = ctx.createLinearGradient(0, H * 0.48, 0, H * 0.88);
+            smog.addColorStop(0, 'rgba(50,30,8,0)');
+            smog.addColorStop(1, 'rgba(80,45,8,0.52)');
+            ctx.fillStyle = smog; ctx.fillRect(0, H * 0.48, W, H * 0.4);
+
+            // Industrial fire glow on the horizon
+            const fireX = W * 0.3 - camera.x * 0.03;
+            const fireGlow = ctx.createRadialGradient(fireX, H * 0.78, 8, fireX, H * 0.78, 300);
+            fireGlow.addColorStop(0, 'rgba(255,90,5,0.4)');
+            fireGlow.addColorStop(1, 'rgba(255,50,0,0)');
+            ctx.fillStyle = fireGlow; ctx.fillRect(0, 0, W, H);
+            // Second glow source (chemical plant)
+            const fireX2 = W * 0.78 - camera.x * 0.025;
+            const fireGlow2 = ctx.createRadialGradient(fireX2, H * 0.75, 6, fireX2, H * 0.75, 200);
+            fireGlow2.addColorStop(0, 'rgba(180,40,200,0.22)');
+            fireGlow2.addColorStop(1, 'rgba(100,20,140,0)');
+            ctx.fillStyle = fireGlow2; ctx.fillRect(0, 0, W, H);
+
+            // ── Rolling storm clouds ──────────────────────────────────────────
+            for (let i = 0; i < 14; i++) {
+                const cx2 = ((i * 293 - camera.x * 0.04 + t * 12) % (W + 340)) - 170;
+                const cy2 = 45 + (i % 5) * 48;
+                const cr2 = 75 + (i % 4) * 28;
                 ctx.save();
-                ctx.globalAlpha = 0.18 + (i % 3) * 0.07;
-                ctx.fillStyle = '#1a1208';
-                ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(cx + cr * 0.55, cy - 10, cr * 0.7, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 0.16 + (i % 3) * 0.06;
+                ctx.fillStyle = i % 4 === 0 ? '#14081e' : '#100808';
+                ctx.beginPath(); ctx.arc(cx2, cy2, cr2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 + cr2 * 0.6, cy2 - 12, cr2 * 0.72, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 - cr2 * 0.45, cy2 - 8, cr2 * 0.58, 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
             }
 
-            // ruined building silhouettes
-            const silhouettes = [
-                { ox: 0.01, w: 120, h: 280, jagged: true  },
-                { ox: 0.06, w: 90,  h: 200, jagged: false },
-                { ox: 0.12, w: 150, h: 340, jagged: true  },
-                { ox: 0.20, w: 100, h: 220, jagged: false },
-                { ox: 0.28, w: 130, h: 300, jagged: true  },
-                { ox: 0.36, w: 80,  h: 180, jagged: false },
-                { ox: 0.46, w: 160, h: 360, jagged: true  },
-                { ox: 0.55, w: 110, h: 240, jagged: false },
-                { ox: 0.64, w: 140, h: 320, jagged: true  },
-                { ox: 0.73, w: 95,  h: 200, jagged: false },
-                { ox: 0.82, w: 125, h: 280, jagged: true  },
-                { ox: 0.90, w: 85,  h: 190, jagged: false },
-            ];
+            // ── Far Gotham skyline silhouettes (parallax 0.06) ──────────────
             const parallax = camera.x * 0.06;
-            ctx.fillStyle = '#0e0a04';
-            for (const s of silhouettes) {
-                const sx = ((s.ox * 2800 - parallax) % (W + s.w + 100)) - s.w;
+            // Tier 1: very tall Art Deco spires
+            const spires = [
+                { ox: 80,   w: 55,  h: 390, spire: true  },
+                { ox: 240,  w: 90,  h: 310, spire: false },
+                { ox: 430,  w: 45,  h: 440, spire: true  },
+                { ox: 600,  w: 80,  h: 280, spire: false },
+                { ox: 760,  w: 60,  h: 420, spire: true  },
+                { ox: 920,  w: 100, h: 340, spire: false },
+                { ox: 1100, w: 50,  h: 460, spire: true  },
+                { ox: 1280, w: 85,  h: 300, spire: false },
+                { ox: 1460, w: 55,  h: 400, spire: true  },
+                { ox: 1640, w: 75,  h: 260, spire: false },
+                { ox: 1820, w: 48,  h: 430, spire: true  },
+                { ox: 2000, w: 92,  h: 320, spire: false },
+                { ox: 2200, w: 58,  h: 450, spire: true  },
+            ];
+            ctx.fillStyle = '#08050e';
+            for (const s of spires) {
+                const sx = ((s.ox - parallax) % (W + s.w + 200)) - s.w;
                 const sy = H - s.h;
-                if (s.jagged) {
+                ctx.fillRect(sx, sy, s.w, s.h);
+                if (s.spire) {
+                    // Gothic Art Deco spire
                     ctx.beginPath();
-                    ctx.moveTo(sx, H);
-                    ctx.lineTo(sx, sy + 30);
-                    // jagged broken roofline
-                    for (let jx = sx; jx < sx + s.w; jx += 18) {
-                        ctx.lineTo(jx + 9, sy + (Math.sin(jx * 0.3) > 0 ? 0 : 22));
-                        ctx.lineTo(jx + 18, sy + 30);
-                    }
-                    ctx.lineTo(sx + s.w, H);
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(sx + s.w / 2, sy - 70);
+                    ctx.lineTo(sx + s.w, sy);
                     ctx.closePath(); ctx.fill();
-                } else {
-                    ctx.fillRect(sx, sy, s.w, s.h);
+                    // Gargoyle nubs
+                    ctx.fillRect(sx - 6, sy + 10, 10, 14);
+                    ctx.fillRect(sx + s.w - 4, sy + 10, 10, 14);
                 }
-                // occasional broken window glow
-                if (s.w > 100) {
-                    ctx.fillStyle = 'rgba(200,80,10,0.15)';
-                    ctx.fillRect(sx + 20, sy + 40, 18, 24);
-                    ctx.fillRect(sx + 60, sy + 80, 14, 20);
-                    ctx.fillStyle = '#0e0a04';
+                // Window grid — amber glow
+                ctx.fillStyle = 'rgba(220,140,20,0.12)';
+                for (let wy = sy + 20; wy < sy + s.h - 20; wy += 22) {
+                    for (let wx = sx + 6; wx < sx + s.w - 6; wx += 14) {
+                        if (((wx + wy) * 7 + 13) % 17 > 5) ctx.fillRect(wx, wy, 8, 12);
+                    }
                 }
+                ctx.fillStyle = '#08050e';
+            }
+
+            // ── Mid-layer Gotham blocks with details (parallax 0.11) ─────────
+            const parallax2 = camera.x * 0.11;
+            const blocks = [
+                { ox: 0,    w: 140, h: 220 }, { ox: 200,  w: 110, h: 180 },
+                { ox: 380,  w: 160, h: 260 }, { ox: 600,  w: 130, h: 200 },
+                { ox: 780,  w: 145, h: 240 }, { ox: 980,  w: 120, h: 190 },
+                { ox: 1150, w: 155, h: 250 }, { ox: 1360, w: 115, h: 195 },
+                { ox: 1540, w: 148, h: 232 }, { ox: 1740, w: 122, h: 205 },
+                { ox: 1920, w: 158, h: 255 }, { ox: 2120, w: 118, h: 198 },
+            ];
+            for (const b of blocks) {
+                const bx = ((b.ox - parallax2) % (W + b.w + 200)) - b.w;
+                const by = H - b.h;
+                ctx.fillStyle = '#0c0814';
+                ctx.fillRect(bx, by, b.w, b.h);
+                // Crenellated parapet top
+                for (let px = bx; px < bx + b.w; px += 16) {
+                    ctx.fillRect(px, by - 12, 10, 12);
+                }
+                // Lit windows — some orange, some blue/cold
+                for (let wy = by + 14; wy < by + b.h - 10; wy += 26) {
+                    for (let wx = bx + 8; wx < bx + b.w - 8; wx += 18) {
+                        const wSeed = (wx * 3 + wy * 7) % 19;
+                        if (wSeed > 6) {
+                            const cold = wSeed % 3 === 0;
+                            ctx.fillStyle = cold ? 'rgba(100,180,255,0.22)' : 'rgba(240,150,20,0.28)';
+                            ctx.fillRect(wx, wy, 10, 16);
+                        }
+                    }
+                }
+                // Rooftop water tower
+                if (b.w > 130) {
+                    const tx = bx + b.w * 0.7;
+                    ctx.fillStyle = '#0a0612';
+                    ctx.fillRect(tx - 8, by - 30, 16, 20);
+                    ctx.beginPath(); ctx.arc(tx, by - 30, 10, Math.PI, 0); ctx.fill();
+                }
+            }
+
+            // ── Rain streaks ─────────────────────────────────────────────────
+            ctx.strokeStyle = 'rgba(140,160,200,0.12)'; ctx.lineWidth = 1;
+            for (let r = 0; r < 60; r++) {
+                const rx = ((r * 193 - camera.x * 0.2 + t * 180) % (W + 20)) - 10;
+                const ry = ((r * 137 + t * 220) % (H + 20)) - 10;
+                ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 2, ry + 14); ctx.stroke();
             }
         }
 
