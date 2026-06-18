@@ -11117,33 +11117,36 @@
         // ── LexCorp Lab interior draw ─────────────────────────────────────
         function drawLab() {
             const t = Date.now() * 0.001;
-            // Background — dark charcoal with blue-grey walls
-            ctx.fillStyle = '#0c0e14'; ctx.fillRect(0, 0, W, H);
+            // Background — fill the visible area in world coords
+            ctx.fillStyle = '#0c0e14';
+            ctx.fillRect(camera.x, camera.y, W, H);
             // Ceiling infrastructure
             ctx.fillStyle = '#1a1e28';
-            ctx.fillRect(0, LAB.ceilingY - camera.y, LAB.w, 40);
+            ctx.fillRect(camera.x, LAB.ceilingY, W, 40);
             // Hanging fluorescent tubes (flicker slightly)
             for (let lx = 200; lx < LAB.w; lx += 320) {
+                const sx = lx - camera.x;
+                if (sx < -120 || sx > W + 120) continue;
                 const flicker = 0.85 + Math.sin(t * 17.3 + lx) * 0.08;
                 ctx.save();
                 ctx.globalAlpha = flicker;
                 ctx.fillStyle = '#d0e8ff';
-                ctx.fillRect(lx - camera.x - 40, LAB.ceilingY - camera.y + 8, 80, 6);
+                ctx.fillRect(lx - 40, LAB.ceilingY + 8, 80, 6);
                 ctx.shadowColor = '#a0c8ff'; ctx.shadowBlur = 18;
-                ctx.fillRect(lx - camera.x - 38, LAB.ceilingY - camera.y + 8, 76, 4);
+                ctx.fillRect(lx - 38, LAB.ceilingY + 8, 76, 4);
                 ctx.restore();
             }
             // Floor — polished lab tile with seams
-            ctx.fillStyle = '#141820'; ctx.fillRect(0, LAB.floorY - camera.y, LAB.w, 120);
+            ctx.fillStyle = '#141820'; ctx.fillRect(camera.x, LAB.floorY, W, 120);
             ctx.strokeStyle = '#1e2430'; ctx.lineWidth = 1;
-            for (let tx = 0; tx < LAB.w; tx += 80) {
-                ctx.beginPath(); ctx.moveTo(tx - camera.x, LAB.floorY - camera.y);
-                ctx.lineTo(tx - camera.x, LAB.floorY - camera.y + 120); ctx.stroke();
+            for (let tx = Math.floor(camera.x / 80) * 80; tx < camera.x + W; tx += 80) {
+                ctx.beginPath(); ctx.moveTo(tx, LAB.floorY);
+                ctx.lineTo(tx, LAB.floorY + 120); ctx.stroke();
             }
             // Caution stripe at base of walls
-            for (let sx = 0; sx < LAB.w; sx += 48) {
-                ctx.fillStyle = sx % 96 === 0 ? 'rgba(255,200,0,0.15)' : 'rgba(0,0,0,0)';
-                ctx.fillRect(sx - camera.x, LAB.floorY - camera.y, 48, 8);
+            for (let sx = Math.floor(camera.x / 48) * 48; sx < camera.x + W; sx += 48) {
+                ctx.fillStyle = (Math.floor(sx / 48)) % 2 === 0 ? 'rgba(255,200,0,0.15)' : 'rgba(0,0,0,0)';
+                ctx.fillRect(sx, LAB.floorY, 48, 8);
             }
             // Lab equipment — workbenches, reactors, tanks along floor
             const equipment = [
@@ -11152,9 +11155,10 @@
                 { x: 2280, type: 'bench' }, { x: 2600, type: 'tank' },
             ];
             for (const eq of equipment) {
-                const ex = eq.x - camera.x;
-                if (ex < -200 || ex > W + 200) continue;
-                const ey = LAB.floorY - camera.y;
+                const ex = eq.x;
+                const esx = ex - camera.x;
+                if (esx < -200 || esx > W + 200) continue;
+                const ey = LAB.floorY;
                 if (eq.type === 'bench') {
                     ctx.fillStyle = '#1e2530'; ctx.fillRect(ex, ey - 55, 110, 55);
                     ctx.fillStyle = '#2a3040'; ctx.fillRect(ex + 2, ey - 56, 106, 6);
@@ -11199,50 +11203,49 @@
             }
             // Platforms
             for (const p of platforms) {
-                const px = p.x - camera.x, py = p.y - camera.y;
-                if (px > W + 50 || px + p.w < -50) continue;
-                ctx.fillStyle = '#1e2838'; ctx.fillRect(px, py, p.w, p.h);
-                ctx.fillStyle = '#2a3850'; ctx.fillRect(px, py, p.w, 3);
+                const psx = p.x - camera.x;
+                if (psx > W + 50 || psx + p.w < -50) continue;
+                ctx.fillStyle = '#1e2838'; ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.fillStyle = '#2a3850'; ctx.fillRect(p.x, p.y, p.w, 3);
                 ctx.strokeStyle = '#304060'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(px, py - 18); ctx.lineTo(px + p.w, py - 18); ctx.stroke();
-                for (let rx = px + 20; rx < px + p.w - 10; rx += 30) {
-                    ctx.beginPath(); ctx.moveTo(rx, py); ctx.lineTo(rx, py - 18); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(p.x, p.y - 18); ctx.lineTo(p.x + p.w, p.y - 18); ctx.stroke();
+                for (let rx = p.x + 20; rx < p.x + p.w - 10; rx += 30) {
+                    ctx.beginPath(); ctx.moveTo(rx, p.y); ctx.lineTo(rx, p.y - 18); ctx.stroke();
                 }
             }
             // Clue objects — glowing interactable items
             for (const clue of labClues) {
                 if (clue.found) continue;
-                const cx2 = clue.x - camera.x, cy2 = clue.y - camera.y;
-                if (cx2 < -60 || cx2 > W + 60) continue;
+                const csx = clue.x - camera.x;
+                if (csx < -60 || csx > W + 60) continue;
                 const pulse = 0.6 + Math.sin(t * 2.2 + clue.x * 0.01) * 0.35;
                 ctx.save();
                 ctx.shadowColor = '#40ffcc'; ctx.shadowBlur = 14 * pulse;
                 ctx.fillStyle = `rgba(30,200,150,${0.4 + pulse * 0.4})`;
-                ctx.fillRect(cx2, cy2, clue.w, clue.h);
+                ctx.fillRect(clue.x, clue.y, clue.w, clue.h);
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(clue.label, cx2 + clue.w / 2, cy2 - 10);
+                ctx.fillText(clue.label, clue.x + clue.w / 2, clue.y - 10);
                 ctx.fillStyle = '#40ffcc'; ctx.font = '10px Arial';
                 const heroDist = Math.abs((hero.x + hero.w / 2) - (clue.x + clue.w / 2));
-                if (heroDist < 80) ctx.fillText('F — Examine', cx2 + clue.w / 2, cy2 - 24);
+                if (heroDist < 80) ctx.fillText('F — Examine', clue.x + clue.w / 2, clue.y - 24);
                 ctx.restore();
             }
-            // Exit door (left side)
-            const doorX = 40 - camera.x;
+            // Exit door (left side) — world x=40
             ctx.fillStyle = '#1e3050';
-            ctx.fillRect(doorX, LAB.floorY - camera.y - 80, 50, 80);
+            ctx.fillRect(40, LAB.floorY - 80, 50, 80);
             ctx.strokeStyle = '#4080c0'; ctx.lineWidth = 2;
-            ctx.strokeRect(doorX, LAB.floorY - camera.y - 80, 50, 80);
+            ctx.strokeRect(40, LAB.floorY - 80, 50, 80);
             if (hero.x < 160) {
                 ctx.fillStyle = '#a0c8ff'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('F — Exit', doorX + 25, LAB.floorY - camera.y - 88);
+                ctx.fillText('F — Exit', 65, LAB.floorY - 88);
             }
         }
 
         function drawLabLois() {
             if (!labLois.active || scene !== 'lab') return;
-            const lx = labLois.x - camera.x;
-            const fy = labLois.y - camera.y;
+            const lx = labLois.x;   // world coords — transform handles camera offset
+            const fy = labLois.y;
             const fd = labLois.faceDir;
             const bob = Math.sin(labLois.phase * 1.5) * 1.0;
             ctx.save();
