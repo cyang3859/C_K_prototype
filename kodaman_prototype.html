@@ -7409,6 +7409,34 @@
                 ctx.beginPath(); ctx.ellipse(bx2, by2, 8, 3.5, 0.4, 0, Math.PI * 2); ctx.stroke();
             }
 
+            // ── L1 quest destination beacon ──
+            const _mmDest = getL1Destination();
+            if (_mmDest) {
+                const destMapX = mx + _mmDest.worldX * sx;
+                const destMapY = my + mh * 0.18;
+                const _blink = 0.5 + Math.sin(now * 0.008) * 0.5;
+                // Pulsing outer ring
+                ctx.strokeStyle = _mmDest.color;
+                ctx.lineWidth = 1.2;
+                ctx.globalAlpha = _blink * 0.6;
+                ctx.beginPath(); ctx.arc(destMapX, destMapY, 6 + _blink * 3, 0, Math.PI * 2); ctx.stroke();
+                // Star/diamond marker
+                ctx.globalAlpha = 0.7 + _blink * 0.3;
+                ctx.fillStyle = _mmDest.color;
+                ctx.shadowColor = _mmDest.color; ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.moveTo(destMapX, destMapY - 5);
+                ctx.lineTo(destMapX + 3, destMapY);
+                ctx.lineTo(destMapX, destMapY + 5);
+                ctx.lineTo(destMapX - 3, destMapY);
+                ctx.closePath(); ctx.fill();
+                ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+                // Tiny label below marker
+                ctx.fillStyle = _mmDest.color;
+                ctx.font = '7px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('DEST', destMapX, destMapY + 13);
+            }
+
             // ── Hound: small amber dot ──
             ctx.fillStyle = '#d4a85c';
             ctx.beginPath(); ctx.arc(mx + hound.x * sx, my + mh * 0.50, 2.5, 0, Math.PI * 2); ctx.fill();
@@ -7627,25 +7655,96 @@
             ctx.restore();
         }
 
+        // ── L1 quest travel destinations ────────────────────────────────────
+        const L1_TRAVEL_DEST = {
+            'travel_prison':       { worldX: PRISON_X,        label: 'STONEGATE PRISON',    color: '#ff8844' },
+            'prison_fight':        { worldX: PRISON_X,        label: 'STONEGATE PRISON',    color: '#ff8844' },
+            'travel_lab':          { worldX: LEXLAB_X,        label: 'LEXCORP LAB',         color: '#44ddbb' },
+            'lab_explore':         { worldX: LEXLAB_X,        label: 'LEXCORP LAB',         color: '#44ddbb' },
+            'travel_bank':         { worldX: BANK_DOOR_X,     label: 'FIRST NATIONAL BANK', color: '#ffd84d' },
+            'travel_construction': { worldX: CONSTRUCTION_X,  label: 'CONSTRUCTION SITE',   color: '#ffaa22' },
+            'travel_lexcorp2':     { worldX: LEXLAB_X,        label: 'RETURN TO LEXCORP',   color: '#cc44ff' },
+        };
+
+        function getL1Destination() {
+            if (currentLevel !== 1 || scene !== 'city') return null;
+            return L1_TRAVEL_DEST[questPhase] || null;
+        }
+
+        function _drawDestArrow(worldX, label, accentColor, screenY) {
+            const heroWorldX = hero.x + hero.w / 2;
+            const dx = worldX - heroWorldX;
+            const dist = Math.abs(dx);
+            if (dist < 280) return;   // close enough — hide arrow
+
+            const dir = dx > 0 ? 1 : -1;
+            const pillW = 172, pillH = 34;
+            const pillX = dir > 0 ? W - pillW - 12 : 12;
+            const t = Date.now() * 0.001;
+            const pulse = 0.75 + Math.sin(t * 3.2) * 0.2;
+
+            ctx.save();
+            ctx.globalAlpha = pulse;
+
+            // Pill background
+            ctx.fillStyle = 'rgba(8,10,22,0.88)';
+            ctx.strokeStyle = accentColor;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.roundRect(pillX, screenY - pillH / 2, pillW, pillH, 9);
+            ctx.fill(); ctx.stroke();
+
+            // Chevron arrow
+            const ax = dir > 0 ? pillX + pillW - 16 : pillX + 16;
+            const ay = screenY;
+            ctx.fillStyle = accentColor;
+            ctx.beginPath();
+            if (dir > 0) {
+                ctx.moveTo(ax - 1, ay - 8); ctx.lineTo(ax + 11, ay); ctx.lineTo(ax - 1, ay + 8);
+            } else {
+                ctx.moveTo(ax + 1, ay - 8); ctx.lineTo(ax - 11, ay); ctx.lineTo(ax + 1, ay + 8);
+            }
+            ctx.closePath(); ctx.fill();
+
+            // Destination label
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = accentColor;
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center';
+            const labelX = pillX + pillW / 2 + (dir > 0 ? -8 : 8);
+            ctx.fillText(label, labelX, screenY - 5);
+
+            // Distance readout
+            const distBlocks = Math.round(dist / 50) * 50;
+            ctx.fillStyle = '#c0d0ff';
+            ctx.font = '10px Arial';
+            ctx.fillText(distBlocks + 'm away  ' + (dir > 0 ? '→' : '←'), labelX, screenY + 9);
+
+            ctx.restore();
+        }
+
         function drawQuestZoneArrow() {
+            // ── L1 quest travel arrow (sits at screenY 38, above minimap) ──
+            const l1dest = getL1Destination();
+            if (l1dest) {
+                _drawDestArrow(l1dest.worldX, l1dest.label, l1dest.color, 38);
+            }
+
+            // ── L2/L3 clue zone arrow (original behaviour) ──
             if (!questZone || !pendingTrapCiv) return;
             const heroWorldX = hero.x + hero.w / 2;
             const zoneWorldX = questZone.x;
             const dx = zoneWorldX - heroWorldX;
             const dist = Math.abs(dx);
-            // Only show arrow when hero is more than 300px from zone center
             if (dist < 300) return;
 
-            const dir = dx > 0 ? 1 : -1;  // 1 = right, -1 = left
-            const screenX = dir > 0 ? W - 56 : 56;
-            const screenY = 38;
+            const dir = dx > 0 ? 1 : -1;
+            const pillW = 160, pillH = 32;
+            const pillX = dir > 0 ? W - pillW - 10 : 10;
+            const screenY = l1dest ? 80 : 38;   // push down if L1 arrow already showing
 
             ctx.save();
             ctx.globalAlpha = 0.88;
-
-            // pill background
-            const pillW = 160, pillH = 32;
-            const pillX = dir > 0 ? W - pillW - 10 : 10;
             ctx.fillStyle = 'rgba(12,14,28,0.82)';
             ctx.strokeStyle = '#ffd84d';
             ctx.lineWidth = 1.5;
@@ -7653,7 +7752,6 @@
             ctx.roundRect(pillX, screenY - pillH / 2, pillW, pillH, 8);
             ctx.fill(); ctx.stroke();
 
-            // arrow chevron
             const ax = dir > 0 ? pillX + pillW - 18 : pillX + 18;
             const ay = screenY;
             ctx.fillStyle = '#ffd84d';
@@ -7665,10 +7763,8 @@
             }
             ctx.closePath(); ctx.fill();
 
-            // label + distance
             ctx.fillStyle = '#ffd84d';
             ctx.font = 'bold 11px Arial';
-            ctx.textAlign = dir > 0 ? 'left' : 'left';
             ctx.textAlign = 'center';
             const labelX = pillX + pillW / 2 + (dir > 0 ? -6 : 6);
             ctx.fillText(questZone.label, labelX, screenY - 4);
