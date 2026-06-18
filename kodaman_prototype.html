@@ -233,6 +233,12 @@
         // All floating mid-air ledges have been removed; the hero uses flight to traverse.
         const L1_PLATFORMS = [
             { x: 7600, y: 570, w: 320, h: 22, district: 'docks' },
+            // Bridge decks — solid ground over each water gap so the hero doesn't fall through
+            { x: 420,   y: GROUND_Y, w: 200, h: GROUND_H },
+            { x: 1400,  y: GROUND_Y, w: 240, h: GROUND_H },
+            { x: 6000,  y: GROUND_Y, w: 700, h: GROUND_H },
+            { x: 8200,  y: GROUND_Y, w: 600, h: GROUND_H },
+            { x: 12000, y: GROUND_Y, w: 300, h: GROUND_H },
         ];
         // Level 2 rooftops derived from tall l2Buildings below
         const L2_PLATFORMS = [
