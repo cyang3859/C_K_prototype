@@ -4237,8 +4237,8 @@
                 //   climbing (vy<0) -> nose up (less than flat)
                 //   level         -> ~flat (1.25)
                 //   diving (vy>0)  -> nose down (past flat), so he points where he's going
-                const baseFlat = 0.45;                 // ~26deg = mostly horizontal
-                const pitch = Math.max(-0.3, Math.min(0.35, e.vy * 0.04)); // gentle pitch with vertical motion
+                const baseFlat = 1.50;                 // ~86deg = body parallel to ground (Superman horizontal)
+                const pitch = Math.max(-0.18, Math.min(0.18, e.vy * 0.025)); // very subtle pitch
                 lean = baseFlat + pitch;
             } else if (hovering) {
                 lean = 0;                              // perfectly upright when hovering in place
@@ -4408,14 +4408,15 @@
                 ctx.beginPath(); ctx.arc(w * 0.31, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(w * 0.69, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
             } else if (flying && !punching) {
-                // FLYING FORWARD: both arms thrust straight UP above the head —
-                // traditional Superman pose. In local (unrotated) space "up" = -y,
-                // so arms go from shoulders upward past the head.
-                ctx.fillRect(w * 0.36, h * -0.28, w * 0.10, h * 0.36);  // left arm up
-                ctx.fillRect(w * 0.54, h * -0.28, w * 0.10, h * 0.36);  // right arm up
+                // FLYING FORWARD: both arms thrust forward along the body axis.
+                // At lean≈1.5 (horizontal) local -y = world forward, so "above head"
+                // in local space reads as arms outstretched in front (Superman pose).
+                // Single merged arm block so it reads as both arms together.
+                ctx.fillRect(w * 0.38, h * -0.42, w * 0.24, h * 0.38);  // merged arm shaft forward
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.41, h * -0.30, w * 0.11, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(w * 0.59, h * -0.30, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                // Two fists side by side at the tip
+                ctx.beginPath(); ctx.arc(w * 0.44, h * -0.44, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.62, h * -0.44, w * 0.11, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
                 // back arm tucked, lead arm thrust forward with fist
                 ctx.fillRect(w * 0.24, h * 0.34, w * 0.1, h * 0.28);
