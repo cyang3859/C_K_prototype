@@ -2812,8 +2812,12 @@
                         e.preventDefault(); break;
                     }
                 }
-                // Exit door (left side x < 120)
+                // Exit door (left side x < 120) — always allow exit; bank sequence only triggers if labExitReady
                 if (hero.x < 120) { exitLexlab(); e.preventDefault(); }
+                else if (labExitReady && hero.x < 200) {
+                    // Nudge player toward door if they press F but aren't quite there
+                    titleCard = { text: 'EXIT THE BUILDING', sub: 'Walk further left to the door, then press F.', timer: 120 };
+                }
             }
             // LexCorp Research Lab entry
             if (e.code === 'KeyF' && scene === 'city' && lexlabEntryUnlocked && currentLevel === 1) {
@@ -8858,7 +8862,7 @@
                     // reset all L1 quest flags
                     prisonEnemiesSpawned = false; prisonEnemyCount = 0;
                     lexlabEntryUnlocked = false;
-                    labCluesFound = 0; labScene = null;
+                    labCluesFound = 0; labScene = null; labExitReady = false;
                     labClues.forEach(c => { c.found = false; c.foundBy = null; });
                     bankEnemiesSpawned = false; bankEnemyCount = 0;
                     bankInterrogated = 0; bankEntryUnlocked = false;
@@ -9433,6 +9437,7 @@
             },
         ];
         let labCluesFound = 0;
+        let labExitReady = false;  // true after bank dialogue — player must walk to exit
         let labScene = null;  // saved city state when entering lab
         let templeIntroStep = 0;
         let templeIntroTimer = 0;
@@ -9503,12 +9508,28 @@
         function exitLexlab() {
             if (!labScene) return;
             const s = labScene.saved;
-            hero.x = s.hx; hero.y = s.hy; hero.vx = s.hvx; hero.vy = s.hvy;
-            hero.facing = s.hf; hero.flightActive = s.hfly;
+            // Place hero just outside the LexCorp door
+            hero.x = LEXLAB_DOOR_X - 60; hero.y = GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0;
+            hero.facing = s.hf; hero.flightActive = false;
             hero.onGround = true;
             scene = 'city';
             labScene = null;
+            labLois._nearClue = false;
+            labLois.active = false;
             platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2);
+            camera.y = 0;
+            if (labExitReady) {
+                // All clues found — Lois drives to bank, hero flies there
+                labExitReady = false;
+                loisCar.x = LEXLAB_X + 30;
+                loisCar.y = GROUND_Y;
+                driveLoisCar(BANK_DOOR_X - 60, () => {
+                    advanceQuest('travel_bank');
+                }, 2.8);
+                titleCard = { text: 'HEAD TO FIRST NATIONAL BANK', sub: 'Fly Downtown — Lois is following in her car.', timer: 260 };
+            }
             camera.x = Math.max(0, hero.x - W / 2);
             camera.y = 0;
         }
@@ -9600,7 +9621,8 @@
                 }
             }
             if (labLois._waitTimer > 0) { labLois._waitTimer--; return; }
-            // Walk toward the next unfound clue
+            // Walk toward the next unfound clue — Lois explores but doesn't collect;
+            // she just lingers near clues and shows a hint so the hero knows where to look.
             const unFound = labClues.filter(c => !c.found);
             if (unFound.length === 0) return;
             const target = unFound[0];
@@ -9609,25 +9631,13 @@
             if (Math.abs(dx) > 10) {
                 labLois.x += Math.sign(dx) * 1.8;
                 labLois.faceDir = Math.sign(dx);
+                labLois._nearClue = false;
             } else {
-                // Arrived at clue — Lois "finds" it after a pause if hero hasn't
-                labLois._waitTimer = 180;  // 3 seconds
-                if (!target.found) {
-                    target.found = true;
-                    target.foundBy = 'lois';
-                    labCluesFound++;
-                    onLabClueFindLois(target);
-                }
+                // Arrived — wait near the clue and show hint bubble (hero must press F)
+                labLois._waitTimer = 90;
+                labLois._nearClue = true;
+                labLois._hintClue = target;
             }
-        }
-
-        function onLabClueFindLois(clue) {
-            startDialogue({
-                speaker: 'Lois Lane',
-                portrait: 'lois',
-                lines: clue.lines,
-                onDone: () => checkLabComplete()
-            });
         }
 
         function checkLabComplete() {
@@ -9659,14 +9669,9 @@
                         ],
                         onDone: () => {
                             advanceQuest('lab_dialogue');
-                            titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Head to Downtown — stop the robbery in progress!', timer: 220 };
-                            exitLexlab();
-                            // Lois drives from lab toward the bank
-                            loisCar.x = LEXLAB_X + 30;
-                            loisCar.y = GROUND_Y;
-                            driveLoisCar(1280, () => {
-                                advanceQuest('travel_bank');
-                            }, 2.8);
+                            // Don't auto-exit — let the player walk to the door
+                            labExitReady = true;
+                            titleCard = { text: 'EXIT THE BUILDING', sub: 'Head to the door on the left and press F to leave.', timer: 280 };
                         }
                     });
                 }
@@ -11233,11 +11238,28 @@
                 ctx.restore();
             }
             // Exit door (left side) — world x=40
+            const doorGlow = labExitReady ? (0.6 + Math.sin(t * 4) * 0.4) : 1;
             ctx.fillStyle = '#1e3050';
             ctx.fillRect(40, LAB.floorY - 80, 50, 80);
-            ctx.strokeStyle = '#4080c0'; ctx.lineWidth = 2;
+            ctx.save();
+            if (labExitReady) {
+                ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 18 * doorGlow;
+                ctx.strokeStyle = `rgba(0,255,136,${doorGlow})`;
+            } else {
+                ctx.strokeStyle = '#4080c0';
+            }
+            ctx.lineWidth = 2;
             ctx.strokeRect(40, LAB.floorY - 80, 50, 80);
-            if (hero.x < 160) {
+            ctx.restore();
+            if (labExitReady) {
+                // Pulsing EXIT arrow when player should leave
+                ctx.save();
+                ctx.globalAlpha = doorGlow;
+                ctx.fillStyle = '#00ff88'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — EXIT', 65, LAB.floorY - 92);
+                ctx.fillText('▼', 65, LAB.floorY - 102);
+                ctx.restore();
+            } else if (hero.x < 160) {
                 ctx.fillStyle = '#a0c8ff'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
                 ctx.fillText('F — Exit', 65, LAB.floorY - 88);
             }
@@ -11281,6 +11303,15 @@
             // Name label
             ctx.fillStyle = 'rgba(180,200,255,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
             ctx.fillText('Lois', lx, fy - 86 + bob);
+            // Hint bubble when she's standing near an unfound clue
+            if (labLois._nearClue && labLois._hintClue && !labLois._hintClue.found) {
+                const bw = 120, bh = 16;
+                const bx = lx - bw / 2, by2 = fy - 106 + bob;
+                ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                _roundRect(ctx, bx, by2, bw, bh, 5); ctx.fill();
+                ctx.fillStyle = '#1a2040'; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('Something here… [F]', lx, by2 + 11);
+            }
             ctx.restore();
         }
 
