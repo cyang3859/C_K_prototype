@@ -2098,7 +2098,7 @@
             if (hitEn) {
                 stopX = hitEn.x + hitEn.w / 2;
                 stopY = hitEn.y + hitEn.h / 2;
-                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
+                tryHitEnemy(hitEn, LASER_DMG, 0, 'laser', e);  // no knockback while beam is active
                 if (!hitEn.alive) {
                     stopX = dir === 1 ? srcX + 2200 : srcX - 2200;
                     stopY  = srcY;
@@ -2296,11 +2296,12 @@
             // reset takeoff when not flying so the next launch re-triggers it
             if (!e.flightActive) e.takeoffPhase = 0;
 
-            // When landing and touching ground, fully reset
+            // When landing and touching ground, trigger superhero landing pose then fully reset
             if (e.landing && e.onGround) {
                 e.landing = false;
+                e._landTimer = 22;  // superhero landing crouch frames
             }
-
+            if (e.onGround && !e.flightActive && (e._landTimer || 0) > 0) e._landTimer--;
             if (e.onGround) { e.landing = false; }
 
             // ── BLOCK – hold Z to raise a defensive stance ──────────────────
@@ -3019,7 +3020,8 @@
             const takingOff = e.takeoffPhase > 0 && e.takeoffPhase < 12;  // brief launch burst
             const moving = Math.abs(e.vx) > 0.3;  // any noticeable horizontal movement
             const running = e.dashing || (e.onGround && Math.abs(e.vx) > 1.2);
-            const standing = e.onGround && !moving;  // idle pose
+            const superLanding = (e._landTimer || 0) > 0;  // superhero crouch on touchdown
+            const standing = e.onGround && !moving && !superLanding;  // idle pose
             // ascending = flying upward (not just hovering). Upright rising pose.
             const ascending = flying && !takingOff && e.vy < -0.6;
             const diving = flying && !takingOff && e.vy > 0.6;        // flying downward
@@ -3079,7 +3081,13 @@
             const legSwing = running ? Math.sin(e.gaitPhase) * h * 0.12 : 0;
             if (persona === 'super') {
                 ctx.fillStyle = '#1e3f7a';
-                if (rising) {
+                if (superLanding) {
+                    // SUPERHERO LANDING: deep crouch — one knee nearly touches ground
+                    const lt = (e._landTimer || 0) / 22; // 1→0
+                    const crouch = (1 - lt) * h * 0.18;  // deepen crouch as timer winds down then springs up
+                    ctx.fillRect(w * 0.30, h * 0.62 + crouch, w * 0.16, h * 0.28 - crouch * 0.8);
+                    ctx.fillRect(w * 0.54, h * 0.62 + crouch * 0.5, w * 0.16, h * 0.32 - crouch * 0.4);
+                } else if (rising) {
                     // RISING/LAUNCH: legs pressed together pointing straight down
                     ctx.fillRect(w * 0.40, h * 0.62, w * 0.10, h * 0.42);
                     ctx.fillRect(w * 0.50, h * 0.62, w * 0.10, h * 0.42);
@@ -3102,7 +3110,12 @@
                 }
                 // boots
                 ctx.fillStyle = '#b81f2c';
-                if (rising) {
+                if (superLanding) {
+                    const lt = (e._landTimer || 0) / 22;
+                    const crouch = (1 - lt) * h * 0.18;
+                    ctx.fillRect(w * 0.28, h * 0.88 + crouch * 0.8, w * 0.20, h * 0.10);
+                    ctx.fillRect(w * 0.52, h * 0.92 + crouch * 0.4, w * 0.20, h * 0.10);
+                } else if (rising) {
                     ctx.fillRect(w * 0.39, h * 1.0, w * 0.11, h * 0.08);
                     ctx.fillRect(w * 0.50, h * 1.0, w * 0.11, h * 0.08);
                 } else if (hovering) {
@@ -3184,7 +3197,20 @@
             const armColor = persona === 'super' ? '#2a5fd9' : '#2b3145';
             const fistColor = persona === 'super' ? '#b81f2c' : '#e8c5a8';
             ctx.fillStyle = armColor;
-            if (rising && !punching) {
+            if (superLanding && !punching) {
+                // SUPERHERO LANDING: one fist planted on ground, other arm cocked back
+                const lt = (e._landTimer || 0) / 22;
+                const crouch = (1 - lt) * h * 0.18;
+                // Planted fist arm — drives diagonally down to ground
+                ctx.fillRect(w * 0.52, h * 0.34, w * 0.10, h * 0.30 + crouch);
+                ctx.fillStyle = fistColor;
+                ctx.beginPath(); ctx.arc(w * 0.57, h * 0.66 + crouch, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = armColor;
+                // Cocked back arm — raised and bent back for drama
+                ctx.fillRect(w * 0.22, h * 0.30 - crouch * 0.3, w * 0.10, h * 0.28);
+                ctx.fillStyle = fistColor;
+                ctx.beginPath(); ctx.arc(w * 0.27, h * 0.28 - crouch * 0.3, w * 0.11, 0, Math.PI * 2); ctx.fill();
+            } else if (rising && !punching) {
                 // ONE arm thrust UP (lead), one tucked along the body — classic launch pose.
                 // In local space the body is upright, so "up" is -y / above the head.
                 ctx.fillRect(w * 0.50, h * -0.04, w * 0.1, h * 0.42);   // lead arm raised up
@@ -3200,12 +3226,14 @@
                 ctx.beginPath(); ctx.arc(w * 0.31, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(w * 0.69, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
             } else if (flying && !punching) {
-                // FLYING FORWARD: both arms extend straight forward ALONG the body axis,
-                // at shoulder height, so once the body is rotated to horizontal the arms
-                // read as horizontal and in line with the body (not splayed downward).
-                ctx.fillRect(w * 0.58, h * 0.33, w * 0.54, h * 0.10);   // arms forward from shoulders
+                // FLYING FORWARD: both arms thrust straight UP above the head —
+                // traditional Superman pose. In local (unrotated) space "up" = -y,
+                // so arms go from shoulders upward past the head.
+                ctx.fillRect(w * 0.36, h * -0.28, w * 0.10, h * 0.36);  // left arm up
+                ctx.fillRect(w * 0.54, h * -0.28, w * 0.10, h * 0.36);  // right arm up
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 1.14, h * 0.38, w * 0.12, 0, Math.PI * 2); ctx.fill(); // fists ahead
+                ctx.beginPath(); ctx.arc(w * 0.41, h * -0.30, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.59, h * -0.30, w * 0.11, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
                 // back arm tucked, lead arm thrust forward with fist
                 ctx.fillRect(w * 0.24, h * 0.34, w * 0.1, h * 0.28);
