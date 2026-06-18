@@ -2818,11 +2818,10 @@
                         e.preventDefault(); break;
                     }
                 }
-                // Exit door (left side x < 120) — always allow exit; bank sequence only triggers if labExitReady
-                if (hero.x < 120) { exitLexlab(); e.preventDefault(); }
-                else if (labExitReady && hero.x < 200) {
-                    // Nudge player toward door if they press F but aren't quite there
-                    titleCard = { text: 'EXIT THE BUILDING', sub: 'Walk further left to the door, then press F.', timer: 120 };
+                // Exit door — trigger when hero is near the left-side door (x<160)
+                if (hero.x < 160) { exitLexlab(); e.preventDefault(); }
+                else if (labExitReady) {
+                    titleCard = { text: 'EXIT THE BUILDING', sub: 'Walk all the way to the left wall, then press F.', timer: 140 };
                 }
             }
             // LexCorp Research Lab entry
@@ -9660,7 +9659,17 @@
             // Walk toward the next unfound clue — Lois explores but doesn't collect;
             // she just lingers near clues and shows a hint so the hero knows where to look.
             const unFound = labClues.filter(c => !c.found);
-            if (unFound.length === 0) return;
+            if (unFound.length === 0) {
+                // All clues found — walk back to the exit door
+                const exitX = 75;
+                const dxExit = exitX - labLois.x;
+                if (Math.abs(dxExit) > 10) {
+                    labLois.x += Math.sign(dxExit) * 2.2;
+                    labLois.faceDir = Math.sign(dxExit);
+                    labLois._nearClue = false;
+                }
+                return;
+            }
             const target = unFound[0];
             labLois._targetX = target.x + target.w / 2;
             const dx = labLois._targetX - labLois.x;
