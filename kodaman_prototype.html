@@ -2603,6 +2603,11 @@
 
         // ---------- ENEMY LOGIC ----------
         function updateEnemies() {
+            // Tick down death fade timer for defeated enemies
+            for (const en of enemies) {
+                if (!en.alive && (en.deathTimer || 0) > 0) en.deathTimer--;
+            }
+
             for (const en of enemies) {
                 if (!en.alive) continue;
                 if (en.hitFlash > 0) en.hitFlash--;
@@ -6092,16 +6097,15 @@
                     const dt = en.deathTimer / 24;  // 1→0
                     ctx.save();
                     ctx.globalAlpha = dt * 0.75;
-                    const ecx = en.x + en.w / 2, ecy = en.y + en.h / 2;
-                    ctx.translate(ecy, ecy);  // intentional: tumble animation
-                    ctx.translate(ecy - ecy, 0);
-                    // Rise + spin + grow then disappear
+                    const ecx = en.x + en.w / 2;
+                    const ecy = en.y + en.h / 2;
                     const driftY = (1 - dt) * 36;
-                    const spin = (1 - dt) * (en._deathSpin || 0.55);
-                    ctx.translate(en.x + en.w / 2, en.y + en.h / 2 - driftY);
+                    const spin   = (1 - dt) * Math.PI * (en._deathSpin || 0.55);
+                    // Pivot around enemy center, drift upward, fade + spin
+                    ctx.translate(ecx, ecy - driftY);
                     ctx.rotate(spin);
                     ctx.scale(1 + (1 - dt) * 0.28, 1 + (1 - dt) * 0.28);
-                    ctx.translate(-(en.x + en.w / 2), -(en.y + en.h / 2));
+                    ctx.translate(-ecx, -ecy);
                     drawEnemy(en);
                     ctx.restore();
                 }
