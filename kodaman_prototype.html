@@ -1348,6 +1348,121 @@
             }
         }
 
+        // ══ PARKED CARS & MOVING TAXIS ═══════════════════════════════════════
+        // Parked every ~400px; skip water gaps and building footprints
+        const parkedCars = (function() {
+            const GAP_ZONES = [{x:410,w:220},{x:1390,w:260},{x:5980,w:730},{x:8180,w:640},{x:11980,w:340}];
+            // Also reserve space in front of key buildings
+            const RESERVED = [{x:1200,w:175},{x:4750,w:230},{x:14200,w:260}];
+            const COLORS = ['#2244aa','#993322','#227744','#888830','#664488','#335577','#aa5522','#1a3a1a'];
+            const TYPES  = ['sedan','sedan','sedan','pickup','sedan','van','sedan','sedan'];
+            const arr = [];
+            let seed = 7;
+            function rng() { seed = (seed * 1664525 + 1013904223) & 0xffffffff; return (seed >>> 0) / 0xffffffff; }
+            for (let wx = 300; wx < 19800; wx += 380 + Math.floor(rng() * 160)) {
+                const blocked = GAP_ZONES.some(g => wx > g.x - 100 && wx < g.x + g.w + 100)
+                             || RESERVED.some(r => wx > r.x - 60 && wx < r.x + r.w + 60);
+                if (blocked) { wx += 120; continue; }
+                arr.push({ x: wx, color: COLORS[Math.floor(rng() * COLORS.length)],
+                           type: TYPES[Math.floor(rng() * TYPES.length)],
+                           faceDir: rng() < 0.5 ? 1 : -1 });
+            }
+            return arr;
+        })();
+
+        // 2-3 moving taxis per district (they bounce between district edges)
+        const taxis = [
+            // downtown
+            { x: 600,   minX: 200,   maxX: 5100,  speed: 1.1, dir: 1,  color: '#ddbb00', phase: 0 },
+            { x: 2800,  minX: 200,   maxX: 5100,  speed: 0.9, dir: -1, color: '#cc9900', phase: 40 },
+            // docks
+            { x: 6200,  minX: 5400,  maxX: 10200, speed: 1.3, dir: 1,  color: '#ddbb00', phase: 20 },
+            { x: 8600,  minX: 5400,  maxX: 10200, speed: 1.0, dir: -1, color: '#cc9900', phase: 10 },
+            // uptown
+            { x: 12000, minX: 10500, maxX: 19800, speed: 1.2, dir: 1,  color: '#ddbb00', phase: 60 },
+            { x: 15000, minX: 10500, maxX: 19800, speed: 1.4, dir: -1, color: '#cc9900', phase: 30 },
+            { x: 18000, minX: 10500, maxX: 19800, speed: 0.8, dir: 1,  color: '#ddbb00', phase: 50 },
+        ];
+
+        function updateTaxis() {
+            for (const t of taxis) {
+                t.phase += 0.06;
+                t.x += t.dir * t.speed;
+                if (t.x <= t.minX) { t.x = t.minX; t.dir = 1; }
+                if (t.x >= t.maxX) { t.x = t.maxX; t.dir = -1; }
+            }
+        }
+
+        function _drawCarShape(sx, by, fd, bodyColor, carType, wheelPhase) {
+            ctx.save(); ctx.translate(sx, by);
+            const isVan    = carType === 'van';
+            const isPickup = carType === 'pickup';
+            const bw = isVan ? 56 : 46, bh = isVan ? 22 : 20;
+            const roofW = isVan ? 52 : isPickup ? 30 : 34;
+            const roofOff = isPickup ? -8 : 0;
+            // Body
+            ctx.fillStyle = bodyColor; ctx.fillRect(-bw * fd, -bh, bw * 2, bh);
+            // Roof
+            ctx.fillRect((-roofW / 2 + roofOff) * fd, -bh - 18, roofW, 18);
+            // Hood slope
+            ctx.fillStyle = _shadeColor(bodyColor, -20);
+            ctx.beginPath(); ctx.moveTo(roofW / 2 * fd, -bh); ctx.lineTo(bw * fd, -bh);
+            ctx.lineTo(bw * fd, -bh + 10); ctx.lineTo(roofW / 2 * fd, -bh + 4); ctx.closePath(); ctx.fill();
+            if (isPickup) {
+                // Pickup bed
+                ctx.fillStyle = _shadeColor(bodyColor, -30);
+                ctx.fillRect((roofW / 2 - 2) * fd, -bh, (bw - roofW / 2 - 2), bh - 2);
+            }
+            // Windows
+            ctx.fillStyle = 'rgba(150,210,255,0.45)';
+            ctx.fillRect((roofW / 2 - roofW + 4) * fd, -bh - 16, roofW - 8, 14);
+            // Headlight + taillight
+            ctx.fillStyle = '#ffe88a'; ctx.fillRect((bw - 6) * fd, -bh + 6, 6 * fd, 5);
+            ctx.fillStyle = '#ff3333'; ctx.fillRect(-bw * fd, -bh + 6, -5 * fd, 5);
+            // Wheels
+            for (const wx2 of [-bw + 12, bw - 12]) {
+                ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(wx2 * fd, 0, 9, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(wx2 * fd, 0, 9, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
+                for (let sp = 0; sp < 4; sp++) {
+                    const a = (wheelPhase || 0) * fd + sp * Math.PI / 2;
+                    ctx.beginPath(); ctx.moveTo(wx2 * fd + Math.cos(a) * 3, Math.sin(a) * 3);
+                    ctx.lineTo(wx2 * fd + Math.cos(a) * 8, Math.sin(a) * 8); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+
+        function _shadeColor(hex, pct) {
+            // lighten (positive) / darken (negative) a #rrggbb hex color
+            const n = parseInt(hex.slice(1), 16);
+            const r = Math.max(0, Math.min(255, (n >> 16) + pct));
+            const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + pct));
+            const b = Math.max(0, Math.min(255, (n & 0xff) + pct));
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function drawParkedCars() {
+            for (const pc of parkedCars) {
+                const sx = pc.x - camera.x;
+                if (sx < -120 || sx > W + 120) continue;
+                _drawCarShape(sx, GROUND_Y, pc.faceDir, pc.color, pc.type, 0);
+            }
+        }
+
+        function drawTaxis() {
+            for (const t of taxis) {
+                const sx = t.x - camera.x;
+                if (sx < -120 || sx > W + 120) continue;
+                _drawCarShape(sx, GROUND_Y, t.dir, t.color, 'sedan', t.phase);
+                // TAXI sign on roof
+                const roofSx = sx - 14 * t.dir;
+                ctx.fillStyle = '#333'; ctx.fillRect(roofSx - 14, GROUND_Y - 40, 28, 9);
+                ctx.fillStyle = '#ffe000'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('TAXI', roofSx, GROUND_Y - 33);
+            }
+        }
+
         function drawLoisCar() {
             if (!loisCar.active) return;
             const cx = loisCar.x;
@@ -2174,49 +2289,156 @@
         // ── STOREFRONTS & CIVIC BUILDINGS ────────────────────────────────
         // Placed so they never overlap gaps or the Weekly Planet (x 900-1120).
         const buildings = [
-            // DOWNTOWN
-            { x: 150, w: 190, h: 155, type: 'gasstation', district: 'downtown', name: 'GAS N GO' },
-            { x: 680, w: 135, h: 175, type: 'diner', district: 'downtown', name: "JOE'S DINER" },
-            { x: 1200, w: 175, h: 220, type: 'bank', district: 'downtown', name: 'FIRST NATIONAL BANK' },
-            { x: 2580, w: 130, h: 160, type: 'shop', district: 'downtown', name: 'CORNER STORE' },
-            { x: 3720, w: 168, h: 205, type: 'police', district: 'downtown', name: 'POLICE DEPT.' },
-            { x: 4520, w: 118, h: 150, type: 'pharmacy', district: 'downtown', name: 'PHARMACY' },
-            { x: 4750, w: 230, h: 250, type: 'prison', district: 'downtown', name: 'STONEGATE PENITENTIARY' },
-            // DOCKS
-            { x: 5560, w: 148, h: 170, type: 'shop', district: 'docks', name: 'HARBOR MARKET' },
-            { x: 8860, w: 142, h: 165, type: 'diner', district: 'docks', name: 'DOCKSIDE DINER' },
-            // UPTOWN
-            { x: 10880, w: 178, h: 230, type: 'bank', district: 'uptown', name: 'UPTOWN TRUST' },
-            { x: 12380, w: 128, h: 162, type: 'shop', district: 'uptown', name: 'HEIGHTS BOUTIQUE' },
-            { x: 13840, w: 138, h: 170, type: 'pharmacy', district: 'uptown', name: 'APEX PHARMACY' },
-            { x: 14200, w: 260, h: 300, type: 'lexlab', district: 'uptown', name: 'LEXCORP RESEARCH LAB' },
+            // ── DOWNTOWN (0–5200) ─────────────────────────────────────────────
+            { x: 150,  w: 190, h: 155, type: 'gasstation', district: 'downtown', name: 'GAS N GO' },
+            { x: 680,  w: 135, h: 175, type: 'diner',      district: 'downtown', name: "JOE'S DINER" },
+            { x: 900,  w: 200, h: 340, type: 'skyscraper', district: 'downtown', name: 'HERALD TOWER' },
+            { x: 1200, w: 175, h: 220, type: 'bank',       district: 'downtown', name: 'FIRST NATIONAL BANK' },
+            // gap x=1400–1640
+            { x: 1660, w: 80,  h: 110, type: 'rowhouse',  district: 'downtown', name: '14 ELM ST' },
+            { x: 1745, w: 80,  h: 100, type: 'rowhouse',  district: 'downtown', name: '16 ELM ST' },
+            { x: 1830, w: 80,  h: 118, type: 'rowhouse',  district: 'downtown', name: '18 ELM ST' },
+            { x: 2000, w: 260, h: 190, type: 'library',   district: 'downtown', name: 'CITY LIBRARY' },
+            { x: 2340, w: 110, h: 145, type: 'church',    district: 'downtown', name: 'ST. MARK\'S' },
+            { x: 2580, w: 130, h: 160, type: 'shop',      district: 'downtown', name: 'CORNER STORE' },
+            { x: 2780, w: 100, h: 120, type: 'cafe',      district: 'downtown', name: 'BEANERY' },
+            { x: 3050, w: 240, h: 280, type: 'skyscraper',district: 'downtown', name: 'METRO PLAZA' },
+            { x: 3720, w: 168, h: 205, type: 'police',    district: 'downtown', name: 'POLICE DEPT.' },
+            { x: 3980, w: 80,  h: 105, type: 'rowhouse',  district: 'downtown', name: '22 PARK AVE' },
+            { x: 4065, w: 80,  h: 115, type: 'rowhouse',  district: 'downtown', name: '24 PARK AVE' },
+            { x: 4150, w: 80,  h: 98,  type: 'rowhouse',  district: 'downtown', name: '26 PARK AVE' },
+            { x: 4330, w: 130, h: 140, type: 'firehall',  district: 'downtown', name: 'FIRE STATION 7' },
+            { x: 4520, w: 118, h: 150, type: 'pharmacy',  district: 'downtown', name: 'PHARMACY' },
+            { x: 4750, w: 230, h: 250, type: 'prison',    district: 'downtown', name: 'STONEGATE PENITENTIARY' },
+
+            // ── DOCKS (5200–10300) ────────────────────────────────────────────
+            { x: 5350, w: 240, h: 150, type: 'warehouse', district: 'docks', name: 'PIER 1 STORAGE' },
+            { x: 5560, w: 148, h: 170, type: 'fishmarket',district: 'docks', name: 'HARBOR MARKET' },
+            { x: 5780, w: 200, h: 140, type: 'warehouse', district: 'docks', name: 'DOCK SUPPLY CO.' },
+            // gap x=6000–6700
+            { x: 6800, w: 160, h: 130, type: 'warehouse', district: 'docks', name: 'COLD STORAGE' },
+            { x: 7040, w: 280, h: 200, type: 'shipyard',  district: 'docks', name: 'METRO SHIPYARD' },
+            { x: 7400, w: 130, h: 140, type: 'shop',      district: 'docks', name: 'MARINE SUPPLY' },
+            { x: 7600, w: 160, h: 130, type: 'warehouse', district: 'docks', name: 'FREIGHT DEPOT' },
+            // gap x=8200–8800
+            { x: 8860, w: 142, h: 165, type: 'diner',     district: 'docks', name: 'DOCKSIDE DINER' },
+            { x: 9080, w: 160, h: 145, type: 'firehall',  district: 'docks', name: 'FIRE STATION 12' },
+            { x: 9320, w: 80,  h: 100, type: 'rowhouse',  district: 'docks', name: '3 HARBOR RD' },
+            { x: 9405, w: 80,  h: 112, type: 'rowhouse',  district: 'docks', name: '5 HARBOR RD' },
+            { x: 9490, w: 80,  h: 95,  type: 'rowhouse',  district: 'docks', name: '7 HARBOR RD' },
+            { x: 9660, w: 200, h: 155, type: 'warehouse', district: 'docks', name: 'HARBOR FREIGHT' },
+            { x: 9950, w: 180, h: 170, type: 'hotel',     district: 'docks', name: 'HARBOR INN' },
+
+            // ── UPTOWN (10300–20000) ──────────────────────────────────────────
+            { x: 10500, w: 240, h: 380, type: 'skyscraper', district: 'uptown', name: 'ONE UPTOWN' },
+            { x: 10880, w: 178, h: 230, type: 'bank',       district: 'uptown', name: 'UPTOWN TRUST' },
+            { x: 11200, w: 200, h: 300, type: 'skyscraper', district: 'uptown', name: 'APEX TOWER' },
+            { x: 11500, w: 260, h: 165, type: 'school',     district: 'uptown', name: 'LINCOLN ACADEMY' },
+            { x: 11850, w: 100, h: 120, type: 'cafe',       district: 'uptown', name: 'HEIGHTS CAFE' },
+            // gap x=12000–12300
+            { x: 12380, w: 128, h: 162, type: 'shop',       district: 'uptown', name: 'HEIGHTS BOUTIQUE' },
+            { x: 12580, w: 110, h: 130, type: 'church',     district: 'uptown', name: 'GRACE CHAPEL' },
+            { x: 12780, w: 80,  h: 108, type: 'rowhouse',   district: 'uptown', name: '8 HEIGHTS BLVD' },
+            { x: 12865, w: 80,  h: 118, type: 'rowhouse',   district: 'uptown', name: '10 HEIGHTS BLVD' },
+            { x: 12950, w: 80,  h: 100, type: 'rowhouse',   district: 'uptown', name: '12 HEIGHTS BLVD' },
+            { x: 13140, w: 240, h: 200, type: 'library',    district: 'uptown', name: 'UPTOWN LIBRARY' },
+            { x: 13840, w: 138, h: 170, type: 'pharmacy',   district: 'uptown', name: 'APEX PHARMACY' },
+            { x: 14200, w: 260, h: 300, type: 'lexlab',     district: 'uptown', name: 'LEXCORP RESEARCH LAB' },
+            { x: 14600, w: 220, h: 350, type: 'skyscraper', district: 'uptown', name: 'LEXCORP ANNEX' },
+            { x: 14920, w: 160, h: 150, type: 'hotel',      district: 'uptown', name: 'GRAND HEIGHTS' },
+            { x: 15180, w: 80,  h: 105, type: 'rowhouse',   district: 'uptown', name: '40 CROWN ST' },
+            { x: 15265, w: 80,  h: 115, type: 'rowhouse',   district: 'uptown', name: '42 CROWN ST' },
+            { x: 15350, w: 80,  h: 98,  type: 'rowhouse',   district: 'uptown', name: '44 CROWN ST' },
+            { x: 15500, w: 200, h: 270, type: 'skyscraper', district: 'uptown', name: 'CROWN TOWER' },
+            { x: 15820, w: 130, h: 140, type: 'shop',       district: 'uptown', name: 'CROWN MARKET' },
+            { x: 16050, w: 240, h: 175, type: 'school',     district: 'uptown', name: 'HEIGHTS PREP' },
+            { x: 16400, w: 80,  h: 110, type: 'rowhouse',   district: 'uptown', name: '2 MANOR PL' },
+            { x: 16485, w: 80,  h: 100, type: 'rowhouse',   district: 'uptown', name: '4 MANOR PL' },
+            { x: 16570, w: 80,  h: 120, type: 'rowhouse',   district: 'uptown', name: '6 MANOR PL' },
+            { x: 16800, w: 280, h: 420, type: 'skyscraper', district: 'uptown', name: 'PINNACLE CENTER' },
+            { x: 17200, w: 160, h: 145, type: 'cafe',       district: 'uptown', name: 'PINNACLE CAFE' },
+            { x: 17460, w: 220, h: 160, type: 'warehouse',  district: 'uptown', name: 'CITY DEPOT' },
+            { x: 17800, w: 80,  h: 105, type: 'rowhouse',   district: 'uptown', name: '11 RIVER CT' },
+            { x: 17885, w: 80,  h: 118, type: 'rowhouse',   district: 'uptown', name: '13 RIVER CT' },
+            { x: 17970, w: 80,  h: 98,  type: 'rowhouse',   district: 'uptown', name: '15 RIVER CT' },
+            { x: 18200, w: 130, h: 140, type: 'shop',       district: 'uptown', name: 'RIVERSIDE STORE' },
+            { x: 18460, w: 200, h: 310, type: 'skyscraper', district: 'uptown', name: 'RIVERSIDE TOWER' },
+            { x: 18780, w: 160, h: 150, type: 'hotel',      district: 'uptown', name: 'LEXCORP SUITES' },
+            { x: 19100, w: 80,  h: 110, type: 'rowhouse',   district: 'uptown', name: '1 SUMMIT DR' },
+            { x: 19185, w: 80,  h: 100, type: 'rowhouse',   district: 'uptown', name: '3 SUMMIT DR' },
+            { x: 19400, w: 220, h: 240, type: 'skyscraper', district: 'uptown', name: 'SUMMIT PLAZA' },
+            { x: 19720, w: 140, h: 155, type: 'firehall',   district: 'uptown', name: 'FIRE STATION 24' },
         ];
 
         // ── AMBIENT (NON-RESCUE) CIVILIANS ────────────────────────────────
         // These roam parks, shops, and dockyards — they add city life but
         // don't trigger the rescue mechanic.
+        // dialogue: one-liner shown when hero presses E near a talkable NPC
+        // talkable types: vendor, cop, dock_worker
         const ambientNPCs = [
-            // DOWNTOWN — near gas station / diner
-            { x: 185, district: 'downtown', type: 'walker', name: 'Roy', homeX: 185, range: 110, speed: 0.32, roamDir: 1, roamPhase: 0, stopTimer: 0 },
-            { x: 730, district: 'downtown', type: 'shopper', name: 'Nina', homeX: 730, range: 90, speed: 0.38, roamDir: -1, roamPhase: 30, stopTimer: 0 },
-            // near City Park
-            { x: 1740, district: 'downtown', type: 'walker', name: 'Emma', homeX: 1740, range: 180, speed: 0.30, roamDir: 1, roamPhase: 60, stopTimer: 0 },
-            { x: 1820, district: 'downtown', type: 'sitter', name: 'Hank', homeX: 1820, range: 0, speed: 0.00, roamDir: 1, roamPhase: 0, stopTimer: 0 },
-            // playground area (kids are smaller + bouncier)
-            { x: 2195, district: 'downtown', type: 'kid', name: 'Timmy', homeX: 2195, range: 100, speed: 0.62, roamDir: -1, roamPhase: 10, stopTimer: 0 },
-            { x: 2265, district: 'downtown', type: 'kid', name: 'Sofia', homeX: 2265, range: 80, speed: 0.70, roamDir: 1, roamPhase: 40, stopTimer: 0 },
-            // Corner Store area
-            { x: 2640, district: 'downtown', type: 'shopper', name: 'Alice', homeX: 2640, range: 100, speed: 0.35, roamDir: 1, roamPhase: 75, stopTimer: 0 },
-            // late district
-            { x: 4000, district: 'downtown', type: 'walker', name: 'Pedro', homeX: 4000, range: 140, speed: 0.28, roamDir: -1, roamPhase: 20, stopTimer: 0 },
-            // DOCKS
-            { x: 5600, district: 'docks', type: 'worker', name: 'Brutus', homeX: 5600, range: 150, speed: 0.44, roamDir: 1, roamPhase: 5, stopTimer: 0 },
-            { x: 6880, district: 'docks', type: 'walker', name: 'Rose', homeX: 6880, range: 120, speed: 0.32, roamDir: -1, roamPhase: 50, stopTimer: 0 },
-            { x: 8880, district: 'docks', type: 'shopper', name: 'Gus', homeX: 8880, range: 90, speed: 0.36, roamDir: 1, roamPhase: 80, stopTimer: 0 },
-            // UPTOWN
-            { x: 10940, district: 'uptown', type: 'shopper', name: 'Claire', homeX: 10940, range: 120, speed: 0.38, roamDir: 1, roamPhase: 15, stopTimer: 0 },
-            { x: 12420, district: 'uptown', type: 'walker', name: 'Victor', homeX: 12420, range: 100, speed: 0.32, roamDir: -1, roamPhase: 35, stopTimer: 0 },
-            { x: 13900, district: 'uptown', type: 'walker', name: 'Ivy', homeX: 13900, range: 130, speed: 0.30, roamDir: 1, roamPhase: 55, stopTimer: 0 },
+            // ── DOWNTOWN ──────────────────────────────────────────────────────
+            { x: 185,  district: 'downtown', type: 'walker',  name: 'Roy',   homeX: 185,  range: 110, speed: 0.32, roamDir:  1, roamPhase:  0, stopTimer: 0 },
+            { x: 730,  district: 'downtown', type: 'shopper', name: 'Nina',  homeX: 730,  range:  90, speed: 0.38, roamDir: -1, roamPhase: 30, stopTimer: 0 },
+            // cop patrols near gas station
+            { x: 340,  district: 'downtown', type: 'cop',     name: 'Officer Reyes', homeX: 340, range: 200, speed: 0.40, roamDir: 1, roamPhase: 10, stopTimer: 0,
+              dialogue: ["Move along, citizen. Nothing to see here.", "Keep Gotham safe — one block at a time.", "I've got my eye on you. In a good way."] },
+            // vendor near diner corner
+            { x: 820,  district: 'downtown', type: 'vendor',  name: 'Stan',  homeX: 820,  range:  50, speed: 0.10, roamDir:  1, roamPhase: 20, stopTimer: 0,
+              dialogue: ["Hot dogs! Get your hot dogs!", "Best frank in Gotham — two bucks!", "Business is slow today. You buying?"] },
+            // jogger near library
+            { x: 2100, district: 'downtown', type: 'jogger',  name: 'Zara',  homeX: 2100, range: 400, speed: 1.10, roamDir:  1, roamPhase: 45, stopTimer: 0 },
+            // City Park walkers & kids
+            { x: 1740, district: 'downtown', type: 'walker',  name: 'Emma',  homeX: 1740, range: 180, speed: 0.30, roamDir:  1, roamPhase: 60, stopTimer: 0 },
+            { x: 1820, district: 'downtown', type: 'sitter',  name: 'Hank',  homeX: 1820, range:   0, speed: 0.00, roamDir:  1, roamPhase:  0, stopTimer: 0 },
+            { x: 2195, district: 'downtown', type: 'kid',     name: 'Timmy', homeX: 2195, range: 100, speed: 0.62, roamDir: -1, roamPhase: 10, stopTimer: 0 },
+            { x: 2265, district: 'downtown', type: 'kid',     name: 'Sofia', homeX: 2265, range:  80, speed: 0.70, roamDir:  1, roamPhase: 40, stopTimer: 0 },
+            // corner store shopper
+            { x: 2640, district: 'downtown', type: 'shopper', name: 'Alice', homeX: 2640, range: 100, speed: 0.35, roamDir:  1, roamPhase: 75, stopTimer: 0 },
+            // delivery near pharmacy / fire station
+            { x: 4400, district: 'downtown', type: 'delivery', name: 'Marco', homeX: 4400, range: 250, speed: 0.55, roamDir: -1, roamPhase: 5, stopTimer: 0 },
+            { x: 4000, district: 'downtown', type: 'walker',  name: 'Pedro', homeX: 4000, range: 140, speed: 0.28, roamDir: -1, roamPhase: 20, stopTimer: 0 },
+            // cop near police dept
+            { x: 3820, district: 'downtown', type: 'cop',     name: 'Officer Walsh', homeX: 3820, range: 180, speed: 0.38, roamDir: -1, roamPhase: 35, stopTimer: 0,
+              dialogue: ["Police dept. is just up ahead if you need help.", "Stay out of trouble, alright?", "I heard there was some commotion at the bank earlier."] },
+            // vendor near corner store
+            { x: 2520, district: 'downtown', type: 'vendor',  name: 'Dot',   homeX: 2520, range:  40, speed: 0.08, roamDir:  1, roamPhase:  0, stopTimer: 0,
+              dialogue: ["Fresh flowers! A dollar a stem!", "Lovely day for flowers, don't you think?", "I've been here since six AM. My feet are killing me."] },
+
+            // ── DOCKS ──────────────────────────────────────────────────────────
+            { x: 5600,  district: 'docks', type: 'dock_worker', name: 'Brutus', homeX: 5600,  range: 150, speed: 0.44, roamDir:  1, roamPhase:  5, stopTimer: 0,
+              dialogue: ["Watch your step round the crates, kid.", "Another shipment's coming in tonight.", "You're not from the union, are you?"] },
+            { x: 6880,  district: 'docks', type: 'walker',      name: 'Rose',   homeX: 6880,  range: 120, speed: 0.32, roamDir: -1, roamPhase: 50, stopTimer: 0 },
+            { x: 7200,  district: 'docks', type: 'dock_worker', name: 'Sal',    homeX: 7200,  range: 200, speed: 0.48, roamDir:  1, roamPhase: 22, stopTimer: 0,
+              dialogue: ["Those cranes won't fix themselves.", "Heard a weird noise from pier 3 last night.", "This whole block smells like fish. I've stopped noticing."] },
+            { x: 7550,  district: 'docks', type: 'dock_worker', name: 'Tia',    homeX: 7550,  range: 180, speed: 0.42, roamDir: -1, roamPhase: 68, stopTimer: 0,
+              dialogue: ["Keep moving — foreman docks your pay if you stop.", "I've been loading crates since before you were born.", "There's a diner down the block. Best fish sandwich in town."] },
+            { x: 8880,  district: 'docks', type: 'shopper',     name: 'Gus',    homeX: 8880,  range:  90, speed: 0.36, roamDir:  1, roamPhase: 80, stopTimer: 0 },
+            { x: 9200,  district: 'docks', type: 'jogger',      name: 'Fern',   homeX: 9200,  range: 500, speed: 1.20, roamDir:  1, roamPhase: 33, stopTimer: 0 },
+            { x: 9450,  district: 'docks', type: 'delivery',    name: 'Oz',     homeX: 9450,  range: 300, speed: 0.58, roamDir: -1, roamPhase: 14, stopTimer: 0 },
+            // cop on harbor patrol
+            { x: 8700,  district: 'docks', type: 'cop',         name: 'Officer Vance', homeX: 8700, range: 250, speed: 0.36, roamDir: 1, roamPhase: 55, stopTimer: 0,
+              dialogue: ["Dock area can get rough after dark.", "LexCorp's been shipping a lot of cargo lately...", "Don't go past the chain-link fence — restricted zone."] },
+
+            // ── UPTOWN ────────────────────────────────────────────────────────
+            { x: 10940, district: 'uptown', type: 'shopper',    name: 'Claire', homeX: 10940, range: 120, speed: 0.38, roamDir:  1, roamPhase: 15, stopTimer: 0 },
+            { x: 11300, district: 'uptown', type: 'vendor',     name: 'Benny',  homeX: 11300, range:  50, speed: 0.10, roamDir:  1, roamPhase: 25, stopTimer: 0,
+              dialogue: ["Newspapers! Get your Daily Planet!", "Big news today — you want a copy?", "I've been selling papers here for twenty years."] },
+            { x: 11700, district: 'uptown', type: 'jogger',     name: 'Kira',   homeX: 11700, range: 600, speed: 1.15, roamDir: -1, roamPhase: 44, stopTimer: 0 },
+            { x: 12420, district: 'uptown', type: 'walker',     name: 'Victor', homeX: 12420, range: 100, speed: 0.32, roamDir: -1, roamPhase: 35, stopTimer: 0 },
+            { x: 12680, district: 'uptown', type: 'cop',        name: 'Officer Park', homeX: 12680, range: 220, speed: 0.40, roamDir: 1, roamPhase: 8, stopTimer: 0,
+              dialogue: ["Uptown's usually quiet. Usually.", "You smell that? Something's off near LexCorp.", "Keep your head down and your hands visible."] },
+            { x: 13300, district: 'uptown', type: 'delivery',   name: 'Kev',    homeX: 13300, range: 350, speed: 0.52, roamDir:  1, roamPhase: 62, stopTimer: 0 },
+            { x: 13900, district: 'uptown', type: 'walker',     name: 'Ivy',    homeX: 13900, range: 130, speed: 0.30, roamDir:  1, roamPhase: 55, stopTimer: 0 },
+            { x: 15600, district: 'uptown', type: 'shopper',    name: 'Mel',    homeX: 15600, range: 140, speed: 0.34, roamDir: -1, roamPhase: 72, stopTimer: 0 },
+            { x: 16000, district: 'uptown', type: 'kid',        name: 'Pip',    homeX: 16000, range:  90, speed: 0.65, roamDir:  1, roamPhase: 18, stopTimer: 0 },
+            { x: 16100, district: 'uptown', type: 'kid',        name: 'Ren',    homeX: 16100, range:  80, speed: 0.72, roamDir: -1, roamPhase: 38, stopTimer: 0 },
+            { x: 17300, district: 'uptown', type: 'jogger',     name: 'Milo',   homeX: 17300, range: 700, speed: 1.05, roamDir:  1, roamPhase: 82, stopTimer: 0 },
+            { x: 18200, district: 'uptown', type: 'vendor',     name: 'Yuki',   homeX: 18200, range:  40, speed: 0.08, roamDir: -1, roamPhase: 30, stopTimer: 0,
+              dialogue: ["Pretzels! Fresh pretzels right here!", "You look hungry. Try a pretzel!", "I've got salted or unsalted. What'll it be?"] },
+            { x: 18600, district: 'uptown', type: 'walker',     name: 'Dex',    homeX: 18600, range: 160, speed: 0.29, roamDir:  1, roamPhase: 48, stopTimer: 0 },
+            { x: 19200, district: 'uptown', type: 'delivery',   name: 'Cam',    homeX: 19200, range: 300, speed: 0.50, roamDir: -1, roamPhase: 90, stopTimer: 0 },
+            { x: 19500, district: 'uptown', type: 'cop',        name: 'Officer Lee', homeX: 19500, range: 200, speed: 0.38, roamDir: -1, roamPhase: 16, stopTimer: 0,
+              dialogue: ["End of the line — this is as far as the patrol goes.", "Quiet up here. Too quiet if you ask me.", "LexCorp security has been all over this neighborhood lately."] },
         ];
 
         let worldTime = 0;  // day/night cycle counter
@@ -2691,8 +2913,8 @@
                     e.preventDefault();
                 }
             }
-            // E: interact (talk to quest NPCs) or drop carried civilians
-            if (e.code === 'KeyE' && scene === 'city' && tryInteract()) { e.preventDefault(); }
+            // E: interact (talk to quest NPCs / ambient role NPCs) or drop carried civilians
+            if (e.code === 'KeyE' && scene === 'city' && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -5765,6 +5987,433 @@
                 ctx.beginPath(); ctx.moveTo(x + w / 2, GROUND_Y - 52); ctx.lineTo(x + w / 2, GROUND_Y); ctx.stroke();
             }
 
+            else if (type === 'skyscraper') {
+                // ── SKYSCRAPER: glass-curtain tower ──
+                const floors = Math.max(4, Math.floor(h / 40));
+                const floorH = Math.floor(h / floors);
+                const sg = ctx.createLinearGradient(x, top, x + w, top);
+                sg.addColorStop(0, '#1a2840'); sg.addColorStop(0.5, '#253555'); sg.addColorStop(1, '#1a2840');
+                ctx.fillStyle = sg; ctx.fillRect(x, top, w, h);
+                // Glass window grid
+                const colW = 18, colGap = 8;
+                const cols = Math.floor((w - 14) / (colW + colGap));
+                const startX = x + 7 + ((w - 14) - cols * (colW + colGap) + colGap) / 2;
+                for (let row = 0; row < floors; row++) {
+                    const wy2 = top + 6 + row * floorH;
+                    for (let col = 0; col < cols; col++) {
+                        const wx2 = startX + col * (colW + colGap);
+                        const lit = ((row * 7 + col * 3 + Math.floor(Date.now() / 8000)) % 5 !== 0);
+                        ctx.fillStyle = lit ? 'rgba(180,220,255,0.32)' : 'rgba(30,60,100,0.5)';
+                        ctx.fillRect(wx2, wy2, colW, floorH - 8);
+                    }
+                }
+                // Vertical steel mullions
+                ctx.fillStyle = 'rgba(100,130,170,0.25)';
+                for (let col = 0; col <= cols; col++) {
+                    ctx.fillRect(startX + col * (colW + colGap) - 3, top, 3, h);
+                }
+                // Horizontal spandrel bands
+                ctx.fillStyle = 'rgba(60,90,130,0.4)';
+                for (let row = 0; row <= floors; row++) { ctx.fillRect(x, top + row * floorH, w, 4); }
+                // Rooftop setbacks / parapet
+                ctx.fillStyle = '#1a2840'; ctx.fillRect(x + 10, top - 8, w - 20, 10);
+                ctx.fillStyle = '#253555'; ctx.fillRect(x + 20, top - 18, w - 40, 12);
+                // Antenna
+                ctx.strokeStyle = '#7090b0'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x + w / 2, top - 18); ctx.lineTo(x + w / 2, top - 40); ctx.stroke();
+                ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(x + w / 2, top - 40, 3, 0, Math.PI * 2); ctx.fill();
+                // Name label at top
+                ctx.fillStyle = 'rgba(180,220,255,0.7)'; ctx.font = `bold ${Math.min(9, Math.floor(w / 14))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, top + 16);
+            }
+            else if (type === 'rowhouse') {
+                // ── ROWHOUSE: narrow 3-storey brick brownstone ──
+                const rg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                rg.addColorStop(0, '#7a4030'); rg.addColorStop(1, '#5c2e20');
+                ctx.fillStyle = rg; ctx.fillRect(x, top, w, h);
+                // Brick texture rows
+                ctx.fillStyle = 'rgba(0,0,0,0.08)';
+                for (let br = 0; br < h; br += 8) ctx.fillRect(x, top + br, w, 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.06)';
+                for (let bc = 0; bc < w; bc += 18) ctx.fillRect(x + bc, top, 2, h);
+                // Storey windows (2 per storey, 3 storeys)
+                const storeyH = Math.floor(h / 3);
+                for (let s = 0; s < 3; s++) {
+                    const wy2 = top + 8 + s * storeyH;
+                    // Two windows side by side
+                    const ww2 = Math.max(10, Math.floor((w - 18) / 2 - 4));
+                    const wx2L = x + 6; const wx2R = x + w - 6 - ww2;
+                    const lit = (Math.floor(Date.now() / 6000 + s) % 3 !== 1);
+                    ctx.fillStyle = lit ? 'rgba(255,240,180,0.7)' : 'rgba(60,50,40,0.8)';
+                    ctx.fillRect(wx2L, wy2, ww2, storeyH - 14);
+                    ctx.fillRect(wx2R, wy2, ww2, storeyH - 14);
+                    ctx.strokeStyle = '#3a2015'; ctx.lineWidth = 1;
+                    ctx.strokeRect(wx2L, wy2, ww2, storeyH - 14);
+                    ctx.strokeRect(wx2R, wy2, ww2, storeyH - 14);
+                    // Window arch
+                    ctx.beginPath(); ctx.arc(wx2L + ww2 / 2, wy2, ww2 / 2, Math.PI, 0); ctx.fillStyle = '#3a2015'; ctx.fill();
+                    ctx.beginPath(); ctx.arc(wx2R + ww2 / 2, wy2, ww2 / 2, Math.PI, 0); ctx.fill();
+                }
+                // Front door
+                const dw2 = Math.max(12, Math.floor(w * 0.35));
+                const dx2 = x + Math.floor((w - dw2) / 2);
+                ctx.fillStyle = '#2a1a0e'; ctx.fillRect(dx2, GROUND_Y - 55, dw2, 55);
+                ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 1.5; ctx.strokeRect(dx2, GROUND_Y - 55, dw2, 55);
+                // Door arch
+                ctx.beginPath(); ctx.arc(dx2 + dw2 / 2, GROUND_Y - 55, dw2 / 2, Math.PI, 0);
+                ctx.fillStyle = '#2a1a0e'; ctx.fill();
+                ctx.strokeStyle = '#8b5a2b'; ctx.stroke();
+                // Stoop steps
+                ctx.fillStyle = '#c8a87a'; ctx.fillRect(dx2 - 4, GROUND_Y - 8, dw2 + 8, 4);
+                ctx.fillRect(dx2 - 2, GROUND_Y - 4, dw2 + 4, 4);
+                // Stone cornice
+                ctx.fillStyle = '#c8a87a'; ctx.fillRect(x, top, w, 6);
+                ctx.fillStyle = '#b09060'; ctx.fillRect(x - 4, top + 4, w + 8, 4);
+            }
+            else if (type === 'cafe') {
+                // ── CAFE: small cozy storefront ──
+                ctx.fillStyle = '#3d2b1a'; ctx.fillRect(x, top, w, h);
+                // Brick
+                ctx.fillStyle = 'rgba(0,0,0,0.07)';
+                for (let br = 0; br < h; br += 7) ctx.fillRect(x, top + br, w, 2);
+                // Awning
+                const aw2 = w + 10;
+                const awX = x - 5, awY = top + Math.floor(h * 0.45);
+                const stripes = 6;
+                const sw = aw2 / stripes;
+                for (let si = 0; si < stripes; si++) {
+                    ctx.fillStyle = si % 2 === 0 ? '#cc2222' : '#f5f0e0';
+                    ctx.beginPath(); ctx.moveTo(awX + si * sw, awY); ctx.lineTo(awX + (si + 1) * sw, awY);
+                    ctx.lineTo(awX + (si + 1) * sw, awY + 22); ctx.lineTo(awX + si * sw, awY + 22); ctx.closePath(); ctx.fill();
+                }
+                // Awning valance scallops
+                ctx.fillStyle = '#cc2222';
+                for (let si = 0; si < stripes * 2; si++) {
+                    ctx.beginPath(); ctx.arc(awX + si * (aw2 / (stripes * 2)), awY + 22, 7, 0, Math.PI); ctx.fill();
+                }
+                // Window
+                const winW = Math.floor(w * 0.6), winH = 30;
+                const winX = x + Math.floor((w - winW) / 2);
+                ctx.fillStyle = 'rgba(180,240,255,0.35)'; ctx.fillRect(winX, awY + 26, winW, winH);
+                ctx.strokeStyle = '#8b6040'; ctx.lineWidth = 2; ctx.strokeRect(winX, awY + 26, winW, winH);
+                // Door
+                const cdw = Math.floor(w * 0.35);
+                const cdx = x + Math.floor((w - cdw) / 2);
+                ctx.fillStyle = '#1a0e08'; ctx.fillRect(cdx, GROUND_Y - 45, cdw, 45);
+                ctx.strokeStyle = '#8b6040'; ctx.lineWidth = 1.5; ctx.strokeRect(cdx, GROUND_Y - 45, cdw, 45);
+                // Sign
+                ctx.fillStyle = '#f5e8c0'; ctx.font = `bold ${Math.min(9, Math.floor(w / 9))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, awY - 6);
+            }
+            else if (type === 'library') {
+                // ── LIBRARY: neoclassical civic building ──
+                const bg2 = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                bg2.addColorStop(0, '#e8dfc8'); bg2.addColorStop(1, '#d4c9b0');
+                ctx.fillStyle = bg2; ctx.fillRect(x, top, w, h);
+                // Corinthian columns
+                const numCols = Math.max(3, Math.floor(w / 55));
+                const colSpacing = (w - 20) / (numCols - 1);
+                for (let ci = 0; ci < numCols; ci++) {
+                    const cx3 = x + 10 + ci * colSpacing;
+                    ctx.fillStyle = '#f0e8d0'; ctx.fillRect(cx3 - 8, top + 30, 16, h - 30);
+                    ctx.strokeStyle = '#c8b890'; ctx.lineWidth = 1; ctx.strokeRect(cx3 - 8, top + 30, 16, h - 30);
+                    // Capital
+                    ctx.fillStyle = '#d8cca0'; ctx.fillRect(cx3 - 12, top + 28, 24, 8);
+                    ctx.fillRect(cx3 - 10, top + 22, 20, 8);
+                }
+                // Frieze
+                ctx.fillStyle = '#c8b890'; ctx.fillRect(x, top + 10, w, 20);
+                ctx.fillStyle = '#b0a070';
+                for (let fi = 0; fi < 8; fi++) ctx.fillRect(x + 10 + fi * Math.floor((w - 20) / 8), top + 10, 8, 20);
+                // Triangular pediment
+                ctx.fillStyle = '#ddd4b8';
+                ctx.beginPath(); ctx.moveTo(x, top + 10); ctx.lineTo(x + w / 2, top - 25); ctx.lineTo(x + w, top + 10); ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = '#c8b890'; ctx.lineWidth = 2; ctx.stroke();
+                // Arched windows
+                const lwinW = 32, lwinH = 50;
+                const numWins = Math.floor((w - 60) / 50);
+                const lwStart = x + 30 + ((w - 60) - numWins * 50 + 10) / 2;
+                for (let wi = 0; wi < numWins; wi++) {
+                    const lx2 = lwStart + wi * 50;
+                    const ly2 = top + 40;
+                    ctx.fillStyle = 'rgba(120,160,200,0.4)'; ctx.fillRect(lx2, ly2 + lwinW / 2, lwinW, lwinH - lwinW / 2);
+                    ctx.beginPath(); ctx.arc(lx2 + lwinW / 2, ly2 + lwinW / 2, lwinW / 2, Math.PI, 0); ctx.fill();
+                    ctx.strokeStyle = '#b0a070'; ctx.lineWidth = 1.5;
+                    ctx.strokeRect(lx2, ly2 + lwinW / 2, lwinW, lwinH - lwinW / 2);
+                    ctx.beginPath(); ctx.arc(lx2 + lwinW / 2, ly2 + lwinW / 2, lwinW / 2, Math.PI, 0); ctx.stroke();
+                }
+                // Grand entrance stairs
+                ctx.fillStyle = '#e0d8c0'; ctx.fillRect(x + w / 2 - 30, GROUND_Y - 8, 60, 8);
+                ctx.fillRect(x + w / 2 - 24, GROUND_Y - 16, 48, 8);
+                ctx.fillRect(x + w / 2 - 18, GROUND_Y - 24, 36, 8);
+                // Doors
+                ctx.fillStyle = '#3a2a10'; ctx.fillRect(x + w / 2 - 18, GROUND_Y - 56, 36, 32);
+                ctx.strokeStyle = '#8b6a30'; ctx.lineWidth = 1.5; ctx.strokeRect(x + w / 2 - 18, GROUND_Y - 56, 36, 32);
+                // Name
+                ctx.fillStyle = '#5a4820'; ctx.font = `bold ${Math.min(9, Math.floor(w / 16))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, top + 8);
+            }
+            else if (type === 'church') {
+                // ── CHURCH: Gothic stone with steeple ──
+                ctx.fillStyle = '#a09080'; ctx.fillRect(x, top, w, h);
+                // Stone texture
+                ctx.fillStyle = 'rgba(0,0,0,0.06)';
+                for (let br = 0; br < h; br += 10) ctx.fillRect(x, top + br, w, 2);
+                for (let bc = 0; bc < w; bc += 20) ctx.fillRect(x + bc, top, 2, h);
+                // Steeple
+                const spireX = x + w / 2, spireBase = top - 10;
+                ctx.fillStyle = '#888070';
+                ctx.beginPath(); ctx.moveTo(spireX - 18, spireBase); ctx.lineTo(spireX + 18, spireBase);
+                ctx.lineTo(spireX + 18, spireBase + 40); ctx.lineTo(spireX - 18, spireBase + 40); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(spireX - 18, spireBase); ctx.lineTo(spireX, spireBase - 50);
+                ctx.lineTo(spireX + 18, spireBase); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#c0bab0'; ctx.fillRect(spireX - 18, spireBase, 36, 6);
+                // Cross
+                ctx.strokeStyle = '#e0d8d0'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(spireX, spireBase - 45); ctx.lineTo(spireX, spireBase - 25); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(spireX - 8, spireBase - 38); ctx.lineTo(spireX + 8, spireBase - 38); ctx.stroke();
+                // Gothic arched window (rose window)
+                const rwX = x + w / 2, rwY = top + Math.floor(h * 0.3);
+                ctx.fillStyle = 'rgba(200,100,200,0.5)';
+                ctx.beginPath(); ctx.arc(rwX, rwY, 18, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#707060'; ctx.lineWidth = 2; ctx.stroke();
+                // Rose window spokes
+                ctx.strokeStyle = '#808070'; ctx.lineWidth = 1;
+                for (let si = 0; si < 8; si++) {
+                    const ang = (si / 8) * Math.PI * 2;
+                    ctx.beginPath(); ctx.moveTo(rwX, rwY); ctx.lineTo(rwX + Math.cos(ang) * 18, rwY + Math.sin(ang) * 18); ctx.stroke();
+                }
+                // Lancet windows
+                const lh2 = Math.floor(h * 0.3), lw2 = 18;
+                const lbX = x + Math.floor(w / 4) - lw2 / 2;
+                const lbX2 = x + Math.floor(3 * w / 4) - lw2 / 2;
+                const lbY = top + Math.floor(h * 0.5);
+                ctx.fillStyle = 'rgba(255,220,100,0.45)';
+                [lbX, lbX2].forEach(lxx => {
+                    ctx.fillRect(lxx, lbY + lw2 / 2, lw2, lh2 - lw2 / 2);
+                    ctx.beginPath(); ctx.arc(lxx + lw2 / 2, lbY + lw2 / 2, lw2 / 2, Math.PI, 0); ctx.fill();
+                });
+                // Pointed arch doors
+                const chDW = Math.floor(w * 0.35);
+                const chDX = x + Math.floor((w - chDW) / 2);
+                ctx.fillStyle = '#2a2018'; ctx.fillRect(chDX, GROUND_Y - 60, chDW, 60);
+                ctx.beginPath(); ctx.arc(chDX + chDW / 2, GROUND_Y - 60, chDW / 2, Math.PI, 0); ctx.fill();
+                ctx.strokeStyle = '#7a7060'; ctx.lineWidth = 1.5;
+                ctx.strokeRect(chDX, GROUND_Y - 60, chDW, 60);
+            }
+            else if (type === 'firehall') {
+                // ── FIRE HALL: red brick with bay doors ──
+                const fg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                fg.addColorStop(0, '#8b1a1a'); fg.addColorStop(1, '#6b1010');
+                ctx.fillStyle = fg; ctx.fillRect(x, top, w, h);
+                // Brick
+                ctx.fillStyle = 'rgba(0,0,0,0.07)';
+                for (let br = 0; br < h; br += 7) ctx.fillRect(x, top + br, w, 2);
+                for (let bc = 0; bc < w; bc += 16) ctx.fillRect(x + bc, top, 2, h);
+                // White trim
+                ctx.strokeStyle = '#f0e0d0'; ctx.lineWidth = 3;
+                ctx.strokeRect(x + 1, top + 1, w - 2, h - 2);
+                // Apparatus bay doors (large roll-up doors)
+                const bayW = Math.floor((w - 20) / 2);
+                const bayH = Math.floor(h * 0.55);
+                const bayY = GROUND_Y - bayH;
+                [x + 6, x + 6 + bayW + 8].forEach(bx => {
+                    // Door frame
+                    ctx.fillStyle = '#c8b0a0'; ctx.fillRect(bx - 2, bayY - 2, bayW + 4, bayH + 2);
+                    // Door panel
+                    ctx.fillStyle = '#e8d8c0'; ctx.fillRect(bx, bayY, bayW, bayH);
+                    // Door horizontal ridges
+                    ctx.strokeStyle = '#c8b090'; ctx.lineWidth = 1;
+                    for (let pr = 1; pr < 5; pr++) {
+                        const pry = bayY + pr * Math.floor(bayH / 5);
+                        ctx.beginPath(); ctx.moveTo(bx, pry); ctx.lineTo(bx + bayW, pry); ctx.stroke();
+                    }
+                    // Door windows
+                    ctx.fillStyle = 'rgba(180,220,255,0.5)';
+                    ctx.fillRect(bx + 4, bayY + 8, bayW - 8, 16);
+                });
+                // "FIRE DEPT" signage
+                ctx.fillStyle = '#fff8f0'; ctx.font = `bold ${Math.min(8, Math.floor(w / 14))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText('FIRE DEPT.', x + w / 2, top + 20);
+                // Station number
+                const stNum = b.name.replace(/[^0-9]/g, '') || '1';
+                ctx.font = `bold ${Math.min(11, Math.floor(w / 11))}px Arial`;
+                ctx.fillText('#' + stNum, x + w / 2, top + 34);
+                // Roof flag pole
+                ctx.strokeStyle = '#d0c0b0'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x + w - 18, top); ctx.lineTo(x + w - 18, top - 28); ctx.stroke();
+                ctx.fillStyle = '#dd2222';
+                ctx.beginPath(); ctx.moveTo(x + w - 18, top - 28); ctx.lineTo(x + w, top - 20); ctx.lineTo(x + w - 18, top - 12); ctx.closePath(); ctx.fill();
+            }
+            else if (type === 'warehouse') {
+                // ── WAREHOUSE: industrial corrugated-metal shed ──
+                const wg = ctx.createLinearGradient(x, top, x + w, top);
+                wg.addColorStop(0, '#505860'); wg.addColorStop(0.5, '#606870'); wg.addColorStop(1, '#505860');
+                ctx.fillStyle = wg; ctx.fillRect(x, top, w, h);
+                // Corrugated metal lines
+                ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
+                for (let cl = 0; cl < w; cl += 8) {
+                    ctx.beginPath(); ctx.moveTo(x + cl, top); ctx.lineTo(x + cl, GROUND_Y); ctx.stroke();
+                }
+                // Roof barrel vault
+                ctx.fillStyle = '#484e56';
+                ctx.beginPath(); ctx.moveTo(x, top); ctx.quadraticCurveTo(x + w / 2, top - 20, x + w, top);
+                ctx.lineTo(x + w, top + 4); ctx.quadraticCurveTo(x + w / 2, top - 14, x, top + 4); ctx.closePath(); ctx.fill();
+                // Large loading door
+                const ldW = Math.floor(w * 0.55), ldH = Math.floor(h * 0.6);
+                const ldX = x + Math.floor((w - ldW) / 2);
+                ctx.fillStyle = '#3a3e46'; ctx.fillRect(ldX, GROUND_Y - ldH, ldW, ldH);
+                ctx.strokeStyle = '#6a7080'; ctx.lineWidth = 2; ctx.strokeRect(ldX, GROUND_Y - ldH, ldW, ldH);
+                // Door horizontal slats
+                ctx.strokeStyle = '#555d68'; ctx.lineWidth = 1;
+                for (let sl = 1; sl < 5; sl++) ctx.strokeRect(ldX + 2, GROUND_Y - ldH + sl * Math.floor(ldH / 5), ldW - 4, 1);
+                // Side window strip
+                ctx.fillStyle = 'rgba(200,230,255,0.25)';
+                ctx.fillRect(x + 6, top + 16, w - 12, 20);
+                ctx.strokeStyle = '#6a7080'; ctx.lineWidth = 1; ctx.strokeRect(x + 6, top + 16, w - 12, 20);
+                // Name plate
+                ctx.fillStyle = '#90a0b0'; ctx.font = `bold ${Math.min(8, Math.floor(w / 17))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, top + 12);
+            }
+            else if (type === 'fishmarket') {
+                // ── FISH MARKET: weathered dock-side shop ──
+                ctx.fillStyle = '#5c7a6a'; ctx.fillRect(x, top, w, h);
+                // Plank texture
+                ctx.fillStyle = 'rgba(0,0,0,0.08)';
+                for (let br = 0; br < h; br += 9) ctx.fillRect(x, top + br, w, 3);
+                // Striped canvas awning
+                const faw = w + 8;
+                const fawX = x - 4, fawY = top + Math.floor(h * 0.4);
+                for (let si = 0; si < 8; si++) {
+                    ctx.fillStyle = si % 2 === 0 ? '#1a6080' : '#e8ead0';
+                    ctx.fillRect(fawX + si * (faw / 8), fawY, Math.ceil(faw / 8), 20);
+                }
+                // Valance
+                ctx.fillStyle = '#1a6080';
+                for (let si = 0; si < 14; si++) {
+                    ctx.beginPath(); ctx.arc(fawX + si * (faw / 14), fawY + 20, 6, 0, Math.PI); ctx.fill();
+                }
+                // Display window
+                ctx.fillStyle = 'rgba(180,240,220,0.4)';
+                ctx.fillRect(x + 8, fawY + 24, w - 16, 28);
+                ctx.strokeStyle = '#4a6a58'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 8, fawY + 24, w - 16, 28);
+                // Fish sign
+                ctx.fillStyle = '#e8f0e0'; ctx.font = `bold ${Math.min(9, Math.floor(w / 13))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, fawY - 4);
+                // Door
+                const fdw = Math.floor(w * 0.4), fdx = x + Math.floor((w - fdw) / 2);
+                ctx.fillStyle = '#2a3828'; ctx.fillRect(fdx, GROUND_Y - 50, fdw, 50);
+                ctx.strokeStyle = '#4a6a58'; ctx.lineWidth = 1.5; ctx.strokeRect(fdx, GROUND_Y - 50, fdw, 50);
+            }
+            else if (type === 'shipyard') {
+                // ── SHIPYARD: industrial facility with crane ──
+                ctx.fillStyle = '#4a5060'; ctx.fillRect(x, top, w, h);
+                // Corrugated lines
+                ctx.strokeStyle = 'rgba(0,0,0,0.10)'; ctx.lineWidth = 1;
+                for (let cl = 0; cl < w; cl += 7) {
+                    ctx.beginPath(); ctx.moveTo(x + cl, top); ctx.lineTo(x + cl, GROUND_Y); ctx.stroke();
+                }
+                // Loading doors
+                ctx.fillStyle = '#383e48'; ctx.fillRect(x + 10, GROUND_Y - 80, 60, 80);
+                ctx.strokeStyle = '#606878'; ctx.lineWidth = 2; ctx.strokeRect(x + 10, GROUND_Y - 80, 60, 80);
+                // Crane structure
+                const crX = x + w - 50;
+                ctx.strokeStyle = '#e0c060'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(crX, GROUND_Y); ctx.lineTo(crX, top - 60); ctx.stroke();
+                ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(crX, top - 60); ctx.lineTo(crX + 70, top - 60); ctx.stroke();
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(crX, top - 30); ctx.lineTo(crX + 70, top - 60); ctx.stroke();
+                // Crane cable + hook
+                ctx.strokeStyle = '#c0a840'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(crX + 60, top - 60); ctx.lineTo(crX + 60, top - 10); ctx.stroke();
+                ctx.fillStyle = '#c0a840'; ctx.fillRect(crX + 54, top - 12, 12, 6);
+                // Name
+                ctx.fillStyle = '#a0b0c0'; ctx.font = `bold ${Math.min(8, Math.floor(w / 18))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, top + 16);
+            }
+            else if (type === 'school') {
+                // ── SCHOOL: long flat-roofed institutional building ──
+                const scg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                scg.addColorStop(0, '#c8b890'); scg.addColorStop(1, '#b0a070');
+                ctx.fillStyle = scg; ctx.fillRect(x, top, w, h);
+                // Brick rows
+                ctx.fillStyle = 'rgba(0,0,0,0.06)';
+                for (let br = 0; br < h; br += 8) ctx.fillRect(x, top + br, w, 2);
+                // Flat roof parapet
+                ctx.fillStyle = '#d0c8a8'; ctx.fillRect(x - 4, top - 6, w + 8, 10);
+                ctx.strokeStyle = '#b0a878'; ctx.lineWidth = 1; ctx.strokeRect(x - 4, top - 6, w + 8, 10);
+                // Flag pole
+                ctx.strokeStyle = '#808060'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x + 24, top - 6); ctx.lineTo(x + 24, top - 45); ctx.stroke();
+                ctx.fillStyle = '#cc2222';
+                ctx.beginPath(); ctx.moveTo(x + 24, top - 45); ctx.lineTo(x + 44, top - 37); ctx.lineTo(x + 24, top - 30); ctx.closePath(); ctx.fill();
+                // Classroom windows (uniform row)
+                const cwinW = 28, cwinH = 32, cwinGap = 12;
+                const ncwins = Math.floor((w - 40) / (cwinW + cwinGap));
+                const cwStart = x + 20 + ((w - 40) - ncwins * (cwinW + cwinGap) + cwinGap) / 2;
+                for (let wi = 0; wi < ncwins; wi++) {
+                    const cwx = cwStart + wi * (cwinW + cwinGap);
+                    const cwy = top + Math.floor(h * 0.25);
+                    ctx.fillStyle = 'rgba(180,230,255,0.45)'; ctx.fillRect(cwx, cwy, cwinW, cwinH);
+                    ctx.strokeStyle = '#a09050'; ctx.lineWidth = 1; ctx.strokeRect(cwx, cwy, cwinW, cwinH);
+                    ctx.beginPath(); ctx.moveTo(cwx + cwinW / 2, cwy); ctx.lineTo(cwx + cwinW / 2, cwy + cwinH); ctx.stroke();
+                }
+                // Entry portico
+                const epW = Math.floor(w * 0.25), epX = x + Math.floor((w - epW) / 2);
+                ctx.fillStyle = '#d8d0b0'; ctx.fillRect(epX - 8, GROUND_Y - 80, epW + 16, 80);
+                ctx.strokeStyle = '#b0a878'; ctx.lineWidth = 2; ctx.strokeRect(epX - 8, GROUND_Y - 80, epW + 16, 80);
+                // Portico columns
+                ctx.fillStyle = '#f0ead8';
+                [epX, epX + epW].forEach(cx3 => { ctx.fillRect(cx3 - 5, GROUND_Y - 75, 10, 70); });
+                // Doors
+                ctx.fillStyle = '#2a200c'; ctx.fillRect(epX, GROUND_Y - 65, epW, 65);
+                ctx.strokeStyle = '#8b7a40'; ctx.lineWidth = 1.5; ctx.strokeRect(epX, GROUND_Y - 65, epW, 65);
+                // Name
+                ctx.fillStyle = '#3a3020'; ctx.font = `bold ${Math.min(9, Math.floor(w / 18))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, top + 14);
+            }
+            else if (type === 'hotel') {
+                // ── HOTEL: art deco mid-rise ──
+                const hg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                hg.addColorStop(0, '#d4c0a0'); hg.addColorStop(1, '#b8a888');
+                ctx.fillStyle = hg; ctx.fillRect(x, top, w, h);
+                // Art deco vertical fins
+                const finCount = Math.floor(w / 20);
+                ctx.fillStyle = 'rgba(0,0,0,0.06)';
+                for (let fi = 0; fi <= finCount; fi++) ctx.fillRect(x + fi * 20, top, 3, h);
+                // Setback crown
+                ctx.fillStyle = '#c8b898'; ctx.fillRect(x + 12, top - 10, w - 24, 14);
+                ctx.fillStyle = '#d8c8a8'; ctx.fillRect(x + 24, top - 20, w - 48, 12);
+                ctx.fillStyle = '#e8d8b8'; ctx.fillRect(x + 36, top - 28, w - 72, 10);
+                // Window grid
+                const hwW = 20, hwH = 22, hwGap = 8;
+                const nhWins = Math.floor((w - 20) / (hwW + hwGap));
+                const nhRows = Math.floor((h - 50) / (hwH + 6));
+                const hwStart = x + 10 + ((w - 20) - nhWins * (hwW + hwGap) + hwGap) / 2;
+                for (let row = 0; row < nhRows; row++) {
+                    for (let col = 0; col < nhWins; col++) {
+                        const hwx = hwStart + col * (hwW + hwGap);
+                        const hwy = top + 30 + row * (hwH + 6);
+                        const lit = ((row * 5 + col * 3 + Math.floor(Date.now() / 10000)) % 4 !== 0);
+                        ctx.fillStyle = lit ? 'rgba(255,240,200,0.5)' : 'rgba(80,60,40,0.5)';
+                        ctx.fillRect(hwx, hwy, hwW, hwH);
+                        ctx.strokeStyle = '#a09070'; ctx.lineWidth = 1; ctx.strokeRect(hwx, hwy, hwW, hwH);
+                    }
+                }
+                // Marquee canopy
+                const mqW = Math.floor(w * 0.6), mqX = x + Math.floor((w - mqW) / 2);
+                ctx.fillStyle = '#8b7040';
+                ctx.beginPath(); ctx.moveTo(mqX - 8, GROUND_Y - 60); ctx.lineTo(mqX + mqW + 8, GROUND_Y - 60);
+                ctx.lineTo(mqX + mqW, GROUND_Y - 48); ctx.lineTo(mqX, GROUND_Y - 48); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#f0e8d0'; ctx.font = `bold ${Math.min(7, Math.floor(mqW / 9))}px Arial`;
+                ctx.textAlign = 'center'; ctx.fillText(b.name, x + w / 2, GROUND_Y - 53);
+                // Door
+                const hdw = Math.floor(mqW * 0.55), hdx = x + Math.floor((w - hdw) / 2);
+                ctx.fillStyle = '#1a1208'; ctx.fillRect(hdx, GROUND_Y - 48, hdw, 48);
+                ctx.strokeStyle = '#8b7040'; ctx.lineWidth = 1.5; ctx.strokeRect(hdx, GROUND_Y - 48, hdw, 48);
+                ctx.fillStyle = 'rgba(255,240,200,0.3)'; ctx.fillRect(hdx + 2, GROUND_Y - 46, hdw - 4, 32);
+            }
             else if (type === 'lexlab') {
                 // ── LEXCORP RESEARCH LAB: sleek corporate steel-grey facade ──
                 const lg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
@@ -6120,34 +6769,167 @@
         }
 
         // ── Ambient NPC drawing ───────────────────────────────────────────
+        const TALKABLE_TYPES = new Set(['cop', 'vendor', 'dock_worker']);
+
+        function _drawNPCOverlay(n, sx, topY, figH, s) {
+            // Role-specific costume overlays drawn on top of drawCivilianFigure
+            const by2 = topY + figH;  // ground (feet)
+            const mid = sx;
+            const fd = (n.roamDir || 1);
+            ctx.save();
+            if (n.type === 'cop') {
+                // Blue uniform tint + badge
+                ctx.fillStyle = 'rgba(30,60,160,0.55)';
+                ctx.fillRect(mid - 7 * s, topY + 14 * s, 14 * s, 18 * s);
+                // Badge
+                ctx.fillStyle = '#f0d060'; ctx.beginPath();
+                ctx.arc(mid + 3 * s * fd, topY + 18 * s, 4 * s, 0, Math.PI * 2); ctx.fill();
+                // Cap
+                ctx.fillStyle = '#1a3080';
+                ctx.fillRect(mid - 8 * s, topY + 1 * s, 16 * s, 5 * s);
+                ctx.fillRect(mid - 10 * s * fd, topY + 3 * s, 4 * s, 3 * s);  // brim
+            } else if (n.type === 'vendor') {
+                // White apron
+                ctx.fillStyle = 'rgba(240,235,220,0.70)';
+                ctx.fillRect(mid - 6 * s, topY + 16 * s, 12 * s, 20 * s);
+                // Paper hat
+                ctx.fillStyle = '#f5f0e8';
+                ctx.fillRect(mid - 7 * s, topY, 14 * s, 6 * s);
+                ctx.fillRect(mid - 5 * s, topY - 5 * s, 10 * s, 6 * s);
+                // Held item (tray / cart handle)
+                ctx.fillStyle = '#c8a060'; ctx.lineWidth = 2;
+                ctx.fillRect(mid + 6 * s * fd, topY + 22 * s, 10 * s, 3 * s);
+            } else if (n.type === 'dock_worker') {
+                // Hi-vis yellow vest stripes
+                ctx.fillStyle = 'rgba(255,220,0,0.55)';
+                ctx.fillRect(mid - 7 * s, topY + 14 * s, 14 * s, 18 * s);
+                // Diagonal reflective stripe
+                ctx.strokeStyle = 'rgba(255,255,180,0.7)'; ctx.lineWidth = 2 * s;
+                ctx.beginPath(); ctx.moveTo(mid - 6 * s, topY + 18 * s); ctx.lineTo(mid + 6 * s, topY + 30 * s); ctx.stroke();
+                // Hard hat
+                ctx.fillStyle = '#ffcc00';
+                ctx.beginPath(); ctx.arc(mid, topY + 3 * s, 8 * s, Math.PI, 0); ctx.fill();
+                ctx.fillRect(mid - 9 * s, topY + 2 * s, 18 * s, 3 * s);  // brim
+            } else if (n.type === 'jogger') {
+                // Bright athletic top
+                ctx.fillStyle = 'rgba(255,60,60,0.50)';
+                ctx.fillRect(mid - 6 * s, topY + 13 * s, 12 * s, 16 * s);
+                // Headband
+                ctx.fillStyle = 'rgba(255,80,80,0.75)';
+                ctx.fillRect(mid - 7 * s, topY + 3 * s, 14 * s, 4 * s);
+            } else if (n.type === 'delivery') {
+                // Brown delivery vest
+                ctx.fillStyle = 'rgba(140,90,30,0.55)';
+                ctx.fillRect(mid - 7 * s, topY + 14 * s, 14 * s, 18 * s);
+                // Carried box
+                ctx.fillStyle = '#d4a050';
+                ctx.fillRect(mid + 4 * s * fd, topY + 16 * s, 12 * s, 10 * s);
+                ctx.strokeStyle = '#a07030'; ctx.lineWidth = 1;
+                ctx.strokeRect(mid + 4 * s * fd, topY + 16 * s, 12 * s, 10 * s);
+                // Package tape cross
+                ctx.beginPath();
+                ctx.moveTo(mid + 4 * s * fd, topY + 21 * s); ctx.lineTo(mid + 16 * s * fd, topY + 21 * s); ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(mid + 10 * s * fd, topY + 16 * s); ctx.lineTo(mid + 10 * s * fd, topY + 26 * s); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
         function drawAmbientNPCs() {
-            // Match rescue-civilian scale: s=1.3 adults, s=1.0 kids
             const ADULT_S = 1.3, KID_S = 1.0;
+            const heroMidX = hero.x + hero.w / 2;
+            const heroMidY = hero.y + hero.h / 2;
+            const t = Date.now();
+
             for (const n of ambientNPCs) {
-                const screenX = n.x - camera.x;
-                if (screenX < -100 || screenX > W + 100) continue;
+                const sx = n.x - camera.x;
+                if (sx < -120 || sx > W + 120) continue;
 
                 const s = n.type === 'kid' ? KID_S : ADULT_S;
                 const figH = 42 * s + 1;
                 const topY = GROUND_Y - figH;
-                // Slow walk cycle so legs move naturally (not frantically)
                 const actualSpeed = Math.abs(n.velX || 0);
-                const walkPhase = n.type === 'sitter' ? 0 : (n.roamPhase || 0) * 0.10 * (actualSpeed + 0.2);
-                // distressed=false → arms always hang at sides; no panic wobble
-                drawCivilianFigure(n, n.x, topY, s, walkPhase, false);
+                // joggers bob faster; everyone else slow
+                const speedMult = n.type === 'jogger' ? 1.6 : 1.0;
+                const walkPhase = (n.type === 'sitter') ? 0
+                    : (n.roamPhase || 0) * 0.10 * (actualSpeed + 0.2) * speedMult;
 
-                // Subtle speech-bubble "Hi!" when hero is close (no emoji, no flicker)
-                const dh = Math.hypot(hero.x + hero.w / 2 - n.x, hero.y + hero.h / 2 - (topY + figH / 2));
-                if (dh < 110) {
+                drawCivilianFigure(n, n.x, topY, s, walkPhase, false);
+                _drawNPCOverlay(n, sx, topY, figH, s);
+
+                // ── Proximity prompts ──────────────────────────────────────
+                const dh = Math.hypot(heroMidX - n.x, heroMidY - (topY + figH / 2));
+
+                if (n.talkTimer > 0) {
+                    // Active dialogue bubble
+                    n.talkTimer--;
                     ctx.save();
-                    const bw = 34, bh = 14, bx = n.x - bw / 2, by = topY - 22;
-                    ctx.fillStyle = 'rgba(255,255,255,0.90)';
-                    ctx.fillRect(bx, by, bw, bh);
+                    const msg = n._activeDialogue || '';
+                    const bw = Math.min(180, Math.max(80, msg.length * 5.5));
+                    const bh = 20, bx = sx - bw / 2, by = topY - 34;
+                    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+                    _roundRect(ctx, bx, by, bw, bh, 6); ctx.fill();
+                    ctx.strokeStyle = 'rgba(80,100,160,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+                    // tail
+                    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+                    ctx.beginPath(); ctx.moveTo(sx - 5, by + bh); ctx.lineTo(sx + 5, by + bh); ctx.lineTo(sx, by + bh + 7); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#1a2040'; ctx.font = `bold 8px Arial`; ctx.textAlign = 'center';
+                    ctx.fillText(msg, sx, by + 13);
+                    ctx.restore();
+                } else if (TALKABLE_TYPES.has(n.type) && dh < 90 && !(n.talkCooldown > 0)) {
+                    // "Press E" prompt
+                    const pulse = 0.7 + Math.sin(t * 0.006) * 0.3;
+                    ctx.save(); ctx.globalAlpha = pulse;
+                    const pw = 60, ph = 14, px2 = sx - pw / 2, py2 = topY - 26;
+                    ctx.fillStyle = 'rgba(40,60,160,0.85)';
+                    _roundRect(ctx, px2, py2, pw, ph, 5); ctx.fill();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 7px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('[E] Talk', sx, py2 + 10);
+                    ctx.restore();
+                } else if (!TALKABLE_TYPES.has(n.type) && dh < 90) {
+                    // Simple "Hi!" for non-talkable NPCs
+                    const pulse = 0.6 + Math.sin(t * 0.005) * 0.4;
+                    ctx.save(); ctx.globalAlpha = pulse;
+                    const bw = n.type === 'kid' ? 30 : 28, bh = 13;
+                    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+                    ctx.fillRect(sx - bw / 2, topY - 22, bw, bh);
                     ctx.fillStyle = '#2a3040'; ctx.font = '8px Arial'; ctx.textAlign = 'center';
-                    ctx.fillText(n.type === 'kid' ? 'Yay!' : 'Hi!', n.x, by + 10);
+                    ctx.fillText(n.type === 'kid' ? 'Yay!' : 'Hi!', sx, topY - 12);
                     ctx.restore();
                 }
+
+                // tick cooldown
+                if ((n.talkCooldown || 0) > 0) n.talkCooldown--;
             }
+        }
+
+        function tryTalkAmbientNPC() {
+            // Called on E press in city scene — returns true if a talkable NPC was found
+            const heroMidX = hero.x + hero.w / 2;
+            for (const n of ambientNPCs) {
+                if (!TALKABLE_TYPES.has(n.type)) continue;
+                if ((n.talkCooldown || 0) > 0) continue;
+                if (Math.abs(n.x - heroMidX) > 90) continue;
+                const lines = n.dialogue || [];
+                if (!lines.length) continue;
+                n._dialogueIdx = ((n._dialogueIdx || 0) + 1) % lines.length;
+                n._activeDialogue = lines[n._dialogueIdx];
+                n.talkTimer = 200;          // ~3.3 s at 60 fps
+                n.talkCooldown = 260;       // brief lockout before re-talk
+                n.stopTimer = 160;          // NPC pauses while talking
+                return true;
+            }
+            return false;
+        }
+
+        function _roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
         }
 
         function drawGroundDecor() {
@@ -6827,6 +7609,8 @@
             // ---- street-level parks, playgrounds, plazas, dockyards ----
             drawBuildings();
             drawGroundDecor();
+            drawParkedCars();
+            drawTaxis();
 
             // ---- rescue buildings (The Weekly Planet) ----
             for (const b of rescueBuildings) {
@@ -12166,6 +12950,7 @@
             updateEnemies();
             updateCivilians();
             updateAmbientNPCs();
+            updateTaxis();
             updateCityLois();
             updatePrisonLois();
             updateLoisCar();
