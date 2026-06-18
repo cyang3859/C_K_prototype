@@ -500,6 +500,51 @@
         const LEXLAB_DOOR_X = 14330;  // center of the lab door
         let lexlabEntryUnlocked = false;  // true when both hero and Lois have arrived
 
+        // ── PHASE 4: BANK ────────────────────────────────────────────────────
+        const BANK_X = 1200;
+        const BANK_DOOR_X = BANK_X + 90;
+        let bankEnemiesSpawned = false;
+        let bankEnemyCount = 0;
+        let bankInterrogated = 0;
+        let bankEntryUnlocked = false;
+
+        const BANK_INT = { w: 2400, floorY: 840, ceilingY: 80 };
+        const BANK_INT_PLATFORMS = [
+            { x: 200,  y: 680, w: 200, h: 12 },
+            { x: 520,  y: 680, w: 200, h: 12 },
+            { x: 900,  y: 680, w: 200, h: 12 },
+            { x: 1280, y: 680, w: 200, h: 12 },
+            { x: 1680, y: 680, w: 200, h: 12 },
+            { x: 350,  y: 520, w: 180, h: 12 },
+            { x: 750,  y: 520, w: 180, h: 12 },
+            { x: 1100, y: 520, w: 180, h: 12 },
+            { x: 1500, y: 520, w: 180, h: 12 },
+        ];
+
+        const bankSuspects = [
+            {
+                x: 600, y: BANK_INT.floorY, faceDir: -1,
+                interrogated: false, phase: 0,
+                name: 'TELLER',
+                lines: [
+                    'Please — I just work here! They burst in, masks on, guns out.',
+                    'I heard one of them say something about "the construction site on Fifth." I think that\'s where they were heading after.',
+                    'There was a big guy in charge — he had a tattoo on his wrist. A snake eating its tail.'
+                ]
+            },
+            {
+                x: 1500, y: BANK_INT.floorY, faceDir: 1,
+                interrogated: false, phase: 0,
+                name: 'SECURITY GUARD',
+                lines: [
+                    'I\'ve been doing this job for twenty years. Never seen anything like it.',
+                    'They knew exactly where the cameras were. This wasn\'t random — someone gave them blueprints.',
+                    'The ringleader — I recognized him. He works construction. The big site on Fifth and Harbor. You\'ll find him there.'
+                ]
+            }
+        ];
+        let bankScene = null;
+
         // Lois at-prison state (separate from cityLois which follows clue spots)
         const prisonLois = {
             x: PRISON_X - 60, y: GROUND_Y,
@@ -587,6 +632,41 @@
 
         // E-key interrogation check — called from keydown handler
         function tryInteract() {
+            // Bank interior: question suspects
+            if (scene === 'bank' && questPhase === 'bank_interrogate') {
+                for (const suspect of bankSuspects) {
+                    if (suspect.interrogated) continue;
+                    if (Math.abs((hero.x + hero.w/2) - suspect.x) < 70) {
+                        suspect.interrogated = true;
+                        bankInterrogated++;
+                        startDialogue({
+                            speaker: suspect.name, portrait: 'npc',
+                            lines: suspect.lines,
+                            onDone: () => {
+                                if (bankInterrogated >= 2) {
+                                    advanceQuest('bank_exit');
+                                    startDialogue({
+                                        speaker: 'Lois Lane', portrait: 'lois',
+                                        lines: [
+                                            'Construction site on Fifth and Harbor — that\'s where Dr. Chen\'s man is hiding.',
+                                            'We need to get there before he disappears. Let\'s go.'
+                                        ],
+                                        onDone: () => {
+                                            advanceQuest('travel_construction');
+                                            titleCard = { text: 'CONSTRUCTION SITE', sub: 'Head to Fifth & Harbor — find the construction yard!', timer: 220 };
+                                            exitBank();
+                                            loisCar.x = BANK_X + 30;
+                                            loisCar.y = GROUND_Y;
+                                            driveLoisCar(8350, () => {}, 2.6);
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                        return true;
+                    }
+                }
+            }
             if (currentLevel !== 1 || scene !== 'city') return false;
             // Prison: talk to rescued Lois (E key within 80px)
             if (prisonLois.active && prisonLois.rescued && questPhase === 'prison_rescued') {
@@ -2116,6 +2196,10 @@
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
                 }
             }
+            // F: bank exit door (left side)
+            if (e.code === 'KeyF' && scene === 'bank') {
+                if (hero.x < 140) { exitBank(); e.preventDefault(); }
+            }
             // F: examine lab clues
             if (e.code === 'KeyF' && scene === 'lab') {
                 const heroMid = hero.x + hero.w / 2;
@@ -2141,6 +2225,12 @@
             if (e.code === 'KeyF' && scene === 'city' && lexlabEntryUnlocked && currentLevel === 1) {
                 if (Math.abs((hero.x + hero.w / 2) - LEXLAB_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
                     enterLexlab(); e.preventDefault();
+                }
+            }
+            // First National Bank entry
+            if (e.code === 'KeyF' && scene === 'city' && bankEntryUnlocked && currentLevel === 1) {
+                if (Math.abs((hero.x + hero.w / 2) - BANK_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                    enterBank(); e.preventDefault();
                 }
             }
             // F: talk to Lois when nearby in the interior
@@ -3421,6 +3511,9 @@
             } else if (scene === 'lab') {
                 dx = Math.max(0, Math.min(LAB.w - W, dx));
                 dy = Math.max(0, Math.min(LAB.floorY + 80 - H, dy));
+            } else if (scene === 'bank') {
+                dx = Math.max(0, Math.min(BANK_INT.w - W, dx));
+                dy = Math.max(0, Math.min(BANK_INT.floorY + 80 - H, dy));
             } else {
                 dx = Math.max(0, Math.min((currentLevel === 3 ? L3_WORLD_WIDTH : WORLD_WIDTH) - W, dx));
                 dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
@@ -6334,6 +6427,7 @@
             if (scene === 'factory') drawFactory();
             if (scene === 'temple') drawTemple();
             if (scene === 'lab') drawLab();
+            if (scene === 'bank') drawBank();
 
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
@@ -7756,6 +7850,72 @@
             camera.y = 0;
         }
 
+        // ── BANK INTERIOR ────────────────────────────────────────────────────
+        function enterBank() {
+            bankScene = {
+                saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive }
+            };
+            hero.x = 120; hero.y = BANK_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            scene = 'bank';
+            platforms.splice(0, platforms.length, ...BANK_INT_PLATFORMS);
+            camera.x = 0; camera.y = Math.max(0, BANK_INT.floorY + 80 - H);
+            bankInterrogated = 0;
+            advanceQuest('bank_interrogate');
+            titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Approach witnesses and press E to question them.', timer: 220 };
+        }
+
+        function exitBank() {
+            if (!bankScene) return;
+            const s = bankScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = s.hvx; hero.vy = s.hvy;
+            hero.facing = s.hf; hero.flightActive = s.hfly;
+            hero.onGround = true;
+            scene = 'city';
+            bankScene = null;
+            platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2);
+            camera.y = 0;
+        }
+
+        function initBankFight() {
+            const offsets = [-220, -140, -60, 80, 180];
+            for (const offset of offsets) {
+                const en = makeTrapEnemy('thug', BANK_DOOR_X + offset, 'downtown', 10, 1.1);
+                en._bankRobber = true;
+                enemies.push(en);
+                bankEnemyCount++;
+            }
+            titleCard = { text: 'ROBBERY IN PROGRESS', sub: 'Stop the armed robbers before they escape!', timer: 200 };
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: [
+                    'There they are — the robbers! Stop them, CK!',
+                    'I\'ll stay back and document everything. Go!'
+                ],
+                onDone: () => {}
+            });
+        }
+
+        function checkBankCleared() {
+            if (!bankEnemiesSpawned) return;
+            const remaining = enemies.filter(e => e._bankRobber && e.alive).length;
+            if (remaining === 0) {
+                bankEnemiesSpawned = false;
+                advanceQuest('bank_enter');
+                bankEntryUnlocked = true;
+                titleCard = { text: 'ROBBERS DEFEATED', sub: 'Enter the bank — question the witnesses inside. Press F at the door.', timer: 240 };
+                startDialogue({
+                    speaker: 'CK', portrait: 'hero',
+                    lines: [
+                        'That\'s the last of them. But Dr. Chen\'s operation goes deeper than this...',
+                        'There may be witnesses inside who saw something. I need to go in.'
+                    ],
+                    onDone: () => {}
+                });
+            }
+        }
+
         // ── labLois AI ────────────────────────────────────────────────────
         const labLois = {
             x: 80, y: LAB.floorY, faceDir: 1, phase: 0,
@@ -9152,6 +9312,144 @@
             }
 
             ctx.restore();
+        }
+
+        // ── First National Bank interior draw ────────────────────────────
+        function drawBankSuspect(s) {
+            if (scene !== 'bank') return;
+            s.phase = (s.phase || 0) + 0.05;
+            const sx = s.x - camera.x;
+            const fy = s.y - camera.y;
+            const fd = s.faceDir;
+            const bob = Math.sin(s.phase) * 1.0;
+            const done = s.interrogated;
+            ctx.save();
+            // Legs
+            ctx.fillStyle = done ? '#3a5a3a' : '#1a2060';
+            ctx.fillRect(sx - 8, fy - 32, 7, 32);
+            ctx.fillRect(sx + 1, fy - 32, 7, 32);
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(sx - 10, fy - 3, 10, 3);
+            ctx.fillRect(sx + 1, fy - 3, 10, 3);
+            // Body
+            ctx.fillStyle = done ? '#2a4a2a' : '#1c2880';
+            ctx.fillRect(sx - 12, fy - 64 + bob, 24, 32);
+            // ID badge
+            ctx.fillStyle = '#ddd'; ctx.fillRect(sx - 4, fy - 58 + bob, 8, 10);
+            ctx.fillStyle = '#4af'; ctx.fillRect(sx - 3, fy - 57 + bob, 6, 2);
+            // Head
+            ctx.fillStyle = '#e0b890';
+            ctx.beginPath(); ctx.arc(sx, fy - 72 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(sx - 10, fy - 82 + bob, 20, 8);
+            // Name + prompt
+            ctx.fillStyle = done ? 'rgba(80,200,80,0.7)' : 'rgba(255,220,100,0.9)';
+            ctx.font = '9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(s.name, sx, fy - 88 + bob);
+            if (!done && Math.abs((hero.x + hero.w/2) - s.x) < 70) {
+                ctx.fillStyle = '#ffe040'; ctx.fillText('E — Question', sx, fy - 101 + bob);
+            }
+            if (done) {
+                ctx.fillStyle = 'rgba(80,200,80,0.6)'; ctx.font = '8px Arial';
+                ctx.fillText('✓ Questioned', sx, fy - 101 + bob);
+            }
+            ctx.restore();
+        }
+
+        function drawBank() {
+            const t = Date.now() * 0.001;
+            // Grand banking hall — marble, classical columns, robbery aftermath
+            ctx.fillStyle = '#f5f0e8'; ctx.fillRect(0, 0, W, H);
+            // Ceiling
+            ctx.fillStyle = '#e8e0cc'; ctx.fillRect(0, BANK_INT.ceilingY - camera.y, BANK_INT.w, 60);
+            ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, BANK_INT.ceilingY - camera.y + 60);
+            ctx.lineTo(BANK_INT.w, BANK_INT.ceilingY - camera.y + 60); ctx.stroke();
+            // Marble floor
+            ctx.fillStyle = '#e8e4dc'; ctx.fillRect(0, BANK_INT.floorY - camera.y, BANK_INT.w, 120);
+            ctx.strokeStyle = '#d0ccc0'; ctx.lineWidth = 1;
+            for (let tx = 0; tx < BANK_INT.w; tx += 100) {
+                ctx.beginPath(); ctx.moveTo(tx - camera.x, BANK_INT.floorY - camera.y);
+                ctx.lineTo(tx - camera.x, BANK_INT.floorY - camera.y + 120); ctx.stroke();
+            }
+            // Classical columns
+            for (let col = 250; col < BANK_INT.w; col += 380) {
+                const cx = col - camera.x;
+                const cg = ctx.createLinearGradient(cx - 18, 0, cx + 18, 0);
+                cg.addColorStop(0, '#ddd8cc'); cg.addColorStop(0.4, '#f5f0e8'); cg.addColorStop(1, '#c8c4b8');
+                ctx.fillStyle = cg;
+                ctx.fillRect(cx - 18, BANK_INT.ceilingY - camera.y + 60, 36, BANK_INT.floorY - BANK_INT.ceilingY - 60);
+                ctx.fillStyle = '#e0d8c0'; ctx.fillRect(cx - 24, BANK_INT.ceilingY - camera.y + 56, 48, 12);
+                ctx.fillStyle = '#d8d0b8'; ctx.fillRect(cx - 22, BANK_INT.floorY - camera.y - 12, 44, 12);
+            }
+            // Teller counters + robbery debris
+            for (const cx of [300, 700, 1100, 1600, 2000]) {
+                const ex = cx - camera.x;
+                if (ex < -180 || ex > W + 180) continue;
+                const ey = BANK_INT.floorY - camera.y;
+                ctx.fillStyle = '#8b6914'; ctx.fillRect(ex, ey - 60, 140, 60);
+                ctx.fillStyle = '#a07820'; ctx.fillRect(ex, ey - 62, 140, 4);
+                // Broken glass shards
+                ctx.strokeStyle = 'rgba(180,220,255,0.6)'; ctx.lineWidth = 1;
+                for (let s2 = 0; s2 < 3; s2++) {
+                    ctx.beginPath(); ctx.moveTo(ex + 20 + s2*30, ey - 60);
+                    ctx.lineTo(ex + 15 + s2*30 + (s2%2===0?5:-5), ey - 95 - s2*2); ctx.stroke();
+                }
+                // Money bag
+                ctx.fillStyle = '#2a6030';
+                ctx.beginPath(); ctx.arc(ex + 160, ey - 12, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#f0c840'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('$', ex + 160, ey - 8);
+            }
+            // Overturned chairs
+            for (const dx of [180, 450, 820, 1200, 1650, 1950]) {
+                const ex = dx - camera.x;
+                if (ex < -60 || ex > W + 60) continue;
+                ctx.fillStyle = '#604020'; ctx.fillRect(ex, BANK_INT.floorY - camera.y - 20, 20, 20);
+                ctx.fillRect(ex - 10, BANK_INT.floorY - camera.y - 28, 40, 6);
+                ctx.fillStyle = 'rgba(255,255,240,0.8)';
+                ctx.save(); ctx.translate(ex + 30, BANK_INT.floorY - camera.y - 4); ctx.rotate(0.4);
+                ctx.fillRect(-12, -8, 24, 16); ctx.restore();
+            }
+            // Alarm flash
+            const alarmFlash = Math.sin(t * 4.0) > 0 ? 0.10 : 0.03;
+            ctx.fillStyle = `rgba(255,60,40,${alarmFlash})`; ctx.fillRect(0, 0, W, H);
+            // Emergency lights on ceiling
+            for (let lx = 160; lx < BANK_INT.w; lx += 400) {
+                const flash2 = Math.sin(t * 4.0 + lx) > 0;
+                ctx.fillStyle = flash2 ? '#ff2020' : '#400808';
+                ctx.beginPath(); ctx.arc(lx - camera.x, BANK_INT.ceilingY - camera.y + 68, 8, 0, Math.PI * 2); ctx.fill();
+                if (flash2) {
+                    ctx.save(); ctx.shadowColor = '#ff4040'; ctx.shadowBlur = 20;
+                    ctx.fillStyle = '#ff4040';
+                    ctx.beginPath(); ctx.arc(lx - camera.x, BANK_INT.ceilingY - camera.y + 68, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                }
+            }
+            // Platforms (balcony level)
+            for (const p of platforms) {
+                const px = p.x - camera.x, py = p.y - camera.y;
+                if (px > W + 50 || px + p.w < -50) continue;
+                const pg = ctx.createLinearGradient(px, py, px, py + p.h);
+                pg.addColorStop(0, '#ddd4b8'); pg.addColorStop(1, '#c0b890');
+                ctx.fillStyle = pg; ctx.fillRect(px, py, p.w, p.h);
+                ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(px, py - 20); ctx.lineTo(px + p.w, py - 20); ctx.stroke();
+                for (let rx = px + 20; rx < px + p.w - 10; rx += 28) {
+                    ctx.beginPath(); ctx.moveTo(rx, py); ctx.lineTo(rx, py - 20); ctx.stroke();
+                }
+            }
+            // Suspects
+            for (const s of bankSuspects) drawBankSuspect(s);
+            // Exit door (left side)
+            const doorX = 50 - camera.x;
+            ctx.fillStyle = '#6b4c1a'; ctx.fillRect(doorX, BANK_INT.floorY - camera.y - 90, 55, 90);
+            ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
+            ctx.strokeRect(doorX, BANK_INT.floorY - camera.y - 90, 55, 90);
+            if (hero.x < 160) {
+                ctx.fillStyle = '#c8a840'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', doorX + 27, BANK_INT.floorY - camera.y - 98);
+            }
         }
 
         // ── LexCorp Lab interior draw ─────────────────────────────────────
@@ -10922,7 +11220,6 @@
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
                 updateEntity(hero, pin);
                 updateEntity(hound, p2in);
-                // Clamp to lab floor
                 if (hero.y + hero.h > LAB.floorY) { hero.y = LAB.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > LAB.floorY) { hound.y = LAB.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
                 updateLabLois();
@@ -10930,6 +11227,23 @@
                 updateCamera();
                 draw();
                 drawLabLois();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // ---- FIRST NATIONAL BANK INTERIOR ----
+            if (scene === 'bank') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > BANK_INT.floorY) { hero.y = BANK_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > BANK_INT.floorY) { hound.y = BANK_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateHitFX();
+                updateCamera();
+                draw();
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
@@ -10981,6 +11295,16 @@
                     titleCard = { text: 'LEXCORP LAB — ENTER', sub: 'Both have arrived. Press F near the door to enter.', timer: 200 };
                 }
             }
+            // Trigger bank robbery enemies when hero arrives near the bank
+            if (questPhase === 'travel_bank' && !bankEnemiesSpawned) {
+                if (Math.abs((hero.x + hero.w/2) - BANK_DOOR_X) < 600) {
+                    bankEnemiesSpawned = true;
+                    advanceQuest('bank_fight');
+                    initBankFight();
+                }
+            }
+            // Check bank fight cleared
+            if (questPhase === 'bank_fight') checkBankCleared();
             tickDialogue();
             updateDarkWing();
             updatePowerGirl();
