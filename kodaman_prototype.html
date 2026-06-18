@@ -704,6 +704,131 @@
             drawConstructionDressing();
         }
 
+        // ── PHASE 6: RETURN TO LEXCORP ────────────────────────────────────────
+        let lexcorp2Spawned = false;
+        let lexcorp2EnemiesSpawned = false;
+        let lexcorp2CluesFound = 0;
+        const lexcorp2Clues = [
+            {
+                x: LEXLAB_X + 40, y: GROUND_Y - 60, w: 44, h: 44,
+                found: false, label: 'ESCAPE MANIFEST',
+                lines: [
+                    'FLIGHT MANIFEST — Private charter, filed under "LexCorp Holdings"',
+                    'Destination: Gotham City Executive Airport.',
+                    'Departure: 36 hours ago. Passenger: Alexander J. Luthor.',
+                    'He was already gone before we even got to the prison.'
+                ]
+            },
+            {
+                x: LEXLAB_X + 180, y: GROUND_Y - 60, w: 44, h: 44,
+                found: false, label: 'GOTHAM DOSSIER',
+                lines: [
+                    'INTERNAL — Project GOTHAM ASCENT',
+                    'Lex has acquired shell companies across Gotham\'s financial district.',
+                    'He\'s not hiding — he\'s building. A new base of operations.',
+                    'Whoever takes him down will have to go through Gotham City.'
+                ]
+            },
+        ];
+
+        function initLexcorp2() {
+            if (lexcorp2Spawned) return;
+            lexcorp2Spawned = true;
+            lexcorp2EnemiesSpawned = true;
+            const offsets = [-180, -90, 60, 150, 240];
+            for (const offset of offsets) {
+                const en = makeTrapEnemy('thug', LEXLAB_X + offset, 'uptown', 15, 1.2);
+                en._lexcorp2Guard = true;
+                enemies.push(en);
+            }
+            titleCard = { text: 'LEXCORP — GUARDS REMAIN', sub: 'Clear the remaining guards, then search for evidence!', timer: 220 };
+            startDialogue({
+                speaker: 'CK', portrait: 'hero',
+                lines: [
+                    'They left guards behind — Chen must have known we\'d come back.',
+                    'Clear them out first.'
+                ],
+                onDone: () => {}
+            });
+        }
+
+        function checkLexcorp2Cleared() {
+            if (!lexcorp2EnemiesSpawned) return;
+            const remaining = enemies.filter(e => e._lexcorp2Guard && e.alive).length;
+            if (remaining === 0) {
+                lexcorp2EnemiesSpawned = false;
+                advanceQuest('lexcorp2_clues');
+                titleCard = { text: 'AREA CLEAR', sub: 'Search for evidence — press F near glowing objects.', timer: 220 };
+            }
+        }
+
+        function drawLexcorp2Clues() {
+            if (!lexcorp2Spawned || scene !== 'city' || currentLevel !== 1) return;
+            const t = Date.now() * 0.001;
+            for (const clue of lexcorp2Clues) {
+                if (clue.found) continue;
+                const cx = clue.x - camera.x, cy = clue.y - camera.y;
+                if (cx < -60 || cx > W + 60) continue;
+                const pulse = 0.5 + Math.sin(t * 2.4 + clue.x * 0.01) * 0.4;
+                ctx.save();
+                ctx.shadowColor = '#40ddff'; ctx.shadowBlur = 14 * pulse;
+                ctx.fillStyle = `rgba(20,160,220,${0.4 + pulse * 0.4})`;
+                ctx.fillRect(cx, cy, clue.w, clue.h);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(clue.label, cx + clue.w/2, cy - 10);
+                if (Math.abs((hero.x + hero.w/2) - (clue.x + clue.w/2)) < 70) {
+                    ctx.fillStyle = '#80eeff';
+                    ctx.fillText('F — Examine', cx + clue.w/2, cy - 24);
+                }
+                ctx.restore();
+            }
+        }
+
+        function triggerFinalDialogue() {
+            advanceQuest('lexcorp2_final_dialogue');
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: [
+                    'Lex Luthor is in Gotham. He\'s been playing the long game all along.',
+                    'This is bigger than Metropolis — it\'s going to take everything you\'ve got.',
+                    'I\'ll publish everything we found. The world needs to know.'
+                ],
+                onDone: () => {
+                    startDialogue({
+                        speaker: 'CK', portrait: 'hero',
+                        lines: [
+                            'Go, Lois. Get the story out. I\'ll handle Luthor.',
+                            'Whatever he\'s building in Gotham — I\'ll bring it down.'
+                        ],
+                        onDone: () => {
+                            advanceQuest('lois_departs');
+                            titleCard = { text: 'LOIS LANE — DEPARTING', sub: 'Lois returns to the Daily Planet. The trail leads to Gotham...', timer: 260 };
+                            // Drive Lois back to the interior (Weekly Planet)
+                            loisCar.x = LEXLAB_X + 40;
+                            loisCar.y = GROUND_Y;
+                            driveLoisCar(820, () => {
+                                // Lois arrives at the office — add her to the interior NPCs
+                                const loisAlready = interior.npcs.find(n => n.lois);
+                                if (!loisAlready) {
+                                    const deskX = 1380;
+                                    interior.desks.push({ x: deskX, y: 410 });
+                                    interior.npcs.push({
+                                        x: deskX, baseX: deskX, type: 'sit',
+                                        name: 'Lois Lane', lois: true,
+                                        phase: 0, greeting: 0, standTimer: 0
+                                    });
+                                    interior.w = Math.max(interior.w, deskX + 280);
+                                }
+                                advanceQuest('level1_complete');
+                                titleCard = { text: 'LEVEL 1 COMPLETE', sub: 'Lois is back at the Daily Planet. Gotham awaits.', timer: 320 };
+                            }, 2.4);
+                        }
+                    });
+                }
+            });
+        }
+
         function drawConstructionDressing() {
             const bx = CONSTRUCTION_X - 350 - camera.x;
             if (bx > W + 400 || bx + 700 < 0) return;
@@ -2411,6 +2536,25 @@
             // F: bank exit door (left side)
             if (e.code === 'KeyF' && scene === 'bank') {
                 if (hero.x < 140) { exitBank(); e.preventDefault(); }
+            }
+            // F: examine LexCorp2 outdoor clues
+            if (e.code === 'KeyF' && scene === 'city' && questPhase === 'lexcorp2_clues' && currentLevel === 1) {
+                const heroMid = hero.x + hero.w / 2;
+                for (const clue of lexcorp2Clues) {
+                    if (clue.found) continue;
+                    if (Math.abs(heroMid - (clue.x + clue.w/2)) < 70) {
+                        clue.found = true;
+                        lexcorp2CluesFound++;
+                        startDialogue({
+                            speaker: 'CK', portrait: 'hero',
+                            lines: clue.lines,
+                            onDone: () => {
+                                if (lexcorp2CluesFound >= 2) triggerFinalDialogue();
+                            }
+                        });
+                        e.preventDefault(); break;
+                    }
+                }
             }
             // F: examine lab clues
             if (e.code === 'KeyF' && scene === 'lab') {
@@ -6640,7 +6784,7 @@
             if (scene === 'temple') drawTemple();
             if (scene === 'lab') drawLab();
             if (scene === 'bank') drawBank();
-            if (scene === 'city') drawYardWorkers();
+            if (scene === 'city') { drawYardWorkers(); drawLexcorp2Clues(); }
 
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
@@ -11508,6 +11652,14 @@
                     titleCard = { text: 'LEXCORP LAB — ENTER', sub: 'Both have arrived. Press F near the door to enter.', timer: 200 };
                 }
             }
+            // Trigger return to LexCorp enemy wave
+            if (questPhase === 'travel_lexcorp2' && !lexcorp2Spawned) {
+                if (Math.abs((hero.x + hero.w/2) - LEXLAB_X) < 600) {
+                    initLexcorp2();
+                    advanceQuest('lexcorp2_fight');
+                }
+            }
+            if (questPhase === 'lexcorp2_fight') checkLexcorp2Cleared();
             // Trigger construction yard when hero arrives
             if (questPhase === 'travel_construction' && !constructionSpawned) {
                 if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 700) {
