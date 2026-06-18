@@ -493,6 +493,182 @@
         // it's considered safe — no trip back to the Weekly Planet required.
         const SAFE_RESCUE_DIST = 700;
 
+        // ── PHASE 2 QUEST LOGIC ──────────────────────────────────────────────
+        // Prison quest location — just in front of the prison building at x=4750
+        const PRISON_X   = 4865;
+        const LEXLAB_X   = 14200;  // LexCorp Research Lab (added to buildings later)
+
+        // Lois at-prison state (separate from cityLois which follows clue spots)
+        const prisonLois = {
+            x: PRISON_X - 60, y: GROUND_Y,
+            faceDir: 1, phase: 0,
+            active: false,          // shown only during prison_fight / prison_rescued
+            rescued: false,
+            greeting: 0,
+        };
+
+        // Prison enemies array — separate from main enemies so we can track clearance
+        // We push them INTO enemies[] on spawn but track count here
+        let prisonEnemyCount   = 0;
+        let prisonEnemiesSpawned = false;
+
+        function initPrisonQuest() {
+            if (prisonEnemiesSpawned) return;
+            prisonEnemiesSpawned = true;
+            prisonLois.active  = true;
+            prisonLois.rescued = false;
+            prisonLois.x       = PRISON_X - 60;
+
+            // Spawn 4 enemies around Lois
+            const types = ['brute', 'robber', 'robber', 'genius'];
+            types.forEach((t, i) => {
+                const side  = i % 2 === 0 ? -1 : 1;
+                const ex    = PRISON_X + side * (80 + i * 50);
+                const en    = makeTrapEnemy(t, ex, 'downtown', 0, 1);
+                en._prisonGuard = true;
+                enemies.push(en);
+            });
+            prisonEnemyCount = types.length;
+            advanceQuest('prison_fight');
+        }
+
+        function checkPrisonCleared() {
+            if (questPhase !== 'prison_fight') return;
+            const guardsDead = enemies.filter(e => e._prisonGuard && !e.alive).length;
+            if (guardsDead >= prisonEnemyCount) {
+                prisonLois.rescued = true;
+                advanceQuest('prison_rescued');
+                // Brief pause then start Lois dialogue
+                setTimeout(() => startPrisonRescueDialogue(), 800);
+            }
+        }
+
+        function startPrisonRescueDialogue() {
+            advanceQuest('lois_dialogue_1');
+            startDialogue({
+                speaker: 'Lois Lane',
+                portrait: 'lois',
+                lines: [
+                    "CK! Thank goodness. I came here alone — I know, not smart.",
+                    "I was investigating a tip. A prisoner escaped three days ago. No alarm, no fuss. Someone on the inside let him out.",
+                    "He\'s not just any prisoner. Bald, mid-fifties, genius-level intellect — guards said he kept talking about \'reclaiming what\'s his.\'",
+                    "I found his cell. He left a note: \'When they jailed me, they thought they buried me. But I\'m not the seed — I\'m the root.\'",
+                    "I know where he\'s been routing his operations. There\'s a research lab in Uptown Heights — LexCorp\'s old experimental division. That\'s where we need to go next."
+                ],
+                onDone: () => startLabClueDialogue()
+            });
+        }
+
+        function startLabClueDialogue() {
+            advanceQuest('lois_clue_lab');
+            startDialogue({
+                speaker: 'CK',
+                portrait: 'hero',
+                lines: [
+                    "LexCorp Research Lab — Uptown Heights. If the escaped prisoner has ties to Lex Luthor, that\'s the next thread.",
+                    "Lois, get in your car. I\'ll fly ahead and meet you there. Don\'t stop for anything."
+                ],
+                onDone: () => {
+                    advanceQuest('travel_lab');
+                    titleCard = { text: 'LEXCORP RESEARCH LAB', sub: 'Head to Uptown Heights — Lois will drive there.', timer: 220 };
+                    // Start Lois driving to the lab
+                    loisCar.x = PRISON_X + 20;
+                    loisCar.y = GROUND_Y;
+                    driveLoisCar(LEXLAB_X - 40, () => {
+                        advanceQuest('lab_explore');
+                        titleCard = { text: 'LOIS ARRIVED', sub: 'Lois is at the lab. Both must be here before entering.', timer: 180 };
+                    });
+                    prisonLois.active = false;  // Lois is now in the car
+                }
+            });
+        }
+
+        // E-key interrogation check — called from keydown handler
+        function tryInteract() {
+            if (currentLevel !== 1 || scene !== 'city') return false;
+            // Prison: talk to rescued Lois (E key within 80px)
+            if (prisonLois.active && prisonLois.rescued && questPhase === 'prison_rescued') {
+                const heroMid = hero.x + hero.w / 2;
+                if (Math.abs(heroMid - prisonLois.x) < 80) {
+                    startPrisonRescueDialogue();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Update prison Lois (slight idle bob, face hero when near)
+        function updatePrisonLois() {
+            if (!prisonLois.active || currentLevel !== 1) return;
+            prisonLois.phase += 0.04;
+            prisonLois.y = GROUND_Y;
+            const heroMid = hero.x + hero.w / 2;
+            const dist = Math.abs(heroMid - prisonLois.x);
+            if (dist < 120) prisonLois.faceDir = heroMid < prisonLois.x ? -1 : 1;
+            prisonLois.greeting = dist < 90 ? Math.min(prisonLois.greeting + 1, 40) : Math.max(prisonLois.greeting - 1, 0);
+        }
+
+        // Draw prison Lois (reuse cityLois style — dark blazer, heels, notepad)
+        function drawPrisonLois() {
+            if (!prisonLois.active || currentLevel !== 1) return;
+            const sx = prisonLois.x - camera.x;
+            if (sx < -80 || sx > W + 80) return;
+            const lx = prisonLois.x;
+            const fy = prisonLois.y;
+            const fd = prisonLois.faceDir;
+            const bob = Math.sin(prisonLois.phase * 1.5) * 1.2;
+            ctx.save();
+
+            // Legs — dark slacks
+            ctx.fillStyle = '#1a1a2a';
+            ctx.fillRect(lx - 8, fy - 32, 7, 32);
+            ctx.fillRect(lx + 1, fy - 32, 7, 32);
+            // Heels
+            ctx.fillStyle = '#cc2244';
+            ctx.fillRect(lx - 10, fy - 3, 10, 3);
+            ctx.fillRect(lx + 1,  fy - 3, 10, 3);
+            // Body — burgundy blazer
+            ctx.fillStyle = '#8b2252';
+            ctx.fillRect(lx - 12, fy - 64 + bob, 24, 32);
+            // White shirt collar
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(lx - 4, fy - 64 + bob, 8, 10);
+            // Notepad in hand
+            ctx.fillStyle = '#f5e8c0';
+            ctx.fillRect(lx + fd * 12, fy - 54 + bob, fd * 10, 14);
+            ctx.strokeStyle = '#888'; ctx.lineWidth = 0.5;
+            for (let nl = 0; nl < 3; nl++)
+                { ctx.beginPath(); ctx.moveTo(lx + fd * 13, fy - 51 + bob + nl * 4); ctx.lineTo(lx + fd * 20, fy - 51 + bob + nl * 4); ctx.stroke(); }
+            // Head
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(lx, fy - 72 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            // Dark hair
+            ctx.fillStyle = '#1a0a04';
+            ctx.beginPath(); ctx.arc(lx, fy - 75 + bob, 11, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            ctx.fillRect(lx - 10, fy - 82 + bob, 20, 8);
+            // Eyes
+            ctx.fillStyle = '#3a2010';
+            ctx.fillRect(lx - 4 + fd, fy - 74 + bob, 3, 2);
+            ctx.fillRect(lx + 1 + fd, fy - 74 + bob, 3, 2);
+
+            // Rescued glow + prompt
+            if (prisonLois.rescued) {
+                ctx.shadowColor = '#40ff80'; ctx.shadowBlur = 10;
+                ctx.strokeStyle = '#40ff80'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(lx, fy - 40 + bob, 22, 0, Math.PI * 2); ctx.stroke();
+                ctx.shadowBlur = 0;
+                if (prisonLois.greeting > 10) {
+                    ctx.fillStyle = 'rgba(8,8,18,0.85)'; ctx.fillRect(lx - 70, fy - 100, 140, 20);
+                    ctx.fillStyle = '#e0c020'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('E — Talk to Lois', lx, fy - 86);
+                }
+            }
+            ctx.restore();
+        }
+        // ── END PHASE 2 QUEST LOGIC ──────────────────────────────────────────
+
+
+
         // Build a fully-initialized enemy left behind as part of a clue's quest.
         // active zone for the current quest (shown as nav arrow on canvas)
         let questZone = null;
@@ -1860,6 +2036,7 @@
                     gameScreen = 'playing'; startMusic();
                     if (titleSelectedLevel === 3) startLevel3();
                     else if (titleSelectedLevel === 2) startLevel2();
+                    else { questPhase = 'intro'; }  // Level 1 — start quest state machine
                     e.preventDefault();
                 }
                 return;
@@ -1949,11 +2126,20 @@
                 const nb = interior.note;
                 if (Math.abs(heroMid - (nb.x + nb.w / 2)) < 60) {
                     interior.note.read = true;
-                    showStory([
-                        "CASE FILE",
-                        "CK is ready to start work today, but there's an emergency he must help solve. There has been an outbreak at the town prison and a local inmate has escaped.",
-                        "Clues are scattered around the city — find them to track down the escapee."
-                    ]);
+                    startDialogue({
+                        speaker: 'CK (reading note)',
+                        portrait: 'hero',
+                        lines: [
+                            'URGENT — This came in overnight. A source says Lois Lane went to Stonegate Penitentiary alone to investigate a tip about a prisoner escape.',
+                            "She hasn\'t checked in since last night. Head to Stonegate — something is wrong.",
+                            "STONEGATE PENITENTIARY — Downtown, east end. She needs backup."
+                        ],
+                        onDone: () => {
+                            advanceQuest('travel_prison');
+                            titleCard = { text: 'STONEGATE PENITENTIARY', sub: 'Head east to the prison — Lois is in trouble.', timer: 220 };
+                            initPrisonQuest();
+                        }
+                    });
                     e.preventDefault();
                 }
             }
@@ -2013,7 +2199,8 @@
                     e.preventDefault();
                 }
             }
-            // E: drop all carried civilians to fight enemies; they can be re-picked up
+            // E: interact (talk to quest NPCs) or drop carried civilians
+            if (e.code === 'KeyE' && scene === 'city' && tryInteract()) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -2287,7 +2474,7 @@
             en.hitReact = 14;
             const killed = en.hp <= 0;
             spawnImpact(en.x + en.w / 2, en.y + en.h / 2, kind, killed);
-            if (killed) { en.alive = false; en.deathTimer = 24; en._deathSpin = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.5); }
+            if (killed) { en.alive = false; en.deathTimer = 24; en._deathSpin = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.5); checkPrisonCleared(); }
             return true;
         }
 
@@ -5898,6 +6085,38 @@
                 ctx.restore();
             }
             drawLoisCar();
+            drawPrisonLois();
+
+            // ── Quest nav arrow (Phase 2+) — replaces old questZone arrow for L1 ──
+            if (currentLevel === 1 && questPhase === 'travel_prison') {
+                const arrowX = PRISON_X - camera.x;
+                const arrowY = 60;
+                const blink = Math.sin(Date.now() * 0.008) > 0;
+                if (blink) {
+                    ctx.save();
+                    ctx.fillStyle = '#ffdd00'; ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 12;
+                    ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('▼', arrowX, arrowY);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial';
+                    ctx.fillText('STONEGATE PRISON', arrowX, arrowY + 20);
+                    ctx.restore();
+                }
+            }
+            if (currentLevel === 1 && (questPhase === 'travel_lab' || questPhase === 'lab_explore')) {
+                const arrowX = LEXLAB_X - camera.x;
+                const blink = Math.sin(Date.now() * 0.008) > 0;
+                if (blink) {
+                    ctx.save();
+                    ctx.fillStyle = '#44ffcc'; ctx.shadowColor = '#44ffcc'; ctx.shadowBlur = 12;
+                    ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('▼', arrowX, 60);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial';
+                    ctx.fillText('LEXCORP RESEARCH LAB', arrowX, 80);
+                    ctx.restore();
+                }
+            }
 
             // ---- STORY CLUES: only the currently-active clue is in the world ----
             if (interior.note.read) {
@@ -10289,6 +10508,7 @@
             updateCivilians();
             updateAmbientNPCs();
             updateCityLois();
+            updatePrisonLois();
             updateLoisCar();
             tickDialogue();
             updateDarkWing();
