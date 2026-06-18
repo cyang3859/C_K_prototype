@@ -493,6 +493,601 @@
         // it's considered safe — no trip back to the Weekly Planet required.
         const SAFE_RESCUE_DIST = 700;
 
+        // ── PHASE 2 QUEST LOGIC ──────────────────────────────────────────────
+        // Prison quest location — just in front of the prison building at x=4750
+        const PRISON_X   = 4865;
+        const LEXLAB_X   = 14200;  // LexCorp Research Lab (added to buildings later)
+        const LEXLAB_DOOR_X = 14330;  // center of the lab door
+        let lexlabEntryUnlocked = false;  // true when both hero and Lois have arrived
+
+        // ── PHASE 4: BANK ────────────────────────────────────────────────────
+        const BANK_X = 1200;
+        const BANK_DOOR_X = BANK_X + 90;
+        let bankEnemiesSpawned = false;
+        let bankEnemyCount = 0;
+        let bankInterrogated = 0;
+        let bankEntryUnlocked = false;
+
+        const BANK_INT = { w: 2400, floorY: 840, ceilingY: 80 };
+        const BANK_INT_PLATFORMS = [
+            { x: 200,  y: 680, w: 200, h: 12 },
+            { x: 520,  y: 680, w: 200, h: 12 },
+            { x: 900,  y: 680, w: 200, h: 12 },
+            { x: 1280, y: 680, w: 200, h: 12 },
+            { x: 1680, y: 680, w: 200, h: 12 },
+            { x: 350,  y: 520, w: 180, h: 12 },
+            { x: 750,  y: 520, w: 180, h: 12 },
+            { x: 1100, y: 520, w: 180, h: 12 },
+            { x: 1500, y: 520, w: 180, h: 12 },
+        ];
+
+        const bankSuspects = [
+            {
+                x: 600, y: BANK_INT.floorY, faceDir: -1,
+                interrogated: false, phase: 0,
+                name: 'TELLER',
+                lines: [
+                    'Please — I just work here! They burst in, masks on, guns out.',
+                    'I heard one of them say something about "the construction site on Fifth." I think that\'s where they were heading after.',
+                    'There was a big guy in charge — he had a tattoo on his wrist. A snake eating its tail.'
+                ]
+            },
+            {
+                x: 1500, y: BANK_INT.floorY, faceDir: 1,
+                interrogated: false, phase: 0,
+                name: 'SECURITY GUARD',
+                lines: [
+                    'I\'ve been doing this job for twenty years. Never seen anything like it.',
+                    'They knew exactly where the cameras were. This wasn\'t random — someone gave them blueprints.',
+                    'The ringleader — I recognized him. He works construction. The big site on Fifth and Harbor. You\'ll find him there.'
+                ]
+            }
+        ];
+        let bankScene = null;
+
+        // Lois at-prison state (separate from cityLois which follows clue spots)
+        const prisonLois = {
+            x: PRISON_X - 60, y: GROUND_Y,
+            faceDir: 1, phase: 0,
+            active: false,          // shown only during prison_fight / prison_rescued
+            rescued: false,
+            greeting: 0,
+        };
+
+        // Prison enemies array — separate from main enemies so we can track clearance
+        // We push them INTO enemies[] on spawn but track count here
+        let prisonEnemyCount   = 0;
+        let prisonEnemiesSpawned = false;
+
+        // ── PHASE 5: CONSTRUCTION YARD ───────────────────────────────────────
+        const CONSTRUCTION_X = 8400;
+        let constructionSpawned = false;
+        let workersInterrogated = 0;
+
+        // 3 workers + 1 henchman (index 3 is the henchman)
+        const yardWorkers = [
+            { x: CONSTRUCTION_X - 280, y: GROUND_Y, faceDir: 1, phase: 0, isHenchman: false, interrogated: false, name: 'WORKER' },
+            { x: CONSTRUCTION_X + 60,  y: GROUND_Y, faceDir:-1, phase: 1, isHenchman: false, interrogated: false, name: 'WORKER' },
+            { x: CONSTRUCTION_X + 280, y: GROUND_Y, faceDir: 1, phase: 2, isHenchman: false, interrogated: false, name: 'WORKER' },
+            { x: CONSTRUCTION_X - 80,  y: GROUND_Y, faceDir:-1, phase: 0.5, isHenchman: true,  interrogated: false, name: 'WORKER', _fleeing: false, _vx: 0 },
+        ];
+
+        function initConstructionYard() {
+            if (constructionSpawned) return;
+            constructionSpawned = true;
+            workersInterrogated = 0;
+            titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — find the henchman hiding among them.', timer: 240 };
+        }
+
+        function updateYardWorkers() {
+            if (!constructionSpawned || scene !== 'city' || currentLevel !== 1) return;
+            for (const w of yardWorkers) {
+                w.phase += 0.04;
+                w.y = GROUND_Y;
+                if (w.isHenchman && w._fleeing) {
+                    // Flee rightward
+                    w._vx = Math.min(w._vx + 0.4, 6.5);
+                    w.x += w._vx;
+                    w.faceDir = 1;
+                    // Hero catches henchman
+                    if (questPhase === 'henchman_flee') {
+                        const heroMid = hero.x + hero.w / 2;
+                        if (Math.abs(heroMid - w.x) < 70) {
+                            w._fleeing = false;
+                            advanceQuest('henchman_caught');
+                            startDialogue({
+                                speaker: 'CK', portrait: 'hero',
+                                lines: ['Stop right there!'],
+                                onDone: () => startHenchmanInterrogation()
+                            });
+                        }
+                    }
+                } else if (!w.isHenchman || !w.interrogated) {
+                    // Idle wander
+                    const drift = Math.sin(w.phase * 0.4 + w.x * 0.001) * 0.5;
+                    w.x += drift;
+                    if (Math.abs(drift) > 0.05) w.faceDir = drift > 0 ? 1 : -1;
+                }
+            }
+        }
+
+        function startHenchmanInterrogation() {
+            advanceQuest('henchman_interrogate');
+            startDialogue({
+                speaker: 'HENCHMAN', portrait: 'npc',
+                lines: [
+                    'Alright, alright! Don\'t hurt me!',
+                    'Dr. Chen paid us to rob the bank — said the money was going to fund something big.',
+                    'But Luthor — Lex — he wasn\'t in prison like everyone thought. He was already in Gotham City.',
+                    'Chen\'s been running everything from here while Lex sets up shop there. That\'s all I know, I swear!'
+                ],
+                onDone: () => {
+                    advanceQuest('travel_lexcorp2');
+                    startDialogue({
+                        speaker: 'CK', portrait: 'hero',
+                        lines: [
+                            'Lex Luthor is in Gotham. He\'s been one step ahead this whole time.',
+                            'I need to go back to LexCorp — there may be evidence pointing to his exact location.'
+                        ],
+                        onDone: () => {
+                            titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
+                            loisCar.x = CONSTRUCTION_X + 60;
+                            loisCar.y = GROUND_Y;
+                            driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
+                        }
+                    });
+                }
+            });
+        }
+
+        function drawYardWorkers() {
+            if (!constructionSpawned || scene !== 'city' || currentLevel !== 1) return;
+            const t = Date.now() * 0.001;
+            for (const w of yardWorkers) {
+                const sx = w.x - camera.x;
+                if (sx < -80 || sx > W + 80) continue;
+                const fy = w.y - camera.y;
+                const bob = Math.sin(w.phase) * 1.0;
+                const fd = w.faceDir;
+                const done = w.interrogated;
+                ctx.save();
+                // Hard hat
+                ctx.fillStyle = w.isHenchman ? '#ff6600' : '#ffcc00';
+                ctx.beginPath();
+                ctx.ellipse(sx, fy - 84 + bob, 13, 7, 0, Math.PI, 0);
+                ctx.fill();
+                ctx.fillRect(sx - 14, fy - 84 + bob, 28, 4);
+                // Head
+                ctx.fillStyle = '#d4a070';
+                ctx.beginPath(); ctx.arc(sx, fy - 76 + bob, 10, 0, Math.PI * 2); ctx.fill();
+                // Eyes
+                ctx.fillStyle = '#333';
+                ctx.fillRect(sx - 4 + fd, fy - 78 + bob, 3, 2);
+                ctx.fillRect(sx + 1 + fd, fy - 78 + bob, 3, 2);
+                // Body — orange hi-vis vest
+                ctx.fillStyle = '#e05a00';
+                ctx.fillRect(sx - 12, fy - 64 + bob, 24, 32);
+                // Vest stripes
+                ctx.fillStyle = 'rgba(255,255,80,0.6)';
+                ctx.fillRect(sx - 12, fy - 60 + bob, 24, 3);
+                ctx.fillRect(sx - 12, fy - 50 + bob, 24, 3);
+                // Legs
+                ctx.fillStyle = '#334';
+                ctx.fillRect(sx - 8, fy - 32, 7, 32);
+                ctx.fillRect(sx + 1, fy - 32, 7, 32);
+                // Boots
+                ctx.fillStyle = '#8b5a1a';
+                ctx.fillRect(sx - 10, fy - 4, 10, 4);
+                ctx.fillRect(sx + 1, fy - 4, 10, 4);
+                // Tool (shovel or wrench) — held in leading hand
+                if (!w._fleeing) {
+                    ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(sx + fd * 12, fy - 56 + bob);
+                    ctx.lineTo(sx + fd * 22, fy - 16 + bob);
+                    ctx.stroke();
+                    ctx.fillStyle = '#aaa';
+                    ctx.fillRect(sx + fd * 18, fy - 62 + bob, fd > 0 ? 8 : -8, 6);
+                }
+                // Name label and interaction prompt
+                const heroDist = Math.abs((hero.x + hero.w/2) - w.x);
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                if (done) {
+                    ctx.fillStyle = 'rgba(80,200,80,0.7)'; ctx.fillText('✓ Questioned', sx, fy - 95 + bob);
+                } else if (heroDist < 70 && !w._fleeing && questPhase === 'construction_interrogate') {
+                    ctx.fillStyle = '#ffe040';
+                    ctx.fillText('E — Question', sx, fy - 95 + bob);
+                }
+                ctx.restore();
+            }
+            // Draw scaffolding / construction site dressing
+            drawConstructionDressing();
+        }
+
+        // ── PHASE 6: RETURN TO LEXCORP ────────────────────────────────────────
+        let lexcorp2Spawned = false;
+        let lexcorp2EnemiesSpawned = false;
+        let lexcorp2CluesFound = 0;
+        const lexcorp2Clues = [
+            {
+                x: LEXLAB_X + 40, y: GROUND_Y - 60, w: 44, h: 44,
+                found: false, label: 'ESCAPE MANIFEST',
+                lines: [
+                    'FLIGHT MANIFEST — Private charter, filed under "LexCorp Holdings"',
+                    'Destination: Gotham City Executive Airport.',
+                    'Departure: 36 hours ago. Passenger: Alexander J. Luthor.',
+                    'He was already gone before we even got to the prison.'
+                ]
+            },
+            {
+                x: LEXLAB_X + 180, y: GROUND_Y - 60, w: 44, h: 44,
+                found: false, label: 'GOTHAM DOSSIER',
+                lines: [
+                    'INTERNAL — Project GOTHAM ASCENT',
+                    'Lex has acquired shell companies across Gotham\'s financial district.',
+                    'He\'s not hiding — he\'s building. A new base of operations.',
+                    'Whoever takes him down will have to go through Gotham City.'
+                ]
+            },
+        ];
+
+        function initLexcorp2() {
+            if (lexcorp2Spawned) return;
+            lexcorp2Spawned = true;
+            lexcorp2EnemiesSpawned = true;
+            const offsets = [-180, -90, 60, 150, 240];
+            for (const offset of offsets) {
+                const en = makeTrapEnemy('thug', LEXLAB_X + offset, 'uptown', 15, 1.2);
+                en._lexcorp2Guard = true;
+                enemies.push(en);
+            }
+            titleCard = { text: 'LEXCORP — GUARDS REMAIN', sub: 'Clear the remaining guards, then search for evidence!', timer: 220 };
+            startDialogue({
+                speaker: 'CK', portrait: 'hero',
+                lines: [
+                    'They left guards behind — Chen must have known we\'d come back.',
+                    'Clear them out first.'
+                ],
+                onDone: () => {}
+            });
+        }
+
+        function checkLexcorp2Cleared() {
+            if (!lexcorp2EnemiesSpawned) return;
+            const remaining = enemies.filter(e => e._lexcorp2Guard && e.alive).length;
+            if (remaining === 0) {
+                lexcorp2EnemiesSpawned = false;
+                advanceQuest('lexcorp2_clues');
+                titleCard = { text: 'AREA CLEAR', sub: 'Search for evidence — press F near glowing objects.', timer: 220 };
+            }
+        }
+
+        function drawLexcorp2Clues() {
+            if (!lexcorp2Spawned || scene !== 'city' || currentLevel !== 1) return;
+            const t = Date.now() * 0.001;
+            for (const clue of lexcorp2Clues) {
+                if (clue.found) continue;
+                const cx = clue.x - camera.x, cy = clue.y - camera.y;
+                if (cx < -60 || cx > W + 60) continue;
+                const pulse = 0.5 + Math.sin(t * 2.4 + clue.x * 0.01) * 0.4;
+                ctx.save();
+                ctx.shadowColor = '#40ddff'; ctx.shadowBlur = 14 * pulse;
+                ctx.fillStyle = `rgba(20,160,220,${0.4 + pulse * 0.4})`;
+                ctx.fillRect(cx, cy, clue.w, clue.h);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(clue.label, cx + clue.w/2, cy - 10);
+                if (Math.abs((hero.x + hero.w/2) - (clue.x + clue.w/2)) < 70) {
+                    ctx.fillStyle = '#80eeff';
+                    ctx.fillText('F — Examine', cx + clue.w/2, cy - 24);
+                }
+                ctx.restore();
+            }
+        }
+
+        function triggerFinalDialogue() {
+            advanceQuest('lexcorp2_final_dialogue');
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: [
+                    'Lex Luthor is in Gotham. He\'s been playing the long game all along.',
+                    'This is bigger than Metropolis — it\'s going to take everything you\'ve got.',
+                    'I\'ll publish everything we found. The world needs to know.'
+                ],
+                onDone: () => {
+                    startDialogue({
+                        speaker: 'CK', portrait: 'hero',
+                        lines: [
+                            'Go, Lois. Get the story out. I\'ll handle Luthor.',
+                            'Whatever he\'s building in Gotham — I\'ll bring it down.'
+                        ],
+                        onDone: () => {
+                            advanceQuest('lois_departs');
+                            titleCard = { text: 'LOIS LANE — DEPARTING', sub: 'Lois returns to the Daily Planet. The trail leads to Gotham...', timer: 260 };
+                            // Drive Lois back to the interior (Weekly Planet)
+                            loisCar.x = LEXLAB_X + 40;
+                            loisCar.y = GROUND_Y;
+                            driveLoisCar(820, () => {
+                                // Lois arrives at the office — add her to the interior NPCs
+                                const loisAlready = interior.npcs.find(n => n.lois);
+                                if (!loisAlready) {
+                                    const deskX = 1380;
+                                    interior.desks.push({ x: deskX, y: 410 });
+                                    interior.npcs.push({
+                                        x: deskX, baseX: deskX, type: 'sit',
+                                        name: 'Lois Lane', lois: true,
+                                        phase: 0, greeting: 0, standTimer: 0
+                                    });
+                                    interior.w = Math.max(interior.w, deskX + 280);
+                                }
+                                advanceQuest('level1_complete');
+                                titleCard = { text: 'LEVEL 1 COMPLETE', sub: 'Lois is back at the Daily Planet. Gotham awaits.', timer: 320 };
+                            }, 2.4);
+                        }
+                    });
+                }
+            });
+        }
+
+        function drawConstructionDressing() {
+            const bx = CONSTRUCTION_X - 350 - camera.x;
+            if (bx > W + 400 || bx + 700 < 0) return;
+            const gy = GROUND_Y - camera.y;
+            ctx.save();
+            // Site boundary fence
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2;
+            for (let fx = CONSTRUCTION_X - 350; fx < CONSTRUCTION_X + 350; fx += 40) {
+                const fx2 = fx - camera.x;
+                ctx.beginPath(); ctx.moveTo(fx2, gy); ctx.lineTo(fx2, gy - 50); ctx.stroke();
+            }
+            ctx.beginPath(); ctx.moveTo(CONSTRUCTION_X - 350 - camera.x, gy - 50);
+            ctx.lineTo(CONSTRUCTION_X + 350 - camera.x, gy - 50); ctx.stroke();
+            // Scaffolding tower
+            const tx = CONSTRUCTION_X + 150 - camera.x;
+            ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+            for (let ry = 0; ry < 3; ry++) {
+                ctx.beginPath(); ctx.moveTo(tx, gy - 60 - ry*60); ctx.lineTo(tx + 60, gy - 60 - ry*60); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx, gy - ry*60); ctx.lineTo(tx, gy - 60 - ry*60); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx + 60, gy - ry*60); ctx.lineTo(tx + 60, gy - 60 - ry*60); ctx.stroke();
+            }
+            // Stacked materials
+            ctx.fillStyle = '#b87333';
+            ctx.fillRect(CONSTRUCTION_X - 320 - camera.x, gy - 30, 60, 30);
+            ctx.fillRect(CONSTRUCTION_X - 320 - camera.x, gy - 50, 60, 18);
+            // Cement mixer
+            ctx.fillStyle = '#666'; ctx.beginPath();
+            ctx.arc(CONSTRUCTION_X + 240 - camera.x, gy - 30, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#888'; ctx.fillRect(CONSTRUCTION_X + 218 - camera.x, gy - 60, 44, 30);
+            // Caution sign
+            ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X - camera.x, gy - 58);
+            ctx.restore();
+        }
+
+        function initPrisonQuest() {
+            if (prisonEnemiesSpawned) return;
+            prisonEnemiesSpawned = true;
+            prisonLois.active  = true;
+            prisonLois.rescued = false;
+            prisonLois.x       = PRISON_X - 60;
+
+            // Spawn 4 enemies around Lois
+            const types = ['brute', 'robber', 'robber', 'genius'];
+            types.forEach((t, i) => {
+                const side  = i % 2 === 0 ? -1 : 1;
+                const ex    = PRISON_X + side * (80 + i * 50);
+                const en    = makeTrapEnemy(t, ex, 'downtown', 0, 1);
+                en._prisonGuard = true;
+                enemies.push(en);
+            });
+            prisonEnemyCount = types.length;
+            advanceQuest('prison_fight');
+        }
+
+        function checkPrisonCleared() {
+            if (questPhase !== 'prison_fight') return;
+            const guardsDead = enemies.filter(e => e._prisonGuard && !e.alive).length;
+            if (guardsDead >= prisonEnemyCount) {
+                prisonLois.rescued = true;
+                advanceQuest('prison_rescued');
+                // Brief pause then start Lois dialogue
+                setTimeout(() => startPrisonRescueDialogue(), 800);
+            }
+        }
+
+        function startPrisonRescueDialogue() {
+            advanceQuest('lois_dialogue_1');
+            startDialogue({
+                speaker: 'Lois Lane',
+                portrait: 'lois',
+                lines: [
+                    "CK! Thank goodness. I came here alone — I know, not smart.",
+                    "I was investigating a tip. A prisoner escaped three days ago. No alarm, no fuss. Someone on the inside let him out.",
+                    "He\'s not just any prisoner. Bald, mid-fifties, genius-level intellect — guards said he kept talking about \'reclaiming what\'s his.\'",
+                    "I found his cell. He left a note: \'When they jailed me, they thought they buried me. But I\'m not the seed — I\'m the root.\'",
+                    "I know where he\'s been routing his operations. There\'s a research lab in Uptown Heights — LexCorp\'s old experimental division. That\'s where we need to go next."
+                ],
+                onDone: () => startLabClueDialogue()
+            });
+        }
+
+        function startLabClueDialogue() {
+            advanceQuest('lois_clue_lab');
+            startDialogue({
+                speaker: 'CK',
+                portrait: 'hero',
+                lines: [
+                    "LexCorp Research Lab — Uptown Heights. If the escaped prisoner has ties to Lex Luthor, that\'s the next thread.",
+                    "Lois, get in your car. I\'ll fly ahead and meet you there. Don\'t stop for anything."
+                ],
+                onDone: () => {
+                    advanceQuest('travel_lab');
+                    titleCard = { text: 'LEXCORP RESEARCH LAB', sub: 'Head to Uptown Heights — Lois will drive there.', timer: 220 };
+                    // Start Lois driving to the lab
+                    loisCar.x = PRISON_X + 20;
+                    loisCar.y = GROUND_Y;
+                    driveLoisCar(LEXLAB_X - 40, () => {
+                        advanceQuest('lab_explore');
+                        titleCard = { text: 'LOIS ARRIVED', sub: 'Lois is at the lab. Both must be here before entering.', timer: 180 };
+                    });
+                    prisonLois.active = false;  // Lois is now in the car
+                }
+            });
+        }
+
+        // E-key interrogation check — called from keydown handler
+        function tryInteract() {
+            // Construction yard: question workers / catch henchman
+            if (scene === 'city' && questPhase === 'construction_interrogate' && constructionSpawned) {
+                const heroMid = hero.x + hero.w / 2;
+                for (const w of yardWorkers) {
+                    if (w.interrogated) continue;
+                    if (Math.abs(heroMid - w.x) < 70) {
+                        w.interrogated = true;
+                        if (w.isHenchman) {
+                            // Henchman recognizes CK — panics and flees
+                            w._fleeing = true; w._vx = 2;
+                            advanceQuest('henchman_flee');
+                            startDialogue({
+                                speaker: 'HENCHMAN', portrait: 'npc',
+                                lines: ['You! You\'re CK — I\'ve seen your picture. I\'m not saying anything!'],
+                                onDone: () => {
+                                    titleCard = { text: 'HENCHMAN FLEEING', sub: 'Chase him down before he escapes!', timer: 200 };
+                                }
+                            });
+                        } else {
+                            workersInterrogated++;
+                            startDialogue({
+                                speaker: 'WORKER', portrait: 'npc',
+                                lines: workersInterrogated === 1
+                                    ? ['I just lay bricks, man. Don\'t know nothing about no robbery.']
+                                    : ['Look, there\'s a guy — orange hard hat, nervous-looking. Been acting weird all morning.'],
+                                onDone: () => {}
+                            });
+                        }
+                        return true;
+                    }
+                }
+            }
+            // Bank interior: question suspects
+            if (scene === 'bank' && questPhase === 'bank_interrogate') {
+                for (const suspect of bankSuspects) {
+                    if (suspect.interrogated) continue;
+                    if (Math.abs((hero.x + hero.w/2) - suspect.x) < 70) {
+                        suspect.interrogated = true;
+                        bankInterrogated++;
+                        startDialogue({
+                            speaker: suspect.name, portrait: 'npc',
+                            lines: suspect.lines,
+                            onDone: () => {
+                                if (bankInterrogated >= 2) {
+                                    advanceQuest('bank_exit');
+                                    startDialogue({
+                                        speaker: 'Lois Lane', portrait: 'lois',
+                                        lines: [
+                                            'Construction site on Fifth and Harbor — that\'s where Dr. Chen\'s man is hiding.',
+                                            'We need to get there before he disappears. Let\'s go.'
+                                        ],
+                                        onDone: () => {
+                                            advanceQuest('travel_construction');
+                                            titleCard = { text: 'CONSTRUCTION SITE', sub: 'Head to Fifth & Harbor — find the construction yard!', timer: 220 };
+                                            exitBank();
+                                            loisCar.x = BANK_X + 30;
+                                            loisCar.y = GROUND_Y;
+                                            driveLoisCar(8350, () => {}, 2.6);
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                        return true;
+                    }
+                }
+            }
+            if (currentLevel !== 1 || scene !== 'city') return false;
+            // Prison: talk to rescued Lois (E key within 80px)
+            if (prisonLois.active && prisonLois.rescued && questPhase === 'prison_rescued') {
+                const heroMid = hero.x + hero.w / 2;
+                if (Math.abs(heroMid - prisonLois.x) < 80) {
+                    startPrisonRescueDialogue();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Update prison Lois (slight idle bob, face hero when near)
+        function updatePrisonLois() {
+            if (!prisonLois.active || currentLevel !== 1) return;
+            prisonLois.phase += 0.04;
+            prisonLois.y = GROUND_Y;
+            const heroMid = hero.x + hero.w / 2;
+            const dist = Math.abs(heroMid - prisonLois.x);
+            if (dist < 120) prisonLois.faceDir = heroMid < prisonLois.x ? -1 : 1;
+            prisonLois.greeting = dist < 90 ? Math.min(prisonLois.greeting + 1, 40) : Math.max(prisonLois.greeting - 1, 0);
+        }
+
+        // Draw prison Lois (reuse cityLois style — dark blazer, heels, notepad)
+        function drawPrisonLois() {
+            if (!prisonLois.active || currentLevel !== 1) return;
+            const sx = prisonLois.x - camera.x;
+            if (sx < -80 || sx > W + 80) return;
+            const lx = prisonLois.x;
+            const fy = prisonLois.y;
+            const fd = prisonLois.faceDir;
+            const bob = Math.sin(prisonLois.phase * 1.5) * 1.2;
+            ctx.save();
+
+            // Legs — dark slacks
+            ctx.fillStyle = '#1a1a2a';
+            ctx.fillRect(lx - 8, fy - 32, 7, 32);
+            ctx.fillRect(lx + 1, fy - 32, 7, 32);
+            // Heels
+            ctx.fillStyle = '#cc2244';
+            ctx.fillRect(lx - 10, fy - 3, 10, 3);
+            ctx.fillRect(lx + 1,  fy - 3, 10, 3);
+            // Body — burgundy blazer
+            ctx.fillStyle = '#8b2252';
+            ctx.fillRect(lx - 12, fy - 64 + bob, 24, 32);
+            // White shirt collar
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(lx - 4, fy - 64 + bob, 8, 10);
+            // Notepad in hand
+            ctx.fillStyle = '#f5e8c0';
+            ctx.fillRect(lx + fd * 12, fy - 54 + bob, fd * 10, 14);
+            ctx.strokeStyle = '#888'; ctx.lineWidth = 0.5;
+            for (let nl = 0; nl < 3; nl++)
+                { ctx.beginPath(); ctx.moveTo(lx + fd * 13, fy - 51 + bob + nl * 4); ctx.lineTo(lx + fd * 20, fy - 51 + bob + nl * 4); ctx.stroke(); }
+            // Head
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(lx, fy - 72 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            // Dark hair
+            ctx.fillStyle = '#1a0a04';
+            ctx.beginPath(); ctx.arc(lx, fy - 75 + bob, 11, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            ctx.fillRect(lx - 10, fy - 82 + bob, 20, 8);
+            // Eyes
+            ctx.fillStyle = '#3a2010';
+            ctx.fillRect(lx - 4 + fd, fy - 74 + bob, 3, 2);
+            ctx.fillRect(lx + 1 + fd, fy - 74 + bob, 3, 2);
+
+            // Rescued glow + prompt
+            if (prisonLois.rescued) {
+                ctx.shadowColor = '#40ff80'; ctx.shadowBlur = 10;
+                ctx.strokeStyle = '#40ff80'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(lx, fy - 40 + bob, 22, 0, Math.PI * 2); ctx.stroke();
+                ctx.shadowBlur = 0;
+                if (prisonLois.greeting > 10) {
+                    ctx.fillStyle = 'rgba(8,8,18,0.85)'; ctx.fillRect(lx - 70, fy - 100, 140, 20);
+                    ctx.fillStyle = '#e0c020'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('E — Talk to Lois', lx, fy - 86);
+                }
+            }
+            ctx.restore();
+        }
+        // ── END PHASE 2 QUEST LOGIC ──────────────────────────────────────────
+
+
+
         // Build a fully-initialized enemy left behind as part of a clue's quest.
         // active zone for the current quest (shown as nav arrow on canvas)
         let questZone = null;
@@ -552,6 +1147,264 @@
                 side *= -1;
                 enemies.push(makeTrapEnemy(type, ex, cl.district, diff.hp, diff.speed));
             });
+        }
+
+        // ── DIALOGUE ENGINE ────────────────────────────────────────────────────────
+        // A conversation is: { speaker, portrait, lines[], onDone() }
+        // portrait is a string key: 'hero' | 'lois' | 'darkwing' | 'npc'
+        let activeDialogue = null;   // current conversation object, null when idle
+        let _dlgLine   = 0;          // which line we're on
+        let _dlgChar   = 0;          // typewriter: chars revealed so far
+        const DLG_SPEED = 2;         // chars per frame
+
+        function startDialogue(conversation) {
+            activeDialogue = conversation;
+            _dlgLine = 0; _dlgChar = 0;
+        }
+
+        function advanceDialogue() {
+            if (!activeDialogue) return;
+            const lines = activeDialogue.lines;
+            if (_dlgChar < lines[_dlgLine].length) {
+                _dlgChar = lines[_dlgLine].length; // skip typewriter → show full line
+                return;
+            }
+            _dlgLine++;
+            _dlgChar = 0;
+            if (_dlgLine >= lines.length) {
+                const cb = activeDialogue.onDone;
+                activeDialogue = null;
+                if (cb) cb();
+            }
+        }
+
+        function tickDialogue() {
+            if (!activeDialogue) return;
+            const line = activeDialogue.lines[_dlgLine];
+            if (_dlgChar < line.length) _dlgChar = Math.min(_dlgChar + DLG_SPEED, line.length);
+        }
+
+        function drawDialogueBox() {
+            if (!activeDialogue) return;
+            const BOX_H = 130;
+            const PAD = 16;
+            const PORTRAIT_W = 90;
+            const by = H - BOX_H;
+
+            // semi-transparent dark panel
+            ctx.save();
+            ctx.fillStyle = 'rgba(8,8,18,0.92)';
+            ctx.fillRect(0, by, W, BOX_H);
+            ctx.strokeStyle = '#e0c020'; ctx.lineWidth = 2;
+            ctx.strokeRect(2, by + 2, W - 4, BOX_H - 4);
+
+            // portrait box
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(PAD, by + PAD, PORTRAIT_W, BOX_H - PAD * 2);
+            ctx.strokeStyle = 'rgba(200,180,60,0.6)'; ctx.lineWidth = 1.5;
+            ctx.strokeRect(PAD, by + PAD, PORTRAIT_W, BOX_H - PAD * 2);
+
+            // draw portrait figure (simple iconic faces)
+            const px = PAD + PORTRAIT_W / 2;
+            const py = by + PAD + (BOX_H - PAD * 2) / 2;
+            _drawDialoguePortrait(activeDialogue.portrait, px, py);
+
+            // speaker name
+            ctx.fillStyle = '#e0c020'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'left';
+            ctx.fillText(activeDialogue.speaker, PAD + PORTRAIT_W + PAD, by + PAD + 16);
+
+            // typewriter text — wrap at ~55 chars per line
+            const text = activeDialogue.lines[_dlgLine].slice(0, _dlgChar);
+            ctx.fillStyle = '#e8f0ff'; ctx.font = '12px Arial';
+            const maxW = W - PAD * 3 - PORTRAIT_W;
+            const words = text.split(' ');
+            let row = 0, buf = '';
+            for (const word of words) {
+                const test = buf ? buf + ' ' + word : word;
+                if (ctx.measureText(test).width > maxW && buf) {
+                    ctx.fillText(buf, PAD + PORTRAIT_W + PAD, by + PAD + 36 + row * 18);
+                    buf = word; row++;
+                } else { buf = test; }
+            }
+            if (buf) ctx.fillText(buf, PAD + PORTRAIT_W + PAD, by + PAD + 36 + row * 18);
+
+            // advance prompt
+            if (_dlgChar >= activeDialogue.lines[_dlgLine].length) {
+                const blink = Math.sin(Date.now() * 0.008) > 0;
+                if (blink) {
+                    ctx.fillStyle = '#a0b0ff'; ctx.font = '10px Arial'; ctx.textAlign = 'right';
+                    ctx.fillText('ENTER to continue ▶', W - PAD, by + BOX_H - PAD);
+                }
+            }
+            ctx.restore();
+        }
+
+        function _drawDialoguePortrait(key, cx, cy) {
+            ctx.save();
+            if (key === 'hero') {
+                ctx.fillStyle = '#3a6fd9'; ctx.fillRect(cx - 18, cy - 10, 36, 28);
+                ctx.fillStyle = '#e3bd9c'; ctx.beginPath(); ctx.arc(cx, cy - 18, 14, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#15151c'; ctx.beginPath(); ctx.arc(cx, cy - 21, 15, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+                ctx.fillStyle = '#e0c020'; ctx.beginPath(); ctx.moveTo(cx, cy - 26); ctx.lineTo(cx + 8, cy - 18); ctx.lineTo(cx - 8, cy - 18); ctx.closePath(); ctx.fill();
+            } else if (key === 'lois') {
+                ctx.fillStyle = '#8b2252'; ctx.fillRect(cx - 16, cy - 8, 32, 26);
+                ctx.fillStyle = '#e3bd9c'; ctx.beginPath(); ctx.arc(cx, cy - 16, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#3a2010'; ctx.beginPath(); ctx.arc(cx, cy - 18, 13, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+                ctx.fillRect(cx - 10, cy - 28, 20, 10);
+            } else if (key === 'darkwing') {
+                ctx.fillStyle = '#1c1c2a'; ctx.fillRect(cx - 16, cy - 8, 32, 26);
+                ctx.fillStyle = '#1c1c2a'; ctx.beginPath(); ctx.arc(cx, cy - 18, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#ddeeff'; ctx.fillRect(cx - 5, cy - 20, 4, 2); ctx.fillRect(cx + 1, cy - 20, 4, 2);
+                ctx.fillStyle = '#1c1c2a';
+                ctx.beginPath(); ctx.moveTo(cx - 8, cy - 28); ctx.lineTo(cx - 4, cy - 38); ctx.lineTo(cx - 1, cy - 28); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(cx + 1, cy - 28); ctx.lineTo(cx + 4, cy - 38); ctx.lineTo(cx + 8, cy - 28); ctx.closePath(); ctx.fill();
+            } else {
+                // generic NPC
+                ctx.fillStyle = '#4a4060'; ctx.fillRect(cx - 14, cy - 8, 28, 24);
+                ctx.fillStyle = '#d4b090'; ctx.beginPath(); ctx.arc(cx, cy - 16, 11, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#2a1a08'; ctx.beginPath(); ctx.arc(cx, cy - 18, 12, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // ── L1 QUEST STATE MACHINE ─────────────────────────────────────────────────
+        // Replaces the old clues[] index system for Level 1.
+        // questPhase gates all Level 1 progression; L2 / L3 are unaffected.
+        let questPhase = 'idle';   // starts idle; set to 'intro' when L1 starts
+
+        const QUEST_PHASES = [
+            'idle',
+            'intro',            // game just started, note on desk unread
+            'desk_note',        // hero reads note → first clue revealed
+            'travel_prison',    // nav arrow to prison zone
+            'prison_fight',     // enemies active around Lois at prison
+            'prison_rescued',   // all prison enemies cleared
+            'lois_dialogue_1',  // Lois explains why she was at prison
+            'lois_clue_lab',    // Lois gives next clue: head to LexCorp Lab
+            'travel_lab',       // both travel to lab; Lois drives there
+            'lab_explore',      // inside lab, find 3 clues
+            'lab_clue_1_found',
+            'lab_clue_2_found',
+            'lab_clue_3_found', // reveals bank robbery → dialogue triggers
+            'lab_dialogue',     // hero says we must stop the robbery
+            'travel_bank',      // head to bank exterior
+            'bank_fight',       // defeat enemies at bank exterior
+            'bank_enter',       // enter bank interior
+            'bank_interrogate', // interrogate 2 NPCs
+            'bank_exit',        // exiting bank, NPC reveals construction yard
+            'travel_construction',
+            'construction_interrogate', // interrogate 2 workers
+            'henchman_flee',    // henchman runs
+            'henchman_caught',  // hero catches henchman
+            'henchman_interrogate',
+            'travel_lexcorp2',  // return to LexCorp
+            'lexcorp2_fight',   // enemy wave
+            'lexcorp2_clues',   // find 2 more clues
+            'lexcorp2_final_dialogue', // Lex escaped to Gotham
+            'lois_departs',     // Lois drives back to Weekly Planet
+            'level1_complete',
+        ];
+
+        function advanceQuest(toPhase) {
+            questPhase = toPhase;
+            console.log('[QUEST]', toPhase);
+        }
+
+        // ── LOIS VEHICLE ───────────────────────────────────────────────────────────
+        const loisCar = {
+            active:    false,
+            x:         800,     // world X of car center
+            y:         GROUND_Y,
+            faceDir:   1,
+            targetX:   0,
+            arrived:   false,
+            speed:     2.4,     // px per frame — slower than Batmobile (6.5)
+            phase:     0,       // animation phase for wheel spin
+            waitForHero: false, // when true, door only opens once hero is also near
+        };
+
+        function driveLoisCar(targetX, onArrived, speedOverride) {
+            loisCar.active    = true;
+            loisCar.arrived   = false;
+            loisCar.targetX   = targetX;
+            loisCar.speed     = speedOverride || 2.4;
+            loisCar._onArrived = onArrived || null;
+        }
+
+        function updateLoisCar() {
+            if (!loisCar.active) return;
+            loisCar.phase += 0.08;
+            const dx = loisCar.targetX - loisCar.x;
+            if (Math.abs(dx) > 8) {
+                loisCar.faceDir = Math.sign(dx);
+                loisCar.x += Math.sign(dx) * Math.min(loisCar.speed, Math.abs(dx));
+                loisCar.arrived = false;
+            } else {
+                loisCar.x = loisCar.targetX;
+                if (!loisCar.arrived) {
+                    loisCar.arrived = true;
+                    if (loisCar._onArrived) loisCar._onArrived();
+                }
+            }
+        }
+
+        function drawLoisCar() {
+            if (!loisCar.active) return;
+            const cx = loisCar.x;
+            const by = loisCar.y;   // ground level (feet)
+            const fd = loisCar.faceDir;
+            const sx = cx - camera.x;
+            if (sx < -150 || sx > W + 150) return;   // off-screen cull
+
+            ctx.save();
+            ctx.translate(cx, by);   // world → screen handled by existing camera translate
+
+            // ── Car body — civilian sedan ──────────────────────────────────────
+            // Main body (lower rectangle)
+            ctx.fillStyle = '#8b2252';    // Lois's signature burgundy/maroon
+            ctx.fillRect(-46 * fd, -20, 92, 20);
+            // Roof cabin
+            ctx.fillRect(-28 * fd, -38, 56, 18);
+            // Front hood slope
+            ctx.fillStyle = '#701a40';
+            ctx.beginPath();
+            ctx.moveTo(28 * fd, -20); ctx.lineTo(46 * fd, -20);
+            ctx.lineTo(46 * fd, -10); ctx.lineTo(28 * fd, -14);
+            ctx.closePath(); ctx.fill();
+            // Windshield (forward-facing glass)
+            ctx.fillStyle = 'rgba(160,220,255,0.55)';
+            ctx.fillRect(12 * fd, -38, 16 * fd, 16);
+            // Rear window
+            ctx.fillRect(-28 * fd, -38, 14 * fd, 14);
+            // Headlight
+            ctx.fillStyle = '#ffe88a';
+            ctx.fillRect(40 * fd, -16, 6 * fd, 6);
+            // Tail-light
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(-46 * fd, -16, -4 * fd, 6);
+            // Lois portrait in driver seat
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(4 * fd, -28, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#3a2010';
+            ctx.beginPath(); ctx.arc(4 * fd, -30, 7, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+            // Wheels
+            const wheelAng = loisCar.phase;
+            for (const wx of [-28, 28]) {
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath(); ctx.arc(wx * fd, 0, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(wx * fd, 0, 10, 0, Math.PI * 2); ctx.stroke();
+                // wheel spokes
+                ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5;
+                for (let s = 0; s < 4; s++) {
+                    const a = wheelAng * fd + s * Math.PI / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(wx * fd + Math.cos(a) * 3, Math.sin(a) * 3);
+                    ctx.lineTo(wx * fd + Math.cos(a) * 9, Math.sin(a) * 9);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
         }
 
         // ---- QUEST DISPATCH ----
@@ -948,13 +1801,20 @@
                 powerGirl.flightActive = false;
                 powerGirl.vx *= 0.85;
                 powerGirl.vy = Math.min(powerGirl.vy + 0.5, 14);
+                // L3 formation: stay ~330px behind hero when no enemies around
+                if (currentLevel === 3) {
+                    const _pgTarget = (hero.x + hero.w / 2) - Math.sign(hero.facing || 1) * 330;
+                    const _pgDx = _pgTarget - (powerGirl.x + powerGirl.w / 2);
+                    if (Math.abs(_pgDx) > 600) { powerGirl.x = _pgTarget - powerGirl.w / 2; }
+                    else if (Math.abs(_pgDx) > 20) { powerGirl.vx = Math.sign(_pgDx) * 3.2; }
+                }
             }
 
             powerGirl.x += powerGirl.vx;
             powerGirl.y += powerGirl.vy;
 
             // Landing on floor
-            const flr = scene === 'factory' ? FACTORY.floorY : GROUND_Y;
+            const flr = scene === 'factory' ? FACTORY.floorY : (currentLevel === 3 ? L3_GROUND_Y : GROUND_Y);
             if (powerGirl.y + powerGirl.h >= flr) {
                 powerGirl.y = flr - powerGirl.h; powerGirl.vy = 0;
                 powerGirl.onGround = true; powerGirl.flightActive = false;
@@ -973,7 +1833,7 @@
                 }
             }
             // Clamp
-            const maxX = scene === 'factory' ? FACTORY.w - powerGirl.w : WORLD_WIDTH - powerGirl.w;
+            const maxX = scene === 'factory' ? FACTORY.w - powerGirl.w : (currentLevel === 3 ? L3_WORLD_WIDTH - powerGirl.w : WORLD_WIDTH - powerGirl.w);
             powerGirl.x = Math.max(0, Math.min(powerGirl.x, maxX));
         }
 
@@ -1329,6 +2189,7 @@
             { x: 10880, w: 178, h: 230, type: 'bank', district: 'uptown', name: 'UPTOWN TRUST' },
             { x: 12380, w: 128, h: 162, type: 'shop', district: 'uptown', name: 'HEIGHTS BOUTIQUE' },
             { x: 13840, w: 138, h: 170, type: 'pharmacy', district: 'uptown', name: 'APEX PHARMACY' },
+            { x: 14200, w: 260, h: 300, type: 'lexlab', district: 'uptown', name: 'LEXCORP RESEARCH LAB' },
         ];
 
         // ── AMBIENT (NON-RESCUE) CIVILIANS ────────────────────────────────
@@ -1558,6 +2419,8 @@
         // ---------- INPUT ----------
         const keys = {};
         window.addEventListener('keydown', e => {
+            // ---- dialogue engine intercepts ENTER before anything else ----
+            if (activeDialogue) { advanceDialogue(); e.preventDefault(); return; }
             // ---- story modal (case-file note/clue) intercepts all input ----
             if (storyModal) {
                 if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF') {
@@ -1593,6 +2456,7 @@
                     gameScreen = 'playing'; startMusic();
                     if (titleSelectedLevel === 3) startLevel3();
                     else if (titleSelectedLevel === 2) startLevel2();
+                    else { questPhase = 'intro'; }  // Level 1 — start quest state machine
                     e.preventDefault();
                 }
                 return;
@@ -1669,6 +2533,62 @@
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
                 }
             }
+            // F: bank exit door (left side)
+            if (e.code === 'KeyF' && scene === 'bank') {
+                if (hero.x < 140) { exitBank(); e.preventDefault(); }
+            }
+            // F: examine LexCorp2 outdoor clues
+            if (e.code === 'KeyF' && scene === 'city' && questPhase === 'lexcorp2_clues' && currentLevel === 1) {
+                const heroMid = hero.x + hero.w / 2;
+                for (const clue of lexcorp2Clues) {
+                    if (clue.found) continue;
+                    if (Math.abs(heroMid - (clue.x + clue.w/2)) < 70) {
+                        clue.found = true;
+                        lexcorp2CluesFound++;
+                        startDialogue({
+                            speaker: 'CK', portrait: 'hero',
+                            lines: clue.lines,
+                            onDone: () => {
+                                if (lexcorp2CluesFound >= 2) triggerFinalDialogue();
+                            }
+                        });
+                        e.preventDefault(); break;
+                    }
+                }
+            }
+            // F: examine lab clues
+            if (e.code === 'KeyF' && scene === 'lab') {
+                const heroMid = hero.x + hero.w / 2;
+                for (const clue of labClues) {
+                    if (clue.found) continue;
+                    if (Math.abs(heroMid - (clue.x + clue.w / 2)) < 70) {
+                        clue.found = true;
+                        clue.foundBy = 'hero';
+                        labCluesFound++;
+                        startDialogue({
+                            speaker: 'CK (examining ' + clue.label + ')',
+                            portrait: 'hero',
+                            lines: clue.lines,
+                            onDone: () => checkLabComplete()
+                        });
+                        e.preventDefault(); break;
+                    }
+                }
+                // Exit door (left side x < 120)
+                if (hero.x < 120) { exitLexlab(); e.preventDefault(); }
+            }
+            // LexCorp Research Lab entry
+            if (e.code === 'KeyF' && scene === 'city' && lexlabEntryUnlocked && currentLevel === 1) {
+                if (Math.abs((hero.x + hero.w / 2) - LEXLAB_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                    enterLexlab(); e.preventDefault();
+                }
+            }
+            // First National Bank entry
+            if (e.code === 'KeyF' && scene === 'city' && bankEntryUnlocked && currentLevel === 1) {
+                if (Math.abs((hero.x + hero.w / 2) - BANK_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                    enterBank(); e.preventDefault();
+                }
+            }
             // F: talk to Lois when nearby in the interior
             if (e.code === 'KeyF' && scene === 'interior' && interior.note.read) {
                 const loisNPC = interior.npcs.find(n => n.lois);
@@ -1682,11 +2602,20 @@
                 const nb = interior.note;
                 if (Math.abs(heroMid - (nb.x + nb.w / 2)) < 60) {
                     interior.note.read = true;
-                    showStory([
-                        "CASE FILE",
-                        "CK is ready to start work today, but there's an emergency he must help solve. There has been an outbreak at the town prison and a local inmate has escaped.",
-                        "Clues are scattered around the city — find them to track down the escapee."
-                    ]);
+                    startDialogue({
+                        speaker: 'CK (reading note)',
+                        portrait: 'hero',
+                        lines: [
+                            'URGENT — This came in overnight. A source says Lois Lane went to Stonegate Penitentiary alone to investigate a tip about a prisoner escape.',
+                            "She hasn\'t checked in since last night. Head to Stonegate — something is wrong.",
+                            "STONEGATE PENITENTIARY — Downtown, east end. She needs backup."
+                        ],
+                        onDone: () => {
+                            advanceQuest('travel_prison');
+                            titleCard = { text: 'STONEGATE PENITENTIARY', sub: 'Head east to the prison — Lois is in trouble.', timer: 220 };
+                            initPrisonQuest();
+                        }
+                    });
                     e.preventDefault();
                 }
             }
@@ -1746,7 +2675,8 @@
                     e.preventDefault();
                 }
             }
-            // E: drop all carried civilians to fight enemies; they can be re-picked up
+            // E: interact (talk to quest NPCs) or drop carried civilians
+            if (e.code === 'KeyE' && scene === 'city' && tryInteract()) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -2020,7 +2950,7 @@
             en.hitReact = 14;
             const killed = en.hp <= 0;
             spawnImpact(en.x + en.w / 2, en.y + en.h / 2, kind, killed);
-            if (killed) { en.alive = false; en.deathTimer = 24; en._deathSpin = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.5); }
+            if (killed) { en.alive = false; en.deathTimer = 24; en._deathSpin = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.5); checkPrisonCleared(); }
             return true;
         }
 
@@ -2091,7 +3021,7 @@
             if (hitEn) {
                 stopX = hitEn.x + hitEn.w / 2;
                 stopY = hitEn.y + hitEn.h / 2;
-                tryHitEnemy(hitEn, LASER_DMG, 4, 'laser', e);
+                tryHitEnemy(hitEn, LASER_DMG, 0, 'laser', e);  // no knockback while beam is active
                 if (!hitEn.alive) {
                     stopX = dir === 1 ? srcX + 2200 : srcX - 2200;
                     stopY  = srcY;
@@ -2289,11 +3219,12 @@
             // reset takeoff when not flying so the next launch re-triggers it
             if (!e.flightActive) e.takeoffPhase = 0;
 
-            // When landing and touching ground, fully reset
+            // When landing and touching ground, trigger superhero landing pose then fully reset
             if (e.landing && e.onGround) {
                 e.landing = false;
+                e._landTimer = 22;  // superhero landing crouch frames
             }
-
+            if (e.onGround && !e.flightActive && (e._landTimer || 0) > 0) e._landTimer--;
             if (e.onGround) { e.landing = false; }
 
             // ── BLOCK – hold Z to raise a defensive stance ──────────────────
@@ -2596,6 +3527,11 @@
 
         // ---------- ENEMY LOGIC ----------
         function updateEnemies() {
+            // Tick down death fade timer for defeated enemies
+            for (const en of enemies) {
+                if (!en.alive && (en.deathTimer || 0) > 0) en.deathTimer--;
+            }
+
             for (const en of enemies) {
                 if (!en.alive) continue;
                 if (en.hitFlash > 0) en.hitFlash--;
@@ -2928,6 +3864,12 @@
             } else if (scene === 'temple') {
                 dx = Math.max(0, Math.min(TEMPLE_SCENE.w - W, dx));
                 dy = Math.max(0, Math.min(TEMPLE_SCENE.floorY + 80 - H, dy));
+            } else if (scene === 'lab') {
+                dx = Math.max(0, Math.min(LAB.w - W, dx));
+                dy = Math.max(0, Math.min(LAB.floorY + 80 - H, dy));
+            } else if (scene === 'bank') {
+                dx = Math.max(0, Math.min(BANK_INT.w - W, dx));
+                dy = Math.max(0, Math.min(BANK_INT.floorY + 80 - H, dy));
             } else {
                 dx = Math.max(0, Math.min((currentLevel === 3 ? L3_WORLD_WIDTH : WORLD_WIDTH) - W, dx));
                 dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
@@ -3007,7 +3949,8 @@
             const takingOff = e.takeoffPhase > 0 && e.takeoffPhase < 12;  // brief launch burst
             const moving = Math.abs(e.vx) > 0.3;  // any noticeable horizontal movement
             const running = e.dashing || (e.onGround && Math.abs(e.vx) > 1.2);
-            const standing = e.onGround && !moving;  // idle pose
+            const superLanding = (e._landTimer || 0) > 0;  // superhero crouch on touchdown
+            const standing = e.onGround && !moving && !superLanding;  // idle pose
             // ascending = flying upward (not just hovering). Upright rising pose.
             const ascending = flying && !takingOff && e.vy < -0.6;
             const diving = flying && !takingOff && e.vy > 0.6;        // flying downward
@@ -3067,7 +4010,13 @@
             const legSwing = running ? Math.sin(e.gaitPhase) * h * 0.12 : 0;
             if (persona === 'super') {
                 ctx.fillStyle = '#1e3f7a';
-                if (rising) {
+                if (superLanding) {
+                    // SUPERHERO LANDING: deep crouch — one knee nearly touches ground
+                    const lt = (e._landTimer || 0) / 22; // 1→0
+                    const crouch = (1 - lt) * h * 0.18;  // deepen crouch as timer winds down then springs up
+                    ctx.fillRect(w * 0.30, h * 0.62 + crouch, w * 0.16, h * 0.28 - crouch * 0.8);
+                    ctx.fillRect(w * 0.54, h * 0.62 + crouch * 0.5, w * 0.16, h * 0.32 - crouch * 0.4);
+                } else if (rising) {
                     // RISING/LAUNCH: legs pressed together pointing straight down
                     ctx.fillRect(w * 0.40, h * 0.62, w * 0.10, h * 0.42);
                     ctx.fillRect(w * 0.50, h * 0.62, w * 0.10, h * 0.42);
@@ -3090,7 +4039,12 @@
                 }
                 // boots
                 ctx.fillStyle = '#b81f2c';
-                if (rising) {
+                if (superLanding) {
+                    const lt = (e._landTimer || 0) / 22;
+                    const crouch = (1 - lt) * h * 0.18;
+                    ctx.fillRect(w * 0.28, h * 0.88 + crouch * 0.8, w * 0.20, h * 0.10);
+                    ctx.fillRect(w * 0.52, h * 0.92 + crouch * 0.4, w * 0.20, h * 0.10);
+                } else if (rising) {
                     ctx.fillRect(w * 0.39, h * 1.0, w * 0.11, h * 0.08);
                     ctx.fillRect(w * 0.50, h * 1.0, w * 0.11, h * 0.08);
                 } else if (hovering) {
@@ -3172,7 +4126,20 @@
             const armColor = persona === 'super' ? '#2a5fd9' : '#2b3145';
             const fistColor = persona === 'super' ? '#b81f2c' : '#e8c5a8';
             ctx.fillStyle = armColor;
-            if (rising && !punching) {
+            if (superLanding && !punching) {
+                // SUPERHERO LANDING: one fist planted on ground, other arm cocked back
+                const lt = (e._landTimer || 0) / 22;
+                const crouch = (1 - lt) * h * 0.18;
+                // Planted fist arm — drives diagonally down to ground
+                ctx.fillRect(w * 0.52, h * 0.34, w * 0.10, h * 0.30 + crouch);
+                ctx.fillStyle = fistColor;
+                ctx.beginPath(); ctx.arc(w * 0.57, h * 0.66 + crouch, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = armColor;
+                // Cocked back arm — raised and bent back for drama
+                ctx.fillRect(w * 0.22, h * 0.30 - crouch * 0.3, w * 0.10, h * 0.28);
+                ctx.fillStyle = fistColor;
+                ctx.beginPath(); ctx.arc(w * 0.27, h * 0.28 - crouch * 0.3, w * 0.11, 0, Math.PI * 2); ctx.fill();
+            } else if (rising && !punching) {
                 // ONE arm thrust UP (lead), one tucked along the body — classic launch pose.
                 // In local space the body is upright, so "up" is -y / above the head.
                 ctx.fillRect(w * 0.50, h * -0.04, w * 0.1, h * 0.42);   // lead arm raised up
@@ -3188,12 +4155,14 @@
                 ctx.beginPath(); ctx.arc(w * 0.31, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(w * 0.69, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
             } else if (flying && !punching) {
-                // FLYING FORWARD: both arms extend straight forward ALONG the body axis,
-                // at shoulder height, so once the body is rotated to horizontal the arms
-                // read as horizontal and in line with the body (not splayed downward).
-                ctx.fillRect(w * 0.58, h * 0.33, w * 0.54, h * 0.10);   // arms forward from shoulders
+                // FLYING FORWARD: both arms thrust straight UP above the head —
+                // traditional Superman pose. In local (unrotated) space "up" = -y,
+                // so arms go from shoulders upward past the head.
+                ctx.fillRect(w * 0.36, h * -0.28, w * 0.10, h * 0.36);  // left arm up
+                ctx.fillRect(w * 0.54, h * -0.28, w * 0.10, h * 0.36);  // right arm up
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 1.14, h * 0.38, w * 0.12, 0, Math.PI * 2); ctx.fill(); // fists ahead
+                ctx.beginPath(); ctx.arc(w * 0.41, h * -0.30, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.59, h * -0.30, w * 0.11, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
                 // back arm tucked, lead arm thrust forward with fist
                 ctx.fillRect(w * 0.24, h * 0.34, w * 0.1, h * 0.28);
@@ -4765,6 +5734,65 @@
                 ctx.beginPath(); ctx.moveTo(x + w / 2, GROUND_Y - 52); ctx.lineTo(x + w / 2, GROUND_Y); ctx.stroke();
             }
 
+            else if (type === 'lexlab') {
+                // ── LEXCORP RESEARCH LAB: sleek corporate steel-grey facade ──
+                const lg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                lg.addColorStop(0, '#1a1e28'); lg.addColorStop(1, '#0e1018');
+                ctx.fillStyle = lg; ctx.fillRect(x, top, w, h);
+                // Floor-to-ceiling window panels with blue-green tint
+                const panelW = 44, panelGap = 14;
+                const numPanels = Math.floor((w - 20) / (panelW + panelGap));
+                for (let pi = 0; pi < numPanels; pi++) {
+                    const px2 = x + 10 + pi * (panelW + panelGap);
+                    for (let row = 0; row < 4; row++) {
+                        const py2 = top + 20 + row * (Math.floor((h - 60) / 4));
+                        const rowH = Math.floor((h - 60) / 4) - 6;
+                        ctx.fillStyle = 'rgba(40,180,160,0.35)';
+                        ctx.fillRect(px2, py2, panelW, rowH);
+                        ctx.strokeStyle = 'rgba(60,200,180,0.5)'; ctx.lineWidth = 1;
+                        ctx.strokeRect(px2, py2, panelW, rowH);
+                    }
+                }
+                // Steel horizontal bands
+                ctx.fillStyle = '#22283a';
+                for (let bi2 = 0; bi2 < 5; bi2++) {
+                    ctx.fillRect(x, top + 18 + bi2 * Math.floor((h - 20) / 5), w, 5);
+                }
+                // Glowing LexCorp "L" logo
+                const logoX = x + w / 2, logoY = top + 38;
+                ctx.save();
+                ctx.shadowColor = '#00ff80'; ctx.shadowBlur = 22;
+                ctx.fillStyle = '#00ff80';
+                ctx.font = 'bold 28px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('L', logoX, logoY);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+                // "LEXCORP RESEARCH" label
+                ctx.fillStyle = 'rgba(0,255,128,0.7)'; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('LEXCORP RESEARCH', x + w / 2, top + 52);
+                // Entry door with glowing frame
+                const doorX2 = x + w / 2 - 22;
+                ctx.fillStyle = '#080c14'; ctx.fillRect(doorX2, GROUND_Y - 70, 44, 70);
+                ctx.save();
+                ctx.shadowColor = '#00cc66'; ctx.shadowBlur = 10;
+                ctx.strokeStyle = '#00cc66'; ctx.lineWidth = 2;
+                ctx.strokeRect(doorX2, GROUND_Y - 70, 44, 70);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+                // Door glass panel
+                ctx.fillStyle = 'rgba(40,180,160,0.4)';
+                ctx.fillRect(doorX2 + 3, GROUND_Y - 67, 38, 55);
+                // Rooftop antenna array
+                ctx.strokeStyle = '#304050'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x + w / 2, top); ctx.lineTo(x + w / 2, top - 30); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + w / 2 - 20, top - 18); ctx.lineTo(x + w / 2 + 20, top - 18); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + w / 2 - 8, top - 24); ctx.lineTo(x + w / 2 + 8, top - 24); ctx.stroke();
+                ctx.fillStyle = '#ff4040'; ctx.beginPath(); ctx.arc(x + w / 2, top - 30, 3, 0, Math.PI * 2); ctx.fill();
+                // Side antennae
+                ctx.beginPath(); ctx.moveTo(x + 20, top); ctx.lineTo(x + 20, top - 16); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + w - 20, top); ctx.lineTo(x + w - 20, top - 16); ctx.stroke();
+            }
+
             // Shared: "grab a bite" prompt for diners/shops when the hero is near
             if (type === 'diner' || type === 'shop') {
                 const heroMid = hero.x + hero.w / 2;
@@ -5597,6 +6625,39 @@
                 }
                 ctx.restore();
             }
+            drawLoisCar();
+            drawPrisonLois();
+
+            // ── Quest nav arrow (Phase 2+) — replaces old questZone arrow for L1 ──
+            if (currentLevel === 1 && questPhase === 'travel_prison') {
+                const arrowX = PRISON_X - camera.x;
+                const arrowY = 60;
+                const blink = Math.sin(Date.now() * 0.008) > 0;
+                if (blink) {
+                    ctx.save();
+                    ctx.fillStyle = '#ffdd00'; ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 12;
+                    ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('▼', arrowX, arrowY);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial';
+                    ctx.fillText('STONEGATE PRISON', arrowX, arrowY + 20);
+                    ctx.restore();
+                }
+            }
+            if (currentLevel === 1 && (questPhase === 'travel_lab' || questPhase === 'lab_explore')) {
+                const arrowX = LEXLAB_X - camera.x;
+                const blink = Math.sin(Date.now() * 0.008) > 0;
+                if (blink) {
+                    ctx.save();
+                    ctx.fillStyle = '#44ffcc'; ctx.shadowColor = '#44ffcc'; ctx.shadowBlur = 12;
+                    ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('▼', arrowX, 60);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial';
+                    ctx.fillText('LEXCORP RESEARCH LAB', arrowX, 80);
+                    ctx.restore();
+                }
+            }
 
             // ---- STORY CLUES: only the currently-active clue is in the world ----
             if (interior.note.read) {
@@ -5721,6 +6782,9 @@
 
             if (scene === 'factory') drawFactory();
             if (scene === 'temple') drawTemple();
+            if (scene === 'lab') drawLab();
+            if (scene === 'bank') drawBank();
+            if (scene === 'city') { drawYardWorkers(); drawLexcorp2Clues(); }
 
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
@@ -6085,16 +7149,15 @@
                     const dt = en.deathTimer / 24;  // 1→0
                     ctx.save();
                     ctx.globalAlpha = dt * 0.75;
-                    const ecx = en.x + en.w / 2, ecy = en.y + en.h / 2;
-                    ctx.translate(ecy, ecy);  // intentional: tumble animation
-                    ctx.translate(ecy - ecy, 0);
-                    // Rise + spin + grow then disappear
+                    const ecx = en.x + en.w / 2;
+                    const ecy = en.y + en.h / 2;
                     const driftY = (1 - dt) * 36;
-                    const spin = (1 - dt) * (en._deathSpin || 0.55);
-                    ctx.translate(en.x + en.w / 2, en.y + en.h / 2 - driftY);
+                    const spin   = (1 - dt) * Math.PI * (en._deathSpin || 0.55);
+                    // Pivot around enemy center, drift upward, fade + spin
+                    ctx.translate(ecx, ecy - driftY);
                     ctx.rotate(spin);
                     ctx.scale(1 + (1 - dt) * 0.28, 1 + (1 - dt) * 0.28);
-                    ctx.translate(-(en.x + en.w / 2), -(en.y + en.h / 2));
+                    ctx.translate(-ecx, -ecy);
                     drawEnemy(en);
                     ctx.restore();
                 }
@@ -6165,6 +7228,7 @@
             drawQuestZoneArrow();
             drawTitleCard();
             if (cutscene.active) drawCutscene();
+            drawDialogueBox();
         }
 
         // ---- building-entry cut-scene: letterboxed, hero walks into the doorway ----
@@ -7006,6 +8070,64 @@
 
         let templeScene = null;
         let templePhase = 'idle';    // 'idle' | 'intro' | 'battle' | 'victory'
+
+        // ── LEXCORP RESEARCH LAB INTERIOR ────────────────────────────────────────
+        const LAB = { w: 3200, floorY: 840, ceilingY: 60 };
+        const LAB_PLATFORMS = [
+            // upper catwalk level (y ≈ 580)
+            { x: 200,  y: 580, w: 280, h: 12 },
+            { x: 600,  y: 580, w: 280, h: 12 },
+            { x: 1050, y: 580, w: 320, h: 12 },
+            { x: 1480, y: 580, w: 280, h: 12 },
+            { x: 1900, y: 580, w: 280, h: 12 },
+            { x: 2350, y: 580, w: 300, h: 12 },
+            // mid level (y ≈ 700)
+            { x: 400,  y: 700, w: 240, h: 12 },
+            { x: 900,  y: 700, w: 240, h: 12 },
+            { x: 1600, y: 700, w: 240, h: 12 },
+            { x: 2100, y: 700, w: 240, h: 12 },
+            { x: 2600, y: 700, w: 240, h: 12 },
+        ];
+
+        // 3 hidden lab clues — world positions within the lab
+        const labClues = [
+            {
+                x: 480, y: LAB.floorY - 60, w: 44, h: 44,
+                found: false, foundBy: null,
+                label: 'EXPERIMENT LOG',
+                icon: '📋',
+                lines: [
+                    'EXPERIMENT LOG — Project GENESIS, Entry 47',
+                    'Subject 7 showing remarkable cellular regeneration. Lex was right — the compound works.',
+                    'But without his direct oversight, the team is losing direction. We need more funding. We need him back.'
+                ]
+            },
+            {
+                x: 1340, y: LAB.floorY - 60, w: 44, h: 44,
+                found: false, foundBy: null,
+                label: 'SECURITY TERMINAL',
+                icon: '💻',
+                lines: [
+                    'SECURITY LOG — Access terminal 4',
+                    'Someone bypassed the vault lock remotely three days ago. Whoever did it had Level 5 clearance.',
+                    'Only three people ever had Level 5: Lex, his chief of staff, and... the prisoner from Block D.'
+                ]
+            },
+            {
+                x: 2420, y: LAB.floorY - 60, w: 48, h: 52,
+                found: false, foundBy: null,
+                label: 'SCIENTIST\'S NOTE',
+                icon: '📝',
+                lines: [
+                    'INTERNAL MEMO — Dr. Chen to Research Division',
+                    'With Lex in custody, LexCorp\'s black-budget accounts are frozen. Project GENESIS cannot continue without immediate capital.',
+                    'I have authorized our field operatives to acquire funding by any means necessary. The First National Bank in Downtown has been selected. This cannot fail.',
+                    '— Dr. Chen, Head of Advanced Research'
+                ]
+            },
+        ];
+        let labCluesFound = 0;
+        let labScene = null;  // saved city state when entering lab
         let templeIntroStep = 0;
         let templeIntroTimer = 0;
         let templeEntryUnlocked = false;
@@ -7049,6 +8171,200 @@
             wonderWoman.fightMode = false; wonderWoman.zoneCombat = false;
             darkWing.fightMode = false; darkWing.zoneCombat = false;
             titleCard = { text: 'AMAZON FREED', sub: 'Ares is defeated. The forest breathes again. The war is over.', timer: 300 };
+        }
+
+        // ── enterLexlab / exitLexlab ──────────────────────────────────────
+        function enterLexlab() {
+            labScene = {
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy,
+                    hf: hero.facing, hfly: hero.flightActive
+                }
+            };
+            hero.x = 140; hero.y = LAB.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 220; hound.y = LAB.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            scene = 'lab';
+            platforms.splice(0, platforms.length, ...LAB_PLATFORMS);
+            camera.x = 0; camera.y = Math.max(0, LAB.floorY + 80 - H);
+            // Lois starts at the entrance too
+            labLois.x = 80; labLois.y = LAB.floorY; labLois.active = true;
+            labLois._targetX = labClues[0].x;
+            titleCard = { text: 'LEXCORP RESEARCH LAB', sub: 'Search for clues — Lois is investigating too. Press F near glowing objects.', timer: 260 };
+        }
+
+        function exitLexlab() {
+            if (!labScene) return;
+            const s = labScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = s.hvx; hero.vy = s.hvy;
+            hero.facing = s.hf; hero.flightActive = s.hfly;
+            hero.onGround = true;
+            scene = 'city';
+            labScene = null;
+            platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2);
+            camera.y = 0;
+        }
+
+        // ── BANK INTERIOR ────────────────────────────────────────────────────
+        function enterBank() {
+            bankScene = {
+                saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive }
+            };
+            hero.x = 120; hero.y = BANK_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            scene = 'bank';
+            platforms.splice(0, platforms.length, ...BANK_INT_PLATFORMS);
+            camera.x = 0; camera.y = Math.max(0, BANK_INT.floorY + 80 - H);
+            bankInterrogated = 0;
+            advanceQuest('bank_interrogate');
+            titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Approach witnesses and press E to question them.', timer: 220 };
+        }
+
+        function exitBank() {
+            if (!bankScene) return;
+            const s = bankScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = s.hvx; hero.vy = s.hvy;
+            hero.facing = s.hf; hero.flightActive = s.hfly;
+            hero.onGround = true;
+            scene = 'city';
+            bankScene = null;
+            platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2);
+            camera.y = 0;
+        }
+
+        function initBankFight() {
+            const offsets = [-220, -140, -60, 80, 180];
+            for (const offset of offsets) {
+                const en = makeTrapEnemy('thug', BANK_DOOR_X + offset, 'downtown', 10, 1.1);
+                en._bankRobber = true;
+                enemies.push(en);
+                bankEnemyCount++;
+            }
+            titleCard = { text: 'ROBBERY IN PROGRESS', sub: 'Stop the armed robbers before they escape!', timer: 200 };
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: [
+                    'There they are — the robbers! Stop them, CK!',
+                    'I\'ll stay back and document everything. Go!'
+                ],
+                onDone: () => {}
+            });
+        }
+
+        function checkBankCleared() {
+            if (!bankEnemiesSpawned) return;
+            const remaining = enemies.filter(e => e._bankRobber && e.alive).length;
+            if (remaining === 0) {
+                bankEnemiesSpawned = false;
+                advanceQuest('bank_enter');
+                bankEntryUnlocked = true;
+                titleCard = { text: 'ROBBERS DEFEATED', sub: 'Enter the bank — question the witnesses inside. Press F at the door.', timer: 240 };
+                startDialogue({
+                    speaker: 'CK', portrait: 'hero',
+                    lines: [
+                        'That\'s the last of them. But Dr. Chen\'s operation goes deeper than this...',
+                        'There may be witnesses inside who saw something. I need to go in.'
+                    ],
+                    onDone: () => {}
+                });
+            }
+        }
+
+        // ── labLois AI ────────────────────────────────────────────────────
+        const labLois = {
+            x: 80, y: LAB.floorY, faceDir: 1, phase: 0,
+            active: false, _targetX: 500,
+            _clueIndex: 0,
+            _waitTimer: 0,
+            _onGround: true, vy: 0,
+        };
+
+        function updateLabLois() {
+            if (!labLois.active || scene !== 'lab') return;
+            labLois.phase += 0.05;
+            // Simple gravity
+            if (!labLois._onGround) {
+                labLois.vy = Math.min(labLois.vy + 0.5, 14);
+                labLois.y += labLois.vy;
+                if (labLois.y >= LAB.floorY) {
+                    labLois.y = LAB.floorY; labLois.vy = 0; labLois._onGround = true;
+                }
+            }
+            if (labLois._waitTimer > 0) { labLois._waitTimer--; return; }
+            // Walk toward the next unfound clue
+            const unFound = labClues.filter(c => !c.found);
+            if (unFound.length === 0) return;
+            const target = unFound[0];
+            labLois._targetX = target.x + target.w / 2;
+            const dx = labLois._targetX - labLois.x;
+            if (Math.abs(dx) > 10) {
+                labLois.x += Math.sign(dx) * 1.8;
+                labLois.faceDir = Math.sign(dx);
+            } else {
+                // Arrived at clue — Lois "finds" it after a pause if hero hasn't
+                labLois._waitTimer = 180;  // 3 seconds
+                if (!target.found) {
+                    target.found = true;
+                    target.foundBy = 'lois';
+                    labCluesFound++;
+                    onLabClueFindLois(target);
+                }
+            }
+        }
+
+        function onLabClueFindLois(clue) {
+            startDialogue({
+                speaker: 'Lois Lane',
+                portrait: 'lois',
+                lines: clue.lines,
+                onDone: () => checkLabComplete()
+            });
+        }
+
+        function checkLabComplete() {
+            if (labCluesFound >= 3) {
+                advanceQuest('lab_clue_3_found');
+                triggerBankRobberyDialogue();
+            } else if (labCluesFound === 1) {
+                advanceQuest('lab_clue_1_found');
+            } else if (labCluesFound === 2) {
+                advanceQuest('lab_clue_2_found');
+            }
+        }
+
+        function triggerBankRobberyDialogue() {
+            startDialogue({
+                speaker: 'CK',
+                portrait: 'hero',
+                lines: [
+                    'Dr. Chen authorized a bank robbery — they\'re already moving on First National Bank.',
+                    'We have to stop this now. Every minute we wait, more people are at risk.'
+                ],
+                onDone: () => {
+                    startDialogue({
+                        speaker: 'Lois Lane',
+                        portrait: 'lois',
+                        lines: [
+                            'First National Bank — that\'s Downtown. I know that area.',
+                            'Go. I\'ll follow in my car. Stop them before anyone gets hurt.'
+                        ],
+                        onDone: () => {
+                            advanceQuest('lab_dialogue');
+                            titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Head to Downtown — stop the robbery in progress!', timer: 220 };
+                            exitLexlab();
+                            // Lois drives from lab toward the bank
+                            loisCar.x = LEXLAB_X + 30;
+                            loisCar.y = GROUND_Y;
+                            driveLoisCar(1280, () => {
+                                advanceQuest('travel_bank');
+                            }, 2.8);
+                        }
+                    });
+                }
+            });
         }
 
         function updateTemple() {
@@ -7559,7 +8875,7 @@
                 darkWing.faceDir = darkWing._swingAngVel > 0 ? 1 : -1;
                 darkWing.phase += 0.07;
                 // Release past apex on the target side
-                if (Math.abs(darkWing._swingAngle) > 0.8 || darkWing.y > GROUND_Y - 20) {
+                if (Math.abs(darkWing._swingAngle) > 0.8 || darkWing.y > (currentLevel === 3 ? L3_GROUND_Y : GROUND_Y) - 20) {
                     darkWing._swinging = false;
                     darkWing._gliding = true;
                     darkWing._onGround = false;
@@ -7573,8 +8889,9 @@
                 darkWing.vy = Math.min(darkWing.vy + grav, darkWing._gliding ? 2.2 : 16);
                 darkWing.y += darkWing.vy;
                 // Land on GROUND_Y
-                if (darkWing.y >= GROUND_Y) {
-                    darkWing.y = GROUND_Y; darkWing.vy = 0;
+                const _dwFloor = currentLevel === 3 ? L3_GROUND_Y : GROUND_Y;
+                if (darkWing.y >= _dwFloor) {
+                    darkWing.y = _dwFloor; darkWing.vy = 0;
                     darkWing._onGround = true; darkWing._gliding = false;
                 }
                 // Land on rooftop platforms
@@ -7587,7 +8904,7 @@
                         }
                     }
                 }
-            } else if (darkWing.y < GROUND_Y) {
+            } else if (darkWing.y < (currentLevel === 3 ? L3_GROUND_Y : GROUND_Y)) {
                 // Check still supported by a platform
                 let supported = false;
                 for (const p of platforms) {
@@ -7615,6 +8932,7 @@
                         if (d < tDist) { tDist = d; target = en; }
                     }
 
+                    if (!target) { darkWing.zoneCombat = false; }
                     if (target) {
                         const enMid = target.x + target.w / 2;
                         const enDist = Math.abs(enMid - darkWing.x);
@@ -7683,10 +9001,10 @@
                     darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
                 }
                 const dx = darkWing._targetX - darkWing.x;
-                if (Math.abs(dx) > 900) {
-                    darkWing.x = darkWing._targetX;
+                if (Math.abs(dx) > 600) {
+                    darkWing.x = darkWing._targetX;  // teleport snap if too far behind
                 } else if (Math.abs(dx) > 12) {
-                    darkWing.x += Math.sign(dx) * 1.6;
+                    darkWing.x += Math.sign(dx) * 3.8;
                     darkWing.faceDir = Math.sign(dx);
                 }
                 darkWing.phase += 0.05;
@@ -7694,9 +9012,17 @@
                 const near = Math.abs(heroMid - darkWing.x) < 90;
                 darkWing.greeting = near ? Math.min(darkWing.greeting + 1, 40) : Math.max(darkWing.greeting - 1, 0);
                 if (near) darkWing.faceDir = heroMid < darkWing.x ? -1 : 1;
-                // On L3, auto-enter zoneCombat when quest zone active
-                if (currentLevel === 3 && questZone && Math.abs(darkWing.x - questZone.x) < 400) {
+                // On L3, auto-enter zoneCombat when quest zone active OR any enemy nearby
+                if (currentLevel === 3 && questZone && Math.abs(darkWing.x - questZone.x) < 700) {
                     darkWing.zoneCombat = true;
+                }
+                if (currentLevel === 3 && !darkWing.zoneCombat) {
+                    for (const _en of enemies) {
+                        if (!_en.alive) continue;
+                        if (Math.abs((_en.x + _en.w / 2) - darkWing.x) < 600) {
+                            darkWing.zoneCombat = true; break;
+                        }
+                    }
                 }
                 // basic attack nearby enemies even before fight mode
                 if (darkWing._attackCD > 0) { darkWing._attackCD--; return; }
@@ -7887,39 +9213,39 @@
         function drawJungle() {
             const t = Date.now() * 0.001;
 
-            // ── Sky: moonlit amazon night ─────────────────────────────────
+            // ── Sky: bright amazon daytime ────────────────────────────────
             const sky = ctx.createLinearGradient(0, 0, 0, H);
-            sky.addColorStop(0,   '#020a02');
-            sky.addColorStop(0.3, '#061408');
-            sky.addColorStop(0.7, '#0c2010');
-            sky.addColorStop(1,   '#142e10');
+            sky.addColorStop(0,   '#4ab8f0');
+            sky.addColorStop(0.4, '#74cef8');
+            sky.addColorStop(0.75,'#a8dfc0');
+            sky.addColorStop(1,   '#c8eab0');
             ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
 
-            // Moon
-            const moonX = 720 - camera.x * 0.02, moonY = 80;
+            // Sun
+            const sunX = 680 - camera.x * 0.02, sunY = 72;
             ctx.save();
-            ctx.fillStyle = 'rgba(220,240,210,0.18)';
-            ctx.beginPath(); ctx.arc(moonX, moonY, 55, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#d8f0d0';
-            ctx.beginPath(); ctx.arc(moonX, moonY, 30, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = 'rgba(180,220,170,0.5)';
-            ctx.beginPath(); ctx.arc(moonX + 8, moonY - 4, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,240,120,0.22)';
+            ctx.beginPath(); ctx.arc(sunX, sunY, 62, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fffbe0';
+            ctx.beginPath(); ctx.arc(sunX, sunY, 34, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#ffe860';
+            ctx.beginPath(); ctx.arc(sunX, sunY, 22, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
 
-            // Stars
-            for (let i = 0; i < 60; i++) {
-                const sx = ((i * 317 + 50) % W);
-                const sy = 20 + (i * 137) % 160;
-                const sa = 0.2 + Math.sin(t * 0.8 + i) * 0.15;
-                ctx.globalAlpha = sa;
-                ctx.fillStyle = '#e0f0d8';
-                ctx.fillRect(sx, sy, 1.5, 1.5);
+            // Clouds
+            ctx.fillStyle = 'rgba(255,255,255,0.82)';
+            for (let i = 0; i < 5; i++) {
+                const cx2 = ((i * 390 + 60 - camera.x * 0.04) % (W + 300)) - 100;
+                const cy2 = 55 + (i % 3) * 28;
+                const cr2 = 38 + (i % 2) * 18;
+                ctx.beginPath(); ctx.arc(cx2, cy2, cr2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 + cr2 * 0.7, cy2 + 6, cr2 * 0.75, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 - cr2 * 0.6, cy2 + 8, cr2 * 0.65, 0, Math.PI * 2); ctx.fill();
             }
-            ctx.globalAlpha = 1;
 
             // ── Far background: massive canopy ridge (parallax 0.03) ──────
             const p0 = camera.x * 0.03;
-            ctx.fillStyle = '#040c04';
+            ctx.fillStyle = '#2d7a30';
             for (let i = 0; i < 8; i++) {
                 const bx = ((i * 480 - p0) % (W + 500)) - 250;
                 const bh = 300 + (i % 3) * 80;
@@ -7941,10 +9267,10 @@
                 const th = 220 + (i % 4) * 55;
                 const tw = 28 + (i % 3) * 8;
                 // Trunk
-                ctx.fillStyle = '#0a1206';
+                ctx.fillStyle = '#5a3a18';
                 ctx.fillRect(tx + tw / 2 - tw / 4, H - th, tw / 2, th);
                 // Buttress roots
-                ctx.fillStyle = '#0c1608';
+                ctx.fillStyle = '#4a2e10';
                 ctx.beginPath();
                 ctx.moveTo(tx + tw / 2, H - th * 0.3);
                 ctx.lineTo(tx, H); ctx.lineTo(tx + tw / 2 - 4, H); ctx.closePath(); ctx.fill();
@@ -7953,7 +9279,7 @@
                 ctx.lineTo(tx + tw, H); ctx.lineTo(tx + tw / 2 + 4, H); ctx.closePath(); ctx.fill();
                 // Multi-blob canopy
                 const cr = 52 + (i % 3) * 18;
-                ctx.fillStyle = `hsl(${115 + (i % 4) * 8}, 60%, ${8 + (i % 3) * 3}%)`;
+                ctx.fillStyle = `hsl(${118 + (i % 4) * 7}, 58%, ${28 + (i % 3) * 5}%)`;
                 for (const [bOffX, bOffY, bR] of [
                     [0, 0, cr], [-cr * 0.55, 12, cr * 0.7], [cr * 0.55, 10, cr * 0.65],
                     [0, cr * 0.4, cr * 0.6], [-cr * 0.3, cr * 0.25, cr * 0.5]
@@ -7963,7 +9289,7 @@
                     ctx.fill();
                 }
                 // Hanging vines from canopy
-                ctx.strokeStyle = 'rgba(20,60,10,0.5)'; ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(40,100,20,0.6)'; ctx.lineWidth = 2;
                 for (let v = 0; v < 3; v++) {
                     const vx = tx + 10 + v * (tw * 0.4);
                     ctx.beginPath(); ctx.moveTo(vx, H - th + cr);
@@ -7979,7 +9305,6 @@
             for (let i = 0; i < 20; i++) {
                 const fx2 = ((i * 210 - p2) % (W + 220)) - 110;
                 const fy2 = H - 40 - (i % 3) * 18;
-                ctx.fillStyle = `hsl(${120 + (i % 5) * 6}, 65%, ${10 + (i % 3) * 4}%)`;
                 // Fan of fronds
                 for (let f = -3; f <= 3; f++) {
                     const angle = (f / 3) * 0.9 - Math.PI / 2 + Math.sin(t * 0.4 + i) * 0.06;
@@ -7992,41 +9317,40 @@
                     const cpy = fy2 + Math.sin(angle - 0.3) * len * 0.55;
                     ctx.quadraticCurveTo(cpx, cpy, ex2, ey2);
                     ctx.lineWidth = 3 - Math.abs(f) * 0.4;
-                    ctx.strokeStyle = `hsl(${118 + f * 4}, 60%, ${12 + (i % 3) * 3}%)`;
+                    ctx.strokeStyle = `hsl(${118 + f * 4}, 68%, ${32 + (i % 3) * 5}%)`;
                     ctx.stroke();
                 }
             }
 
-            // ── Mist layers ───────────────────────────────────────────────
-            const mist1 = ctx.createLinearGradient(0, H * 0.6, 0, H * 0.9);
-            mist1.addColorStop(0, 'rgba(20,60,15,0)');
-            mist1.addColorStop(1, 'rgba(15,45,10,0.38)');
-            ctx.fillStyle = mist1; ctx.fillRect(0, H * 0.6, W, H * 0.3);
+            // ── Light mist near ground ────────────────────────────────────
+            const mist1 = ctx.createLinearGradient(0, H * 0.72, 0, H * 0.92);
+            mist1.addColorStop(0, 'rgba(200,240,210,0)');
+            mist1.addColorStop(1, 'rgba(200,240,210,0.22)');
+            ctx.fillStyle = mist1; ctx.fillRect(0, H * 0.72, W, H * 0.2);
 
-            // ── Fireflies ─────────────────────────────────────────────────
-            for (let i = 0; i < 28; i++) {
-                const ffx = ((i * 1137 - camera.x * 0.18) % (W + 80)) - 40;
-                const ffy = 180 + (i % 6) * 72 + Math.sin(t * 1.2 + i * 1.7) * 22;
-                const alpha = Math.max(0, 0.2 + Math.sin(t * 2.8 + i * 2.1) * 0.35);
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle = i % 3 === 0 ? '#aaff44' : '#ccff88';
-                ctx.beginPath(); ctx.arc(ffx, ffy, 2, 0, Math.PI * 2); ctx.fill();
-                // subtle glow halo
-                ctx.globalAlpha = alpha * 0.3;
-                ctx.beginPath(); ctx.arc(ffx, ffy, 6, 0, Math.PI * 2); ctx.fill();
+            // ── Tropical birds / butterflies ──────────────────────────────
+            for (let i = 0; i < 8; i++) {
+                const bx = ((i * 520 + 80 - camera.x * 0.14) % (W + 200)) - 100;
+                const by = 80 + (i % 4) * 55 + Math.sin(t * 0.9 + i * 1.3) * 18;
+                const wing = Math.sin(t * 6 + i) * 0.7;
+                ctx.save();
+                ctx.translate(bx, by);
+                ctx.fillStyle = i % 2 === 0 ? '#e84040' : '#40a8e0';
+                ctx.beginPath(); ctx.ellipse(-5, 0, 10, 5, wing, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(5, 0, 10, 5, -wing, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
             }
-            ctx.globalAlpha = 1;
 
             // ── River shimmer where gaps are ─────────────────────────────
             for (const g of gaps) {
                 const gsx = g.x - camera.x;
                 if (gsx > W + 50 || gsx + g.w < -50) continue;
                 const rg = ctx.createLinearGradient(0, H * 0.75, 0, H);
-                rg.addColorStop(0, '#0a2a18'); rg.addColorStop(1, '#051408');
+                rg.addColorStop(0, '#3ab8d8'); rg.addColorStop(1, '#1e8eb0');
                 ctx.fillStyle = rg;
                 ctx.fillRect(g.x, L3_GROUND_Y, g.w, 80);
                 // water shimmer lines
-                ctx.strokeStyle = 'rgba(80,200,140,0.2)'; ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
                 for (let wl = 0; wl < 4; wl++) {
                     const wy = L3_GROUND_Y + 10 + wl * 16;
                     ctx.beginPath();
@@ -8040,85 +9364,203 @@
         }
 
                 function drawGrungeCity() {
-            // overcast stormy sky — no sun, always dark orange-grey
+            const t = Date.now() * 0.001;
+
+            // ── Sky: deep Gotham night, sickly amber-purple glow ─────────────
             const sky = ctx.createLinearGradient(0, 0, 0, H);
-            sky.addColorStop(0, '#0e0a06');
-            sky.addColorStop(0.35, '#1e1408');
-            sky.addColorStop(0.7, '#2e1e0e');
-            sky.addColorStop(1, '#3a2a14');
-            ctx.fillStyle = sky;
-            ctx.fillRect(0, 0, W, H);
+            sky.addColorStop(0,    '#060410');
+            sky.addColorStop(0.25, '#0c0818');
+            sky.addColorStop(0.55, '#1a0e10');
+            sky.addColorStop(0.8,  '#2a1408');
+            sky.addColorStop(1,    '#3c200c');
+            ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
 
-            // smog / haze layer near horizon
-            const smog = ctx.createLinearGradient(0, H * 0.5, 0, H * 0.85);
-            smog.addColorStop(0, 'rgba(60,40,10,0)');
-            smog.addColorStop(1, 'rgba(80,50,10,0.45)');
-            ctx.fillStyle = smog;
-            ctx.fillRect(0, H * 0.5, W, H * 0.35);
+            // Subtle lightning flicker in clouds
+            const ltFlash = Math.max(0, Math.sin(t * 7.3) * Math.sin(t * 3.1));
+            if (ltFlash > 0.92) {
+                ctx.globalAlpha = (ltFlash - 0.92) * 6 * 0.18;
+                ctx.fillStyle = '#c8d8ff';
+                ctx.fillRect(0, 0, W, H);
+                ctx.globalAlpha = 1;
+            }
 
-            // fire glow on horizon
-            const fireX = W * 0.65 - camera.x * 0.03;
-            const fireGlow = ctx.createRadialGradient(fireX, H * 0.72, 10, fireX, H * 0.72, 260);
-            fireGlow.addColorStop(0, 'rgba(255,100,10,0.35)');
-            fireGlow.addColorStop(1, 'rgba(255,60,0,0)');
-            ctx.fillStyle = fireGlow;
-            ctx.fillRect(0, 0, W, H);
+            // ── Bat Signal ───────────────────────────────────────────────────
+            const bsX = W * 0.72 - camera.x * 0.015;  // slow parallax
+            const bsY = H * 0.12;
+            const bsR = 80 + Math.sin(t * 0.4) * 4;   // slight breathe
+            ctx.save();
+            // Outer cone of light from rooftop below
+            const coneGrad = ctx.createLinearGradient(bsX, H * 0.82, bsX, bsY);
+            coneGrad.addColorStop(0, 'rgba(200,220,255,0.18)');
+            coneGrad.addColorStop(1, 'rgba(200,220,255,0)');
+            ctx.fillStyle = coneGrad;
+            ctx.beginPath();
+            ctx.moveTo(bsX - 14, H * 0.82);
+            ctx.lineTo(bsX - bsR * 0.7, bsY + bsR);
+            ctx.lineTo(bsX + bsR * 0.7, bsY + bsR);
+            ctx.lineTo(bsX + 14, H * 0.82);
+            ctx.closePath(); ctx.fill();
+            // Spotlight circle glow
+            const bsGlow = ctx.createRadialGradient(bsX, bsY, bsR * 0.1, bsX, bsY, bsR * 1.6);
+            bsGlow.addColorStop(0, 'rgba(210,225,255,0.55)');
+            bsGlow.addColorStop(0.45, 'rgba(180,200,255,0.28)');
+            bsGlow.addColorStop(1, 'rgba(150,170,255,0)');
+            ctx.fillStyle = bsGlow;
+            ctx.beginPath(); ctx.arc(bsX, bsY, bsR * 1.6, 0, Math.PI * 2); ctx.fill();
+            // Inner lit circle
+            ctx.fillStyle = 'rgba(220,235,255,0.72)';
+            ctx.beginPath(); ctx.arc(bsX, bsY, bsR, 0, Math.PI * 2); ctx.fill();
+            // Bat silhouette cut-out (dark shape inside the beam)
+            ctx.fillStyle = 'rgba(10,6,20,0.88)';
+            ctx.save(); ctx.translate(bsX, bsY); const bsS = bsR * 0.56;
+            // Bat body + wings using bezier curves
+            ctx.beginPath();
+            ctx.moveTo(0, bsS * 0.22);
+            // right wing
+            ctx.bezierCurveTo(bsS * 0.18, -bsS * 0.05, bsS * 0.85, -bsS * 0.55, bsS, -bsS * 0.15);
+            ctx.bezierCurveTo(bsS * 0.9, -bsS * 0.45, bsS * 0.55, bsS * 0.0, bsS * 0.28, bsS * 0.18);
+            // wing tip notch
+            ctx.bezierCurveTo(bsS * 0.22, bsS * 0.08, bsS * 0.12, bsS * 0.28, 0, bsS * 0.22);
+            // left wing (mirrored)
+            ctx.bezierCurveTo(-bsS * 0.12, bsS * 0.28, -bsS * 0.22, bsS * 0.08, -bsS * 0.28, bsS * 0.18);
+            ctx.bezierCurveTo(-bsS * 0.55, bsS * 0.0, -bsS * 0.9, -bsS * 0.45, -bsS, -bsS * 0.15);
+            ctx.bezierCurveTo(-bsS * 0.85, -bsS * 0.55, -bsS * 0.18, -bsS * 0.05, 0, bsS * 0.22);
+            ctx.closePath(); ctx.fill();
+            // Ears
+            ctx.beginPath();
+            ctx.moveTo(-bsS * 0.14, -bsS * 0.08);
+            ctx.lineTo(-bsS * 0.22, -bsS * 0.52);
+            ctx.lineTo(-bsS * 0.04, -bsS * 0.12);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(bsS * 0.14, -bsS * 0.08);
+            ctx.lineTo(bsS * 0.22, -bsS * 0.52);
+            ctx.lineTo(bsS * 0.04, -bsS * 0.12);
+            ctx.closePath(); ctx.fill();
+            ctx.restore(); ctx.restore();
 
-            // rolling dark clouds
-            const t = Date.now() * 0.00008;
-            for (let i = 0; i < 12; i++) {
-                const cx = ((i * 317 - camera.x * 0.04 + t * 40) % (W + 300)) - 150;
-                const cy = 60 + (i % 4) * 55;
-                const cr = 70 + (i % 3) * 30;
+            // ── Smog / acid-rain haze near horizon ───────────────────────────
+            const smog = ctx.createLinearGradient(0, H * 0.48, 0, H * 0.88);
+            smog.addColorStop(0, 'rgba(50,30,8,0)');
+            smog.addColorStop(1, 'rgba(80,45,8,0.52)');
+            ctx.fillStyle = smog; ctx.fillRect(0, H * 0.48, W, H * 0.4);
+
+            // Industrial fire glow on the horizon
+            const fireX = W * 0.3 - camera.x * 0.03;
+            const fireGlow = ctx.createRadialGradient(fireX, H * 0.78, 8, fireX, H * 0.78, 300);
+            fireGlow.addColorStop(0, 'rgba(255,90,5,0.4)');
+            fireGlow.addColorStop(1, 'rgba(255,50,0,0)');
+            ctx.fillStyle = fireGlow; ctx.fillRect(0, 0, W, H);
+            // Second glow source (chemical plant)
+            const fireX2 = W * 0.78 - camera.x * 0.025;
+            const fireGlow2 = ctx.createRadialGradient(fireX2, H * 0.75, 6, fireX2, H * 0.75, 200);
+            fireGlow2.addColorStop(0, 'rgba(180,40,200,0.22)');
+            fireGlow2.addColorStop(1, 'rgba(100,20,140,0)');
+            ctx.fillStyle = fireGlow2; ctx.fillRect(0, 0, W, H);
+
+            // ── Rolling storm clouds ──────────────────────────────────────────
+            for (let i = 0; i < 14; i++) {
+                const cx2 = ((i * 293 - camera.x * 0.04 + t * 12) % (W + 340)) - 170;
+                const cy2 = 45 + (i % 5) * 48;
+                const cr2 = 75 + (i % 4) * 28;
                 ctx.save();
-                ctx.globalAlpha = 0.18 + (i % 3) * 0.07;
-                ctx.fillStyle = '#1a1208';
-                ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(cx + cr * 0.55, cy - 10, cr * 0.7, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 0.16 + (i % 3) * 0.06;
+                ctx.fillStyle = i % 4 === 0 ? '#14081e' : '#100808';
+                ctx.beginPath(); ctx.arc(cx2, cy2, cr2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 + cr2 * 0.6, cy2 - 12, cr2 * 0.72, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx2 - cr2 * 0.45, cy2 - 8, cr2 * 0.58, 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
             }
 
-            // ruined building silhouettes
-            const silhouettes = [
-                { ox: 0.01, w: 120, h: 280, jagged: true  },
-                { ox: 0.06, w: 90,  h: 200, jagged: false },
-                { ox: 0.12, w: 150, h: 340, jagged: true  },
-                { ox: 0.20, w: 100, h: 220, jagged: false },
-                { ox: 0.28, w: 130, h: 300, jagged: true  },
-                { ox: 0.36, w: 80,  h: 180, jagged: false },
-                { ox: 0.46, w: 160, h: 360, jagged: true  },
-                { ox: 0.55, w: 110, h: 240, jagged: false },
-                { ox: 0.64, w: 140, h: 320, jagged: true  },
-                { ox: 0.73, w: 95,  h: 200, jagged: false },
-                { ox: 0.82, w: 125, h: 280, jagged: true  },
-                { ox: 0.90, w: 85,  h: 190, jagged: false },
-            ];
+            // ── Far Gotham skyline silhouettes (parallax 0.06) ──────────────
             const parallax = camera.x * 0.06;
-            ctx.fillStyle = '#0e0a04';
-            for (const s of silhouettes) {
-                const sx = ((s.ox * 2800 - parallax) % (W + s.w + 100)) - s.w;
+            // Tier 1: very tall Art Deco spires
+            const spires = [
+                { ox: 80,   w: 55,  h: 390, spire: true  },
+                { ox: 240,  w: 90,  h: 310, spire: false },
+                { ox: 430,  w: 45,  h: 440, spire: true  },
+                { ox: 600,  w: 80,  h: 280, spire: false },
+                { ox: 760,  w: 60,  h: 420, spire: true  },
+                { ox: 920,  w: 100, h: 340, spire: false },
+                { ox: 1100, w: 50,  h: 460, spire: true  },
+                { ox: 1280, w: 85,  h: 300, spire: false },
+                { ox: 1460, w: 55,  h: 400, spire: true  },
+                { ox: 1640, w: 75,  h: 260, spire: false },
+                { ox: 1820, w: 48,  h: 430, spire: true  },
+                { ox: 2000, w: 92,  h: 320, spire: false },
+                { ox: 2200, w: 58,  h: 450, spire: true  },
+            ];
+            ctx.fillStyle = '#08050e';
+            for (const s of spires) {
+                const sx = ((s.ox - parallax) % (W + s.w + 200)) - s.w;
                 const sy = H - s.h;
-                if (s.jagged) {
+                ctx.fillRect(sx, sy, s.w, s.h);
+                if (s.spire) {
+                    // Gothic Art Deco spire
                     ctx.beginPath();
-                    ctx.moveTo(sx, H);
-                    ctx.lineTo(sx, sy + 30);
-                    // jagged broken roofline
-                    for (let jx = sx; jx < sx + s.w; jx += 18) {
-                        ctx.lineTo(jx + 9, sy + (Math.sin(jx * 0.3) > 0 ? 0 : 22));
-                        ctx.lineTo(jx + 18, sy + 30);
-                    }
-                    ctx.lineTo(sx + s.w, H);
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(sx + s.w / 2, sy - 70);
+                    ctx.lineTo(sx + s.w, sy);
                     ctx.closePath(); ctx.fill();
-                } else {
-                    ctx.fillRect(sx, sy, s.w, s.h);
+                    // Gargoyle nubs
+                    ctx.fillRect(sx - 6, sy + 10, 10, 14);
+                    ctx.fillRect(sx + s.w - 4, sy + 10, 10, 14);
                 }
-                // occasional broken window glow
-                if (s.w > 100) {
-                    ctx.fillStyle = 'rgba(200,80,10,0.15)';
-                    ctx.fillRect(sx + 20, sy + 40, 18, 24);
-                    ctx.fillRect(sx + 60, sy + 80, 14, 20);
-                    ctx.fillStyle = '#0e0a04';
+                // Window grid — amber glow
+                ctx.fillStyle = 'rgba(220,140,20,0.12)';
+                for (let wy = sy + 20; wy < sy + s.h - 20; wy += 22) {
+                    for (let wx = sx + 6; wx < sx + s.w - 6; wx += 14) {
+                        if (((wx + wy) * 7 + 13) % 17 > 5) ctx.fillRect(wx, wy, 8, 12);
+                    }
                 }
+                ctx.fillStyle = '#08050e';
+            }
+
+            // ── Mid-layer Gotham blocks with details (parallax 0.11) ─────────
+            const parallax2 = camera.x * 0.11;
+            const blocks = [
+                { ox: 0,    w: 140, h: 220 }, { ox: 200,  w: 110, h: 180 },
+                { ox: 380,  w: 160, h: 260 }, { ox: 600,  w: 130, h: 200 },
+                { ox: 780,  w: 145, h: 240 }, { ox: 980,  w: 120, h: 190 },
+                { ox: 1150, w: 155, h: 250 }, { ox: 1360, w: 115, h: 195 },
+                { ox: 1540, w: 148, h: 232 }, { ox: 1740, w: 122, h: 205 },
+                { ox: 1920, w: 158, h: 255 }, { ox: 2120, w: 118, h: 198 },
+            ];
+            for (const b of blocks) {
+                const bx = ((b.ox - parallax2) % (W + b.w + 200)) - b.w;
+                const by = H - b.h;
+                ctx.fillStyle = '#0c0814';
+                ctx.fillRect(bx, by, b.w, b.h);
+                // Crenellated parapet top
+                for (let px = bx; px < bx + b.w; px += 16) {
+                    ctx.fillRect(px, by - 12, 10, 12);
+                }
+                // Lit windows — some orange, some blue/cold
+                for (let wy = by + 14; wy < by + b.h - 10; wy += 26) {
+                    for (let wx = bx + 8; wx < bx + b.w - 8; wx += 18) {
+                        const wSeed = (wx * 3 + wy * 7) % 19;
+                        if (wSeed > 6) {
+                            const cold = wSeed % 3 === 0;
+                            ctx.fillStyle = cold ? 'rgba(100,180,255,0.22)' : 'rgba(240,150,20,0.28)';
+                            ctx.fillRect(wx, wy, 10, 16);
+                        }
+                    }
+                }
+                // Rooftop water tower
+                if (b.w > 130) {
+                    const tx = bx + b.w * 0.7;
+                    ctx.fillStyle = '#0a0612';
+                    ctx.fillRect(tx - 8, by - 30, 16, 20);
+                    ctx.beginPath(); ctx.arc(tx, by - 30, 10, Math.PI, 0); ctx.fill();
+                }
+            }
+
+            // ── Rain streaks ─────────────────────────────────────────────────
+            ctx.strokeStyle = 'rgba(140,160,200,0.12)'; ctx.lineWidth = 1;
+            for (let r = 0; r < 60; r++) {
+                const rx = ((r * 193 - camera.x * 0.2 + t * 180) % (W + 20)) - 10;
+                const ry = ((r * 137 + t * 220) % (H + 20)) - 10;
+                ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx - 2, ry + 14); ctx.stroke();
             }
         }
 
@@ -8226,6 +9668,310 @@
                 }
             }
 
+            ctx.restore();
+        }
+
+        // ── First National Bank interior draw ────────────────────────────
+        function drawBankSuspect(s) {
+            if (scene !== 'bank') return;
+            s.phase = (s.phase || 0) + 0.05;
+            const sx = s.x - camera.x;
+            const fy = s.y - camera.y;
+            const fd = s.faceDir;
+            const bob = Math.sin(s.phase) * 1.0;
+            const done = s.interrogated;
+            ctx.save();
+            // Legs
+            ctx.fillStyle = done ? '#3a5a3a' : '#1a2060';
+            ctx.fillRect(sx - 8, fy - 32, 7, 32);
+            ctx.fillRect(sx + 1, fy - 32, 7, 32);
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(sx - 10, fy - 3, 10, 3);
+            ctx.fillRect(sx + 1, fy - 3, 10, 3);
+            // Body
+            ctx.fillStyle = done ? '#2a4a2a' : '#1c2880';
+            ctx.fillRect(sx - 12, fy - 64 + bob, 24, 32);
+            // ID badge
+            ctx.fillStyle = '#ddd'; ctx.fillRect(sx - 4, fy - 58 + bob, 8, 10);
+            ctx.fillStyle = '#4af'; ctx.fillRect(sx - 3, fy - 57 + bob, 6, 2);
+            // Head
+            ctx.fillStyle = '#e0b890';
+            ctx.beginPath(); ctx.arc(sx, fy - 72 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(sx - 10, fy - 82 + bob, 20, 8);
+            // Name + prompt
+            ctx.fillStyle = done ? 'rgba(80,200,80,0.7)' : 'rgba(255,220,100,0.9)';
+            ctx.font = '9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(s.name, sx, fy - 88 + bob);
+            if (!done && Math.abs((hero.x + hero.w/2) - s.x) < 70) {
+                ctx.fillStyle = '#ffe040'; ctx.fillText('E — Question', sx, fy - 101 + bob);
+            }
+            if (done) {
+                ctx.fillStyle = 'rgba(80,200,80,0.6)'; ctx.font = '8px Arial';
+                ctx.fillText('✓ Questioned', sx, fy - 101 + bob);
+            }
+            ctx.restore();
+        }
+
+        function drawBank() {
+            const t = Date.now() * 0.001;
+            // Grand banking hall — marble, classical columns, robbery aftermath
+            ctx.fillStyle = '#f5f0e8'; ctx.fillRect(0, 0, W, H);
+            // Ceiling
+            ctx.fillStyle = '#e8e0cc'; ctx.fillRect(0, BANK_INT.ceilingY - camera.y, BANK_INT.w, 60);
+            ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, BANK_INT.ceilingY - camera.y + 60);
+            ctx.lineTo(BANK_INT.w, BANK_INT.ceilingY - camera.y + 60); ctx.stroke();
+            // Marble floor
+            ctx.fillStyle = '#e8e4dc'; ctx.fillRect(0, BANK_INT.floorY - camera.y, BANK_INT.w, 120);
+            ctx.strokeStyle = '#d0ccc0'; ctx.lineWidth = 1;
+            for (let tx = 0; tx < BANK_INT.w; tx += 100) {
+                ctx.beginPath(); ctx.moveTo(tx - camera.x, BANK_INT.floorY - camera.y);
+                ctx.lineTo(tx - camera.x, BANK_INT.floorY - camera.y + 120); ctx.stroke();
+            }
+            // Classical columns
+            for (let col = 250; col < BANK_INT.w; col += 380) {
+                const cx = col - camera.x;
+                const cg = ctx.createLinearGradient(cx - 18, 0, cx + 18, 0);
+                cg.addColorStop(0, '#ddd8cc'); cg.addColorStop(0.4, '#f5f0e8'); cg.addColorStop(1, '#c8c4b8');
+                ctx.fillStyle = cg;
+                ctx.fillRect(cx - 18, BANK_INT.ceilingY - camera.y + 60, 36, BANK_INT.floorY - BANK_INT.ceilingY - 60);
+                ctx.fillStyle = '#e0d8c0'; ctx.fillRect(cx - 24, BANK_INT.ceilingY - camera.y + 56, 48, 12);
+                ctx.fillStyle = '#d8d0b8'; ctx.fillRect(cx - 22, BANK_INT.floorY - camera.y - 12, 44, 12);
+            }
+            // Teller counters + robbery debris
+            for (const cx of [300, 700, 1100, 1600, 2000]) {
+                const ex = cx - camera.x;
+                if (ex < -180 || ex > W + 180) continue;
+                const ey = BANK_INT.floorY - camera.y;
+                ctx.fillStyle = '#8b6914'; ctx.fillRect(ex, ey - 60, 140, 60);
+                ctx.fillStyle = '#a07820'; ctx.fillRect(ex, ey - 62, 140, 4);
+                // Broken glass shards
+                ctx.strokeStyle = 'rgba(180,220,255,0.6)'; ctx.lineWidth = 1;
+                for (let s2 = 0; s2 < 3; s2++) {
+                    ctx.beginPath(); ctx.moveTo(ex + 20 + s2*30, ey - 60);
+                    ctx.lineTo(ex + 15 + s2*30 + (s2%2===0?5:-5), ey - 95 - s2*2); ctx.stroke();
+                }
+                // Money bag
+                ctx.fillStyle = '#2a6030';
+                ctx.beginPath(); ctx.arc(ex + 160, ey - 12, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#f0c840'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('$', ex + 160, ey - 8);
+            }
+            // Overturned chairs
+            for (const dx of [180, 450, 820, 1200, 1650, 1950]) {
+                const ex = dx - camera.x;
+                if (ex < -60 || ex > W + 60) continue;
+                ctx.fillStyle = '#604020'; ctx.fillRect(ex, BANK_INT.floorY - camera.y - 20, 20, 20);
+                ctx.fillRect(ex - 10, BANK_INT.floorY - camera.y - 28, 40, 6);
+                ctx.fillStyle = 'rgba(255,255,240,0.8)';
+                ctx.save(); ctx.translate(ex + 30, BANK_INT.floorY - camera.y - 4); ctx.rotate(0.4);
+                ctx.fillRect(-12, -8, 24, 16); ctx.restore();
+            }
+            // Alarm flash
+            const alarmFlash = Math.sin(t * 4.0) > 0 ? 0.10 : 0.03;
+            ctx.fillStyle = `rgba(255,60,40,${alarmFlash})`; ctx.fillRect(0, 0, W, H);
+            // Emergency lights on ceiling
+            for (let lx = 160; lx < BANK_INT.w; lx += 400) {
+                const flash2 = Math.sin(t * 4.0 + lx) > 0;
+                ctx.fillStyle = flash2 ? '#ff2020' : '#400808';
+                ctx.beginPath(); ctx.arc(lx - camera.x, BANK_INT.ceilingY - camera.y + 68, 8, 0, Math.PI * 2); ctx.fill();
+                if (flash2) {
+                    ctx.save(); ctx.shadowColor = '#ff4040'; ctx.shadowBlur = 20;
+                    ctx.fillStyle = '#ff4040';
+                    ctx.beginPath(); ctx.arc(lx - camera.x, BANK_INT.ceilingY - camera.y + 68, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                }
+            }
+            // Platforms (balcony level)
+            for (const p of platforms) {
+                const px = p.x - camera.x, py = p.y - camera.y;
+                if (px > W + 50 || px + p.w < -50) continue;
+                const pg = ctx.createLinearGradient(px, py, px, py + p.h);
+                pg.addColorStop(0, '#ddd4b8'); pg.addColorStop(1, '#c0b890');
+                ctx.fillStyle = pg; ctx.fillRect(px, py, p.w, p.h);
+                ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(px, py - 20); ctx.lineTo(px + p.w, py - 20); ctx.stroke();
+                for (let rx = px + 20; rx < px + p.w - 10; rx += 28) {
+                    ctx.beginPath(); ctx.moveTo(rx, py); ctx.lineTo(rx, py - 20); ctx.stroke();
+                }
+            }
+            // Suspects
+            for (const s of bankSuspects) drawBankSuspect(s);
+            // Exit door (left side)
+            const doorX = 50 - camera.x;
+            ctx.fillStyle = '#6b4c1a'; ctx.fillRect(doorX, BANK_INT.floorY - camera.y - 90, 55, 90);
+            ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
+            ctx.strokeRect(doorX, BANK_INT.floorY - camera.y - 90, 55, 90);
+            if (hero.x < 160) {
+                ctx.fillStyle = '#c8a840'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', doorX + 27, BANK_INT.floorY - camera.y - 98);
+            }
+        }
+
+        // ── LexCorp Lab interior draw ─────────────────────────────────────
+        function drawLab() {
+            const t = Date.now() * 0.001;
+            // Background — dark charcoal with blue-grey walls
+            ctx.fillStyle = '#0c0e14'; ctx.fillRect(0, 0, W, H);
+            // Ceiling infrastructure
+            ctx.fillStyle = '#1a1e28';
+            ctx.fillRect(0, LAB.ceilingY - camera.y, LAB.w, 40);
+            // Hanging fluorescent tubes (flicker slightly)
+            for (let lx = 200; lx < LAB.w; lx += 320) {
+                const flicker = 0.85 + Math.sin(t * 17.3 + lx) * 0.08;
+                ctx.save();
+                ctx.globalAlpha = flicker;
+                ctx.fillStyle = '#d0e8ff';
+                ctx.fillRect(lx - camera.x - 40, LAB.ceilingY - camera.y + 8, 80, 6);
+                ctx.shadowColor = '#a0c8ff'; ctx.shadowBlur = 18;
+                ctx.fillRect(lx - camera.x - 38, LAB.ceilingY - camera.y + 8, 76, 4);
+                ctx.restore();
+            }
+            // Floor — polished lab tile with seams
+            ctx.fillStyle = '#141820'; ctx.fillRect(0, LAB.floorY - camera.y, LAB.w, 120);
+            ctx.strokeStyle = '#1e2430'; ctx.lineWidth = 1;
+            for (let tx = 0; tx < LAB.w; tx += 80) {
+                ctx.beginPath(); ctx.moveTo(tx - camera.x, LAB.floorY - camera.y);
+                ctx.lineTo(tx - camera.x, LAB.floorY - camera.y + 120); ctx.stroke();
+            }
+            // Caution stripe at base of walls
+            for (let sx = 0; sx < LAB.w; sx += 48) {
+                ctx.fillStyle = sx % 96 === 0 ? 'rgba(255,200,0,0.15)' : 'rgba(0,0,0,0)';
+                ctx.fillRect(sx - camera.x, LAB.floorY - camera.y, 48, 8);
+            }
+            // Lab equipment — workbenches, reactors, tanks along floor
+            const equipment = [
+                { x: 300, type: 'bench' }, { x: 620, type: 'reactor' }, { x: 980, type: 'bench' },
+                { x: 1300, type: 'tank' }, { x: 1650, type: 'bench' }, { x: 2000, type: 'reactor' },
+                { x: 2280, type: 'bench' }, { x: 2600, type: 'tank' },
+            ];
+            for (const eq of equipment) {
+                const ex = eq.x - camera.x;
+                if (ex < -200 || ex > W + 200) continue;
+                const ey = LAB.floorY - camera.y;
+                if (eq.type === 'bench') {
+                    ctx.fillStyle = '#1e2530'; ctx.fillRect(ex, ey - 55, 110, 55);
+                    ctx.fillStyle = '#2a3040'; ctx.fillRect(ex + 2, ey - 56, 106, 6);
+                    ctx.fillStyle = '#0a0e18'; ctx.fillRect(ex + 20, ey - 90, 60, 35);
+                    const glow = 0.6 + Math.sin(t * 1.8 + eq.x * 0.02) * 0.3;
+                    ctx.fillStyle = `rgba(20,200,140,${glow})`;
+                    ctx.fillRect(ex + 24, ey - 86, 52, 27);
+                    ctx.strokeStyle = 'rgba(40,255,160,0.6)'; ctx.lineWidth = 1;
+                    for (let dl = 0; dl < 4; dl++) {
+                        ctx.beginPath();
+                        ctx.moveTo(ex + 26, ey - 82 + dl * 6);
+                        ctx.lineTo(ex + 26 + Math.random() * 40, ey - 82 + dl * 6);
+                        ctx.stroke();
+                    }
+                } else if (eq.type === 'reactor') {
+                    ctx.fillStyle = '#141c24'; ctx.fillRect(ex, ey - 90, 70, 90);
+                    const rp = 0.7 + Math.sin(t * 2.1 + eq.x) * 0.25;
+                    const rg = ctx.createRadialGradient(ex + 35, ey - 50, 4, ex + 35, ey - 50, 24);
+                    rg.addColorStop(0, `rgba(60,255,180,${rp})`);
+                    rg.addColorStop(1, 'rgba(20,180,100,0)');
+                    ctx.fillStyle = rg;
+                    ctx.beginPath(); ctx.arc(ex + 35, ey - 50, 24, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#1cf0a0';
+                    ctx.beginPath(); ctx.arc(ex + 35, ey - 50, 10, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#0a8050'; ctx.lineWidth = 4;
+                    ctx.beginPath(); ctx.moveTo(ex + 10, ey - 30); ctx.lineTo(ex + 10, ey); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(ex + 60, ey - 30); ctx.lineTo(ex + 60, ey); ctx.stroke();
+                } else if (eq.type === 'tank') {
+                    ctx.fillStyle = '#101420'; ctx.fillRect(ex, ey - 120, 80, 120);
+                    const tg = ctx.createLinearGradient(ex, ey - 120, ex, ey);
+                    tg.addColorStop(0, 'rgba(20,160,200,0.45)');
+                    tg.addColorStop(1, 'rgba(10,80,120,0.35)');
+                    ctx.fillStyle = tg; ctx.fillRect(ex + 4, ey - 116, 72, 116);
+                    for (let b = 0; b < 3; b++) {
+                        const by2 = ((t * 30 + b * 40 + eq.x) % 110);
+                        ctx.fillStyle = 'rgba(180,240,255,0.35)';
+                        ctx.beginPath(); ctx.arc(ex + 18 + b * 22, ey - by2, 3 + b, 0, Math.PI * 2); ctx.fill();
+                    }
+                    ctx.strokeStyle = '#1e3a50'; ctx.lineWidth = 3;
+                    ctx.strokeRect(ex, ey - 120, 80, 120);
+                }
+            }
+            // Platforms
+            for (const p of platforms) {
+                const px = p.x - camera.x, py = p.y - camera.y;
+                if (px > W + 50 || px + p.w < -50) continue;
+                ctx.fillStyle = '#1e2838'; ctx.fillRect(px, py, p.w, p.h);
+                ctx.fillStyle = '#2a3850'; ctx.fillRect(px, py, p.w, 3);
+                ctx.strokeStyle = '#304060'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(px, py - 18); ctx.lineTo(px + p.w, py - 18); ctx.stroke();
+                for (let rx = px + 20; rx < px + p.w - 10; rx += 30) {
+                    ctx.beginPath(); ctx.moveTo(rx, py); ctx.lineTo(rx, py - 18); ctx.stroke();
+                }
+            }
+            // Clue objects — glowing interactable items
+            for (const clue of labClues) {
+                if (clue.found) continue;
+                const cx2 = clue.x - camera.x, cy2 = clue.y - camera.y;
+                if (cx2 < -60 || cx2 > W + 60) continue;
+                const pulse = 0.6 + Math.sin(t * 2.2 + clue.x * 0.01) * 0.35;
+                ctx.save();
+                ctx.shadowColor = '#40ffcc'; ctx.shadowBlur = 14 * pulse;
+                ctx.fillStyle = `rgba(30,200,150,${0.4 + pulse * 0.4})`;
+                ctx.fillRect(cx2, cy2, clue.w, clue.h);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(clue.label, cx2 + clue.w / 2, cy2 - 10);
+                ctx.fillStyle = '#40ffcc'; ctx.font = '10px Arial';
+                const heroDist = Math.abs((hero.x + hero.w / 2) - (clue.x + clue.w / 2));
+                if (heroDist < 80) ctx.fillText('F — Examine', cx2 + clue.w / 2, cy2 - 24);
+                ctx.restore();
+            }
+            // Exit door (left side)
+            const doorX = 40 - camera.x;
+            ctx.fillStyle = '#1e3050';
+            ctx.fillRect(doorX, LAB.floorY - camera.y - 80, 50, 80);
+            ctx.strokeStyle = '#4080c0'; ctx.lineWidth = 2;
+            ctx.strokeRect(doorX, LAB.floorY - camera.y - 80, 50, 80);
+            if (hero.x < 160) {
+                ctx.fillStyle = '#a0c8ff'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', doorX + 25, LAB.floorY - camera.y - 88);
+            }
+        }
+
+        function drawLabLois() {
+            if (!labLois.active || scene !== 'lab') return;
+            const lx = labLois.x - camera.x;
+            const fy = labLois.y - camera.y;
+            const fd = labLois.faceDir;
+            const bob = Math.sin(labLois.phase * 1.5) * 1.0;
+            ctx.save();
+            // Legs
+            ctx.fillStyle = '#1a1a2a';
+            ctx.fillRect(lx - 8, fy - 32, 7, 32);
+            ctx.fillRect(lx + 1, fy - 32, 7, 32);
+            // Shoes
+            ctx.fillStyle = '#cc2244';
+            ctx.fillRect(lx - 10, fy - 3, 10, 3);
+            ctx.fillRect(lx + 1, fy - 3, 10, 3);
+            // Body
+            ctx.fillStyle = '#8b2252';
+            ctx.fillRect(lx - 12, fy - 64 + bob, 24, 32);
+            // Shirt
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(lx - 4, fy - 64 + bob, 8, 10);
+            // Notepad
+            ctx.fillStyle = '#f5e8c0';
+            ctx.fillRect(lx + fd * 12, fy - 54 + bob, fd * 10, 14);
+            // Head
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(lx, fy - 72 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            // Hair
+            ctx.fillStyle = '#1a0a04';
+            ctx.beginPath(); ctx.arc(lx, fy - 75 + bob, 11, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            ctx.fillRect(lx - 10, fy - 82 + bob, 20, 8);
+            // Eyes
+            ctx.fillStyle = '#3a2010';
+            ctx.fillRect(lx - 4 + fd, fy - 74 + bob, 3, 2);
+            ctx.fillRect(lx + 1 + fd, fy - 74 + bob, 3, 2);
+            // Name label
+            ctx.fillStyle = 'rgba(180,200,255,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Lois', lx, fy - 86 + bob);
             ctx.restore();
         }
 
@@ -9825,6 +11571,41 @@
                 return;
             }
 
+            // ---- LEXCORP RESEARCH LAB INTERIOR ----
+            if (scene === 'lab') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > LAB.floorY) { hero.y = LAB.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > LAB.floorY) { hound.y = LAB.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                updateLabLois();
+                updateHitFX();
+                updateCamera();
+                draw();
+                drawLabLois();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // ---- FIRST NATIONAL BANK INTERIOR ----
+            if (scene === 'bank') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > BANK_INT.floorY) { hero.y = BANK_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > BANK_INT.floorY) { hound.y = BANK_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             // ---- DINING INTERIOR: diner / shop room ----
             if (diningScene) {
                 const pin = computeP1Input();
@@ -9862,6 +11643,42 @@
             updateCivilians();
             updateAmbientNPCs();
             updateCityLois();
+            updatePrisonLois();
+            updateLoisCar();
+            // Unlock lab entry when both loisCar has arrived AND hero is within 400px
+            if (questPhase === 'lab_explore' && !lexlabEntryUnlocked && loisCar.arrived) {
+                if (Math.abs((hero.x + hero.w/2) - LEXLAB_DOOR_X) < 400) {
+                    lexlabEntryUnlocked = true;
+                    titleCard = { text: 'LEXCORP LAB — ENTER', sub: 'Both have arrived. Press F near the door to enter.', timer: 200 };
+                }
+            }
+            // Trigger return to LexCorp enemy wave
+            if (questPhase === 'travel_lexcorp2' && !lexcorp2Spawned) {
+                if (Math.abs((hero.x + hero.w/2) - LEXLAB_X) < 600) {
+                    initLexcorp2();
+                    advanceQuest('lexcorp2_fight');
+                }
+            }
+            if (questPhase === 'lexcorp2_fight') checkLexcorp2Cleared();
+            // Trigger construction yard when hero arrives
+            if (questPhase === 'travel_construction' && !constructionSpawned) {
+                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 700) {
+                    initConstructionYard();
+                    advanceQuest('construction_interrogate');
+                }
+            }
+            updateYardWorkers();
+            // Trigger bank robbery enemies when hero arrives near the bank
+            if (questPhase === 'travel_bank' && !bankEnemiesSpawned) {
+                if (Math.abs((hero.x + hero.w/2) - BANK_DOOR_X) < 600) {
+                    bankEnemiesSpawned = true;
+                    advanceQuest('bank_fight');
+                    initBankFight();
+                }
+            }
+            // Check bank fight cleared
+            if (questPhase === 'bank_fight') checkBankCleared();
+            tickDialogue();
             updateDarkWing();
             updatePowerGirl();
             updateWonderWoman();
