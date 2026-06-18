@@ -11412,6 +11412,8 @@
                 ctx.fillStyle = '#8ab8e8'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
                 ctx.fillText('F — Exit', 66, LAB.floorY - 92);
             }
+            // Draw Lois inside the lab — called here while the camera transform is active
+            drawLabLois();
         }
 
         function drawLabLois() {
@@ -13079,7 +13081,6 @@
                 updateHitFX();
                 updateCamera();
                 draw();
-                drawLabLois();
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
