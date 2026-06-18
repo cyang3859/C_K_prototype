@@ -5846,6 +5846,270 @@
             ctx.restore();
         }
 
+        // ── Bridges over L1 water gaps ────────────────────────────────────
+        function drawBridges() {
+            const t = Date.now() * 0.001;
+            const gy = GROUND_Y;   // bridge deck sits at ground level
+
+            for (const g of gaps) {
+                const sx = g.x - camera.x;
+                if (sx > W + 100 || sx + g.w < -100) continue;  // off-screen cull
+
+                if (g.x === 420 || g.x === 1400) {
+                    // ── Small downtown stone arch bridges ────────────────────
+                    _drawStoneArchBridge(g.x, g.w, gy);
+                } else if (g.x === 6000) {
+                    // ── Large suspension bridge (Docks west span) ────────────
+                    _drawSuspensionBridge(g.x, g.w, gy, t);
+                } else if (g.x === 8200) {
+                    // ── Industrial steel draw bridge (Docks east span) ───────
+                    _drawDrawBridge(g.x, g.w, gy, t);
+                } else if (g.x === 12000) {
+                    // ── Modern concrete overpass (Uptown) ────────────────────
+                    _drawOverpass(g.x, g.w, gy);
+                }
+            }
+        }
+
+        function _drawStoneArchBridge(gx, gw, gy) {
+            const cx = gx - camera.x;
+            const deckY = gy - 10;
+
+            // Stone arch beneath deck
+            ctx.fillStyle = '#5a5048';
+            ctx.beginPath();
+            ctx.moveTo(cx - 10, gy + 40);
+            ctx.quadraticCurveTo(cx + gw / 2, deckY - 18, cx + gw + 10, gy + 40);
+            ctx.lineTo(cx + gw + 10, gy + 80);
+            ctx.lineTo(cx - 10, gy + 80);
+            ctx.closePath(); ctx.fill();
+
+            // Arch highlight
+            ctx.strokeStyle = '#7a6e60'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, gy + 30);
+            ctx.quadraticCurveTo(cx + gw / 2, deckY - 14, cx + gw, gy + 30);
+            ctx.stroke();
+
+            // Deck
+            ctx.fillStyle = '#6a6058';
+            ctx.fillRect(cx - 10, deckY, gw + 20, 12);
+            // Deck top surface
+            ctx.fillStyle = '#7a7060';
+            ctx.fillRect(cx - 10, deckY, gw + 20, 4);
+
+            // Stone parapet (low walls on sides)
+            ctx.fillStyle = '#5a5048';
+            ctx.fillRect(cx - 10, deckY - 14, gw + 20, 14);
+            // Parapet crenels
+            ctx.fillStyle = '#6a6058';
+            for (let px = cx - 8; px < cx + gw + 10; px += 18) {
+                ctx.fillRect(px, deckY - 22, 10, 10);
+            }
+            // Road markings
+            ctx.strokeStyle = 'rgba(240,230,200,0.5)'; ctx.lineWidth = 2;
+            ctx.setLineDash([18, 14]);
+            ctx.beginPath();
+            ctx.moveTo(cx, deckY + 6); ctx.lineTo(cx + gw, deckY + 6);
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        function _drawSuspensionBridge(gx, gw, gy, t) {
+            const cx = gx - camera.x;
+            const deckY = gy - 10;
+            const towerH = 140;
+            const towerW = 22;
+            const t1x = cx + gw * 0.22;   // left tower x
+            const t2x = cx + gw * 0.78;   // right tower x
+
+            // Deck foundation
+            ctx.fillStyle = '#4a5060';
+            ctx.fillRect(cx - 12, deckY, gw + 24, 14);
+            ctx.fillStyle = '#5a6070';
+            ctx.fillRect(cx - 12, deckY, gw + 24, 4);
+
+            // Road markings on deck
+            ctx.strokeStyle = 'rgba(255,255,200,0.45)'; ctx.lineWidth = 2;
+            ctx.setLineDash([20, 16]);
+            ctx.beginPath();
+            ctx.moveTo(cx, deckY + 7); ctx.lineTo(cx + gw, deckY + 7);
+            ctx.stroke(); ctx.setLineDash([]);
+
+            // Bridge towers
+            const drawTower = (tx) => {
+                // Base pylons
+                ctx.fillStyle = '#3a3e50';
+                ctx.fillRect(tx - towerW / 2 - 4, deckY - towerH, towerW + 8, towerH + 14);
+                // Inner tower
+                ctx.fillStyle = '#2e3245';
+                ctx.fillRect(tx - towerW / 2, deckY - towerH, towerW, towerH);
+                // Cross beam
+                ctx.fillStyle = '#3a3e50';
+                ctx.fillRect(tx - towerW / 2 - 6, deckY - towerH * 0.6, towerW + 12, 8);
+                // Top cap
+                ctx.fillStyle = '#5060a0';
+                ctx.fillRect(tx - towerW / 2 - 2, deckY - towerH - 8, towerW + 4, 10);
+                // Light
+                const lp = 0.6 + Math.sin(t * 1.8 + tx) * 0.35;
+                ctx.fillStyle = `rgba(255,80,80,${lp})`;
+                ctx.beginPath(); ctx.arc(tx, deckY - towerH - 3, 4, 0, Math.PI * 2); ctx.fill();
+            };
+            drawTower(t1x); drawTower(t2x);
+
+            // Main cables (catenary curves)
+            const drawCable = (yOff) => {
+                ctx.strokeStyle = '#8090b0'; ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(cx - 12, deckY + yOff);
+                ctx.bezierCurveTo(t1x - 10, deckY - towerH + 10, t1x + 10, deckY - towerH + 10, t1x, deckY - towerH + 6);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(t1x, deckY - towerH + 6);
+                ctx.bezierCurveTo(t1x + (t2x - t1x) * 0.35, deckY - towerH * 0.4,
+                    t2x - (t2x - t1x) * 0.35, deckY - towerH * 0.4, t2x, deckY - towerH + 6);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(t2x, deckY - towerH + 6);
+                ctx.bezierCurveTo(t2x + 10, deckY - towerH + 10, cx + gw + 12 - 10, deckY + yOff, cx + gw + 12, deckY + yOff);
+                ctx.stroke();
+            };
+            drawCable(4); drawCable(12);
+
+            // Vertical suspender cables from main cable to deck
+            ctx.strokeStyle = '#5a6880'; ctx.lineWidth = 1;
+            for (let hx = t1x; hx <= t2x; hx += 28) {
+                // rough catenary y
+                const mid = (t1x + t2x) / 2;
+                const sag = ((hx - mid) / ((t2x - t1x) / 2)) ** 2;
+                const cableY = deckY - towerH * 0.4 + sag * towerH * 0.35;
+                ctx.beginPath();
+                ctx.moveTo(hx, cableY);
+                ctx.lineTo(hx, deckY);
+                ctx.stroke();
+            }
+
+            // Anchor blocks at bridge ends
+            ctx.fillStyle = '#3a3e50';
+            ctx.fillRect(cx - 16, deckY - 20, 20, 30);
+            ctx.fillRect(cx + gw - 4, deckY - 20, 20, 30);
+        }
+
+        function _drawDrawBridge(gx, gw, gy, t) {
+            const cx = gx - camera.x;
+            const deckY = gy - 10;
+
+            // Steel deck plate
+            ctx.fillStyle = '#3c4858';
+            ctx.fillRect(cx - 8, deckY, gw + 16, 14);
+            ctx.fillStyle = '#4a5870';
+            ctx.fillRect(cx - 8, deckY, gw + 16, 4);
+
+            // Riveted steel plate texture
+            ctx.fillStyle = '#323e50';
+            for (let px = cx + 10; px < cx + gw - 10; px += 30) {
+                ctx.beginPath(); ctx.arc(px, deckY + 8, 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(px, deckY + 4, 2.5, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // Road surface
+            ctx.strokeStyle = 'rgba(255,255,160,0.4)'; ctx.lineWidth = 2;
+            ctx.setLineDash([20, 16]);
+            ctx.beginPath(); ctx.moveTo(cx, deckY + 7); ctx.lineTo(cx + gw, deckY + 7);
+            ctx.stroke(); ctx.setLineDash([]);
+
+            // Industrial truss side frames
+            const drawTruss = (sideY) => {
+                ctx.strokeStyle = '#2a3445'; ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(cx - 8, sideY); ctx.lineTo(cx + gw + 8, sideY);
+                ctx.stroke();
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = '#3a4a60';
+                for (let fx = cx; fx < cx + gw; fx += 40) {
+                    ctx.beginPath(); ctx.moveTo(fx, sideY); ctx.lineTo(fx + 20, sideY - 22); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(fx + 20, sideY); ctx.lineTo(fx + 40, sideY - 22); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(fx, sideY - 22); ctx.lineTo(fx + 40, sideY - 22); ctx.stroke();
+                }
+            };
+            drawTruss(deckY); drawTruss(deckY - 22);
+
+            // Control towers at each end
+            const drawControlTower = (tx) => {
+                ctx.fillStyle = '#2a3040';
+                ctx.fillRect(tx - 14, deckY - 60, 28, 60);
+                ctx.fillStyle = '#3a4a60';
+                ctx.fillRect(tx - 10, deckY - 54, 20, 36);
+                // Window glow
+                const gp = 0.5 + Math.sin(t * 2.2 + tx) * 0.3;
+                ctx.fillStyle = `rgba(80,180,220,${gp})`;
+                ctx.fillRect(tx - 6, deckY - 48, 12, 8);
+                ctx.fillRect(tx - 6, deckY - 36, 12, 8);
+                // Warning light
+                const wp = Math.sin(t * 2.5 + tx * 0.01) > 0;
+                ctx.fillStyle = wp ? '#ff4400' : '#441100';
+                ctx.beginPath(); ctx.arc(tx, deckY - 64, 4, 0, Math.PI * 2); ctx.fill();
+            };
+            drawControlTower(cx + 10);
+            drawControlTower(cx + gw - 10);
+
+            // Center joint / lift line
+            ctx.strokeStyle = 'rgba(80,120,160,0.6)'; ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(cx + gw / 2, deckY - 30);
+            ctx.lineTo(cx + gw / 2, deckY + 14);
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        function _drawOverpass(gx, gw, gy) {
+            const cx = gx - camera.x;
+            const deckY = gy - 10;
+
+            // Concrete deck — broad, clean slabs
+            ctx.fillStyle = '#8a8e98';
+            ctx.fillRect(cx - 14, deckY, gw + 28, 14);
+            ctx.fillStyle = '#9ea2aa';
+            ctx.fillRect(cx - 14, deckY, gw + 28, 4);
+
+            // Expansion joints
+            ctx.strokeStyle = '#7a7e88'; ctx.lineWidth = 1.5;
+            for (let jx = cx; jx < cx + gw; jx += 80) {
+                ctx.beginPath(); ctx.moveTo(jx, deckY); ctx.lineTo(jx, deckY + 14); ctx.stroke();
+            }
+
+            // Road markings
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2;
+            ctx.setLineDash([22, 14]);
+            ctx.beginPath(); ctx.moveTo(cx, deckY + 7); ctx.lineTo(cx + gw, deckY + 7);
+            ctx.stroke(); ctx.setLineDash([]);
+
+            // Solid concrete support columns
+            const colCount = Math.max(2, Math.floor(gw / 120));
+            for (let i = 0; i <= colCount; i++) {
+                const colX = cx + (gw / colCount) * i;
+                // Column
+                ctx.fillStyle = '#7a7e88';
+                ctx.fillRect(colX - 8, deckY + 14, 16, 80);
+                // Cap
+                ctx.fillStyle = '#8a8e98';
+                ctx.fillRect(colX - 12, deckY + 10, 24, 8);
+                // Base
+                ctx.fillStyle = '#6a6e78';
+                ctx.fillRect(colX - 14, deckY + 90, 28, 10);
+            }
+
+            // Low concrete barriers (modern jersey barriers)
+            ctx.fillStyle = '#6e7280';
+            ctx.fillRect(cx - 14, deckY - 16, gw + 28, 16);
+            ctx.fillStyle = '#7e8290';
+            ctx.fillRect(cx - 14, deckY - 16, gw + 28, 4);
+            // Barrier detail — angled face
+            ctx.fillStyle = '#5e6270';
+            for (let bx = cx - 12; bx < cx + gw + 14; bx += 60) {
+                ctx.fillRect(bx, deckY - 12, 40, 6);
+            }
+        }
+
         function drawBuildings() {
             for (const b of buildings) {
                 // Cull: only draw if near the viewport
@@ -6556,6 +6820,9 @@
                 }
                 ctx.restore();
             }
+
+            // ---- bridges over gaps ----
+            if (currentLevel === 1) drawBridges();
 
             // ---- street-level parks, playgrounds, plazas, dockyards ----
             drawBuildings();
