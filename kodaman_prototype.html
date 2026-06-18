@@ -1176,12 +1176,14 @@
                 return;
             }
             _dlgLine++;
-            _dlgChar = 0;
             if (_dlgLine >= lines.length) {
                 const cb = activeDialogue.onDone;
                 activeDialogue = null;
                 if (cb) cb();
+                return;
             }
+            // Pre-reveal the next line immediately — no blank-box flash between lines
+            _dlgChar = lines[_dlgLine].length;
         }
 
         function tickDialogue() {
@@ -8895,7 +8897,7 @@
                     // reset all L1 quest flags
                     prisonEnemiesSpawned = false; prisonEnemyCount = 0;
                     lexlabEntryUnlocked = false;
-                    labCluesFound = 0; labScene = null; labExitReady = false;
+                    labCluesFound = 0; labScene = null; labExitReady = false; labExitCountdown = 0;
                     labClues.forEach(c => { c.found = false; c.foundBy = null; });
                     bankEnemiesSpawned = false; bankEnemyCount = 0;
                     bankInterrogated = 0; bankEntryUnlocked = false;
@@ -9474,6 +9476,7 @@
         ];
         let labCluesFound = 0;
         let labExitReady = false;  // true after bank dialogue — player must walk to exit
+        let labExitCountdown = 0; // frames until auto-exit (set when labExitReady becomes true)
         let labScene = null;  // saved city state when entering lab
         let templeIntroStep = 0;
         let templeIntroTimer = 0;
@@ -9716,9 +9719,9 @@
                         ],
                         onDone: () => {
                             advanceQuest('lab_dialogue');
-                            // Don't auto-exit — let the player walk to the door
                             labExitReady = true;
-                            titleCard = { text: 'EXIT THE BUILDING', sub: 'Head to the door on the left and press F to leave.', timer: 280 };
+                            labExitCountdown = 300; // auto-exit in ~5 seconds if F not pressed
+                            titleCard = { text: 'EXIT THE BUILDING', sub: 'Press F to leave now, or you\'ll exit automatically.', timer: 300 };
                         }
                     });
                 }
@@ -13094,9 +13097,15 @@
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > LAB.floorY) { hero.y = LAB.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > LAB.floorY) { hound.y = LAB.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
                 updateLabLois();
                 updateHitFX();
                 updateCamera();
+                // Auto-exit after bank robbery dialogue completes (countdown in frames)
+                if (labExitReady && labExitCountdown > 0) {
+                    labExitCountdown--;
+                    if (labExitCountdown <= 0) exitLexlab();
+                }
                 draw();
                 updateHUD();
                 requestAnimationFrame(loop);
