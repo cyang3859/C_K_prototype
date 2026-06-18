@@ -497,6 +497,8 @@
         // Prison quest location — just in front of the prison building at x=4750
         const PRISON_X   = 4865;
         const LEXLAB_X   = 14200;  // LexCorp Research Lab (added to buildings later)
+        const LEXLAB_DOOR_X = 14330;  // center of the lab door
+        let lexlabEntryUnlocked = false;  // true when both hero and Lois have arrived
 
         // Lois at-prison state (separate from cityLois which follows clue spots)
         const prisonLois = {
@@ -1770,6 +1772,7 @@
             { x: 10880, w: 178, h: 230, type: 'bank', district: 'uptown', name: 'UPTOWN TRUST' },
             { x: 12380, w: 128, h: 162, type: 'shop', district: 'uptown', name: 'HEIGHTS BOUTIQUE' },
             { x: 13840, w: 138, h: 170, type: 'pharmacy', district: 'uptown', name: 'APEX PHARMACY' },
+            { x: 14200, w: 260, h: 300, type: 'lexlab', district: 'uptown', name: 'LEXCORP RESEARCH LAB' },
         ];
 
         // ── AMBIENT (NON-RESCUE) CIVILIANS ────────────────────────────────
@@ -2111,6 +2114,33 @@
                     const heroMid = hero.x + hero.w / 2;
                     const doorMid = interior.exitDoor.x + interior.exitDoor.w / 2;
                     if (Math.abs(heroMid - doorMid) < 70) { exitInterior(); e.preventDefault(); }
+                }
+            }
+            // F: examine lab clues
+            if (e.code === 'KeyF' && scene === 'lab') {
+                const heroMid = hero.x + hero.w / 2;
+                for (const clue of labClues) {
+                    if (clue.found) continue;
+                    if (Math.abs(heroMid - (clue.x + clue.w / 2)) < 70) {
+                        clue.found = true;
+                        clue.foundBy = 'hero';
+                        labCluesFound++;
+                        startDialogue({
+                            speaker: 'CK (examining ' + clue.label + ')',
+                            portrait: 'hero',
+                            lines: clue.lines,
+                            onDone: () => checkLabComplete()
+                        });
+                        e.preventDefault(); break;
+                    }
+                }
+                // Exit door (left side x < 120)
+                if (hero.x < 120) { exitLexlab(); e.preventDefault(); }
+            }
+            // LexCorp Research Lab entry
+            if (e.code === 'KeyF' && scene === 'city' && lexlabEntryUnlocked && currentLevel === 1) {
+                if (Math.abs((hero.x + hero.w / 2) - LEXLAB_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                    enterLexlab(); e.preventDefault();
                 }
             }
             // F: talk to Lois when nearby in the interior
@@ -3388,6 +3418,9 @@
             } else if (scene === 'temple') {
                 dx = Math.max(0, Math.min(TEMPLE_SCENE.w - W, dx));
                 dy = Math.max(0, Math.min(TEMPLE_SCENE.floorY + 80 - H, dy));
+            } else if (scene === 'lab') {
+                dx = Math.max(0, Math.min(LAB.w - W, dx));
+                dy = Math.max(0, Math.min(LAB.floorY + 80 - H, dy));
             } else {
                 dx = Math.max(0, Math.min((currentLevel === 3 ? L3_WORLD_WIDTH : WORLD_WIDTH) - W, dx));
                 dy = Math.max(0, Math.min((GROUND_Y + GROUND_H) - H, dy));
@@ -5252,6 +5285,65 @@
                 ctx.beginPath(); ctx.moveTo(x + w / 2, GROUND_Y - 52); ctx.lineTo(x + w / 2, GROUND_Y); ctx.stroke();
             }
 
+            else if (type === 'lexlab') {
+                // ── LEXCORP RESEARCH LAB: sleek corporate steel-grey facade ──
+                const lg = ctx.createLinearGradient(0, top, 0, GROUND_Y);
+                lg.addColorStop(0, '#1a1e28'); lg.addColorStop(1, '#0e1018');
+                ctx.fillStyle = lg; ctx.fillRect(x, top, w, h);
+                // Floor-to-ceiling window panels with blue-green tint
+                const panelW = 44, panelGap = 14;
+                const numPanels = Math.floor((w - 20) / (panelW + panelGap));
+                for (let pi = 0; pi < numPanels; pi++) {
+                    const px2 = x + 10 + pi * (panelW + panelGap);
+                    for (let row = 0; row < 4; row++) {
+                        const py2 = top + 20 + row * (Math.floor((h - 60) / 4));
+                        const rowH = Math.floor((h - 60) / 4) - 6;
+                        ctx.fillStyle = 'rgba(40,180,160,0.35)';
+                        ctx.fillRect(px2, py2, panelW, rowH);
+                        ctx.strokeStyle = 'rgba(60,200,180,0.5)'; ctx.lineWidth = 1;
+                        ctx.strokeRect(px2, py2, panelW, rowH);
+                    }
+                }
+                // Steel horizontal bands
+                ctx.fillStyle = '#22283a';
+                for (let bi2 = 0; bi2 < 5; bi2++) {
+                    ctx.fillRect(x, top + 18 + bi2 * Math.floor((h - 20) / 5), w, 5);
+                }
+                // Glowing LexCorp "L" logo
+                const logoX = x + w / 2, logoY = top + 38;
+                ctx.save();
+                ctx.shadowColor = '#00ff80'; ctx.shadowBlur = 22;
+                ctx.fillStyle = '#00ff80';
+                ctx.font = 'bold 28px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('L', logoX, logoY);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+                // "LEXCORP RESEARCH" label
+                ctx.fillStyle = 'rgba(0,255,128,0.7)'; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('LEXCORP RESEARCH', x + w / 2, top + 52);
+                // Entry door with glowing frame
+                const doorX2 = x + w / 2 - 22;
+                ctx.fillStyle = '#080c14'; ctx.fillRect(doorX2, GROUND_Y - 70, 44, 70);
+                ctx.save();
+                ctx.shadowColor = '#00cc66'; ctx.shadowBlur = 10;
+                ctx.strokeStyle = '#00cc66'; ctx.lineWidth = 2;
+                ctx.strokeRect(doorX2, GROUND_Y - 70, 44, 70);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+                // Door glass panel
+                ctx.fillStyle = 'rgba(40,180,160,0.4)';
+                ctx.fillRect(doorX2 + 3, GROUND_Y - 67, 38, 55);
+                // Rooftop antenna array
+                ctx.strokeStyle = '#304050'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(x + w / 2, top); ctx.lineTo(x + w / 2, top - 30); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + w / 2 - 20, top - 18); ctx.lineTo(x + w / 2 + 20, top - 18); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + w / 2 - 8, top - 24); ctx.lineTo(x + w / 2 + 8, top - 24); ctx.stroke();
+                ctx.fillStyle = '#ff4040'; ctx.beginPath(); ctx.arc(x + w / 2, top - 30, 3, 0, Math.PI * 2); ctx.fill();
+                // Side antennae
+                ctx.beginPath(); ctx.moveTo(x + 20, top); ctx.lineTo(x + 20, top - 16); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x + w - 20, top); ctx.lineTo(x + w - 20, top - 16); ctx.stroke();
+            }
+
             // Shared: "grab a bite" prompt for diners/shops when the hero is near
             if (type === 'diner' || type === 'shop') {
                 const heroMid = hero.x + hero.w / 2;
@@ -6241,6 +6333,7 @@
 
             if (scene === 'factory') drawFactory();
             if (scene === 'temple') drawTemple();
+            if (scene === 'lab') drawLab();
 
             // ambient pedestrians (behind enemies/hero)
             drawAmbientNPCs();
@@ -7526,6 +7619,64 @@
 
         let templeScene = null;
         let templePhase = 'idle';    // 'idle' | 'intro' | 'battle' | 'victory'
+
+        // ── LEXCORP RESEARCH LAB INTERIOR ────────────────────────────────────────
+        const LAB = { w: 3200, floorY: 840, ceilingY: 60 };
+        const LAB_PLATFORMS = [
+            // upper catwalk level (y ≈ 580)
+            { x: 200,  y: 580, w: 280, h: 12 },
+            { x: 600,  y: 580, w: 280, h: 12 },
+            { x: 1050, y: 580, w: 320, h: 12 },
+            { x: 1480, y: 580, w: 280, h: 12 },
+            { x: 1900, y: 580, w: 280, h: 12 },
+            { x: 2350, y: 580, w: 300, h: 12 },
+            // mid level (y ≈ 700)
+            { x: 400,  y: 700, w: 240, h: 12 },
+            { x: 900,  y: 700, w: 240, h: 12 },
+            { x: 1600, y: 700, w: 240, h: 12 },
+            { x: 2100, y: 700, w: 240, h: 12 },
+            { x: 2600, y: 700, w: 240, h: 12 },
+        ];
+
+        // 3 hidden lab clues — world positions within the lab
+        const labClues = [
+            {
+                x: 480, y: LAB.floorY - 60, w: 44, h: 44,
+                found: false, foundBy: null,
+                label: 'EXPERIMENT LOG',
+                icon: '📋',
+                lines: [
+                    'EXPERIMENT LOG — Project GENESIS, Entry 47',
+                    'Subject 7 showing remarkable cellular regeneration. Lex was right — the compound works.',
+                    'But without his direct oversight, the team is losing direction. We need more funding. We need him back.'
+                ]
+            },
+            {
+                x: 1340, y: LAB.floorY - 60, w: 44, h: 44,
+                found: false, foundBy: null,
+                label: 'SECURITY TERMINAL',
+                icon: '💻',
+                lines: [
+                    'SECURITY LOG — Access terminal 4',
+                    'Someone bypassed the vault lock remotely three days ago. Whoever did it had Level 5 clearance.',
+                    'Only three people ever had Level 5: Lex, his chief of staff, and... the prisoner from Block D.'
+                ]
+            },
+            {
+                x: 2420, y: LAB.floorY - 60, w: 48, h: 52,
+                found: false, foundBy: null,
+                label: 'SCIENTIST\'S NOTE',
+                icon: '📝',
+                lines: [
+                    'INTERNAL MEMO — Dr. Chen to Research Division',
+                    'With Lex in custody, LexCorp\'s black-budget accounts are frozen. Project GENESIS cannot continue without immediate capital.',
+                    'I have authorized our field operatives to acquire funding by any means necessary. The First National Bank in Downtown has been selected. This cannot fail.',
+                    '— Dr. Chen, Head of Advanced Research'
+                ]
+            },
+        ];
+        let labCluesFound = 0;
+        let labScene = null;  // saved city state when entering lab
         let templeIntroStep = 0;
         let templeIntroTimer = 0;
         let templeEntryUnlocked = false;
@@ -7569,6 +7720,134 @@
             wonderWoman.fightMode = false; wonderWoman.zoneCombat = false;
             darkWing.fightMode = false; darkWing.zoneCombat = false;
             titleCard = { text: 'AMAZON FREED', sub: 'Ares is defeated. The forest breathes again. The war is over.', timer: 300 };
+        }
+
+        // ── enterLexlab / exitLexlab ──────────────────────────────────────
+        function enterLexlab() {
+            labScene = {
+                saved: {
+                    hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy,
+                    hf: hero.facing, hfly: hero.flightActive
+                }
+            };
+            hero.x = 140; hero.y = LAB.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 220; hound.y = LAB.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
+            scene = 'lab';
+            platforms.splice(0, platforms.length, ...LAB_PLATFORMS);
+            camera.x = 0; camera.y = Math.max(0, LAB.floorY + 80 - H);
+            // Lois starts at the entrance too
+            labLois.x = 80; labLois.y = LAB.floorY; labLois.active = true;
+            labLois._targetX = labClues[0].x;
+            titleCard = { text: 'LEXCORP RESEARCH LAB', sub: 'Search for clues — Lois is investigating too. Press F near glowing objects.', timer: 260 };
+        }
+
+        function exitLexlab() {
+            if (!labScene) return;
+            const s = labScene.saved;
+            hero.x = s.hx; hero.y = s.hy; hero.vx = s.hvx; hero.vy = s.hvy;
+            hero.facing = s.hf; hero.flightActive = s.hfly;
+            hero.onGround = true;
+            scene = 'city';
+            labScene = null;
+            platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2);
+            camera.y = 0;
+        }
+
+        // ── labLois AI ────────────────────────────────────────────────────
+        const labLois = {
+            x: 80, y: LAB.floorY, faceDir: 1, phase: 0,
+            active: false, _targetX: 500,
+            _clueIndex: 0,
+            _waitTimer: 0,
+            _onGround: true, vy: 0,
+        };
+
+        function updateLabLois() {
+            if (!labLois.active || scene !== 'lab') return;
+            labLois.phase += 0.05;
+            // Simple gravity
+            if (!labLois._onGround) {
+                labLois.vy = Math.min(labLois.vy + 0.5, 14);
+                labLois.y += labLois.vy;
+                if (labLois.y >= LAB.floorY) {
+                    labLois.y = LAB.floorY; labLois.vy = 0; labLois._onGround = true;
+                }
+            }
+            if (labLois._waitTimer > 0) { labLois._waitTimer--; return; }
+            // Walk toward the next unfound clue
+            const unFound = labClues.filter(c => !c.found);
+            if (unFound.length === 0) return;
+            const target = unFound[0];
+            labLois._targetX = target.x + target.w / 2;
+            const dx = labLois._targetX - labLois.x;
+            if (Math.abs(dx) > 10) {
+                labLois.x += Math.sign(dx) * 1.8;
+                labLois.faceDir = Math.sign(dx);
+            } else {
+                // Arrived at clue — Lois "finds" it after a pause if hero hasn't
+                labLois._waitTimer = 180;  // 3 seconds
+                if (!target.found) {
+                    target.found = true;
+                    target.foundBy = 'lois';
+                    labCluesFound++;
+                    onLabClueFindLois(target);
+                }
+            }
+        }
+
+        function onLabClueFindLois(clue) {
+            startDialogue({
+                speaker: 'Lois Lane',
+                portrait: 'lois',
+                lines: clue.lines,
+                onDone: () => checkLabComplete()
+            });
+        }
+
+        function checkLabComplete() {
+            if (labCluesFound >= 3) {
+                advanceQuest('lab_clue_3_found');
+                triggerBankRobberyDialogue();
+            } else if (labCluesFound === 1) {
+                advanceQuest('lab_clue_1_found');
+            } else if (labCluesFound === 2) {
+                advanceQuest('lab_clue_2_found');
+            }
+        }
+
+        function triggerBankRobberyDialogue() {
+            startDialogue({
+                speaker: 'CK',
+                portrait: 'hero',
+                lines: [
+                    'Dr. Chen authorized a bank robbery — they\'re already moving on First National Bank.',
+                    'We have to stop this now. Every minute we wait, more people are at risk.'
+                ],
+                onDone: () => {
+                    startDialogue({
+                        speaker: 'Lois Lane',
+                        portrait: 'lois',
+                        lines: [
+                            'First National Bank — that\'s Downtown. I know that area.',
+                            'Go. I\'ll follow in my car. Stop them before anyone gets hurt.'
+                        ],
+                        onDone: () => {
+                            advanceQuest('lab_dialogue');
+                            titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Head to Downtown — stop the robbery in progress!', timer: 220 };
+                            exitLexlab();
+                            // Lois drives from lab toward the bank
+                            loisCar.x = LEXLAB_X + 30;
+                            loisCar.y = GROUND_Y;
+                            driveLoisCar(1280, () => {
+                                advanceQuest('travel_bank');
+                            }, 2.8);
+                        }
+                    });
+                }
+            });
         }
 
         function updateTemple() {
@@ -8872,6 +9151,172 @@
                 }
             }
 
+            ctx.restore();
+        }
+
+        // ── LexCorp Lab interior draw ─────────────────────────────────────
+        function drawLab() {
+            const t = Date.now() * 0.001;
+            // Background — dark charcoal with blue-grey walls
+            ctx.fillStyle = '#0c0e14'; ctx.fillRect(0, 0, W, H);
+            // Ceiling infrastructure
+            ctx.fillStyle = '#1a1e28';
+            ctx.fillRect(0, LAB.ceilingY - camera.y, LAB.w, 40);
+            // Hanging fluorescent tubes (flicker slightly)
+            for (let lx = 200; lx < LAB.w; lx += 320) {
+                const flicker = 0.85 + Math.sin(t * 17.3 + lx) * 0.08;
+                ctx.save();
+                ctx.globalAlpha = flicker;
+                ctx.fillStyle = '#d0e8ff';
+                ctx.fillRect(lx - camera.x - 40, LAB.ceilingY - camera.y + 8, 80, 6);
+                ctx.shadowColor = '#a0c8ff'; ctx.shadowBlur = 18;
+                ctx.fillRect(lx - camera.x - 38, LAB.ceilingY - camera.y + 8, 76, 4);
+                ctx.restore();
+            }
+            // Floor — polished lab tile with seams
+            ctx.fillStyle = '#141820'; ctx.fillRect(0, LAB.floorY - camera.y, LAB.w, 120);
+            ctx.strokeStyle = '#1e2430'; ctx.lineWidth = 1;
+            for (let tx = 0; tx < LAB.w; tx += 80) {
+                ctx.beginPath(); ctx.moveTo(tx - camera.x, LAB.floorY - camera.y);
+                ctx.lineTo(tx - camera.x, LAB.floorY - camera.y + 120); ctx.stroke();
+            }
+            // Caution stripe at base of walls
+            for (let sx = 0; sx < LAB.w; sx += 48) {
+                ctx.fillStyle = sx % 96 === 0 ? 'rgba(255,200,0,0.15)' : 'rgba(0,0,0,0)';
+                ctx.fillRect(sx - camera.x, LAB.floorY - camera.y, 48, 8);
+            }
+            // Lab equipment — workbenches, reactors, tanks along floor
+            const equipment = [
+                { x: 300, type: 'bench' }, { x: 620, type: 'reactor' }, { x: 980, type: 'bench' },
+                { x: 1300, type: 'tank' }, { x: 1650, type: 'bench' }, { x: 2000, type: 'reactor' },
+                { x: 2280, type: 'bench' }, { x: 2600, type: 'tank' },
+            ];
+            for (const eq of equipment) {
+                const ex = eq.x - camera.x;
+                if (ex < -200 || ex > W + 200) continue;
+                const ey = LAB.floorY - camera.y;
+                if (eq.type === 'bench') {
+                    ctx.fillStyle = '#1e2530'; ctx.fillRect(ex, ey - 55, 110, 55);
+                    ctx.fillStyle = '#2a3040'; ctx.fillRect(ex + 2, ey - 56, 106, 6);
+                    ctx.fillStyle = '#0a0e18'; ctx.fillRect(ex + 20, ey - 90, 60, 35);
+                    const glow = 0.6 + Math.sin(t * 1.8 + eq.x * 0.02) * 0.3;
+                    ctx.fillStyle = `rgba(20,200,140,${glow})`;
+                    ctx.fillRect(ex + 24, ey - 86, 52, 27);
+                    ctx.strokeStyle = 'rgba(40,255,160,0.6)'; ctx.lineWidth = 1;
+                    for (let dl = 0; dl < 4; dl++) {
+                        ctx.beginPath();
+                        ctx.moveTo(ex + 26, ey - 82 + dl * 6);
+                        ctx.lineTo(ex + 26 + Math.random() * 40, ey - 82 + dl * 6);
+                        ctx.stroke();
+                    }
+                } else if (eq.type === 'reactor') {
+                    ctx.fillStyle = '#141c24'; ctx.fillRect(ex, ey - 90, 70, 90);
+                    const rp = 0.7 + Math.sin(t * 2.1 + eq.x) * 0.25;
+                    const rg = ctx.createRadialGradient(ex + 35, ey - 50, 4, ex + 35, ey - 50, 24);
+                    rg.addColorStop(0, `rgba(60,255,180,${rp})`);
+                    rg.addColorStop(1, 'rgba(20,180,100,0)');
+                    ctx.fillStyle = rg;
+                    ctx.beginPath(); ctx.arc(ex + 35, ey - 50, 24, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#1cf0a0';
+                    ctx.beginPath(); ctx.arc(ex + 35, ey - 50, 10, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#0a8050'; ctx.lineWidth = 4;
+                    ctx.beginPath(); ctx.moveTo(ex + 10, ey - 30); ctx.lineTo(ex + 10, ey); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(ex + 60, ey - 30); ctx.lineTo(ex + 60, ey); ctx.stroke();
+                } else if (eq.type === 'tank') {
+                    ctx.fillStyle = '#101420'; ctx.fillRect(ex, ey - 120, 80, 120);
+                    const tg = ctx.createLinearGradient(ex, ey - 120, ex, ey);
+                    tg.addColorStop(0, 'rgba(20,160,200,0.45)');
+                    tg.addColorStop(1, 'rgba(10,80,120,0.35)');
+                    ctx.fillStyle = tg; ctx.fillRect(ex + 4, ey - 116, 72, 116);
+                    for (let b = 0; b < 3; b++) {
+                        const by2 = ((t * 30 + b * 40 + eq.x) % 110);
+                        ctx.fillStyle = 'rgba(180,240,255,0.35)';
+                        ctx.beginPath(); ctx.arc(ex + 18 + b * 22, ey - by2, 3 + b, 0, Math.PI * 2); ctx.fill();
+                    }
+                    ctx.strokeStyle = '#1e3a50'; ctx.lineWidth = 3;
+                    ctx.strokeRect(ex, ey - 120, 80, 120);
+                }
+            }
+            // Platforms
+            for (const p of platforms) {
+                const px = p.x - camera.x, py = p.y - camera.y;
+                if (px > W + 50 || px + p.w < -50) continue;
+                ctx.fillStyle = '#1e2838'; ctx.fillRect(px, py, p.w, p.h);
+                ctx.fillStyle = '#2a3850'; ctx.fillRect(px, py, p.w, 3);
+                ctx.strokeStyle = '#304060'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(px, py - 18); ctx.lineTo(px + p.w, py - 18); ctx.stroke();
+                for (let rx = px + 20; rx < px + p.w - 10; rx += 30) {
+                    ctx.beginPath(); ctx.moveTo(rx, py); ctx.lineTo(rx, py - 18); ctx.stroke();
+                }
+            }
+            // Clue objects — glowing interactable items
+            for (const clue of labClues) {
+                if (clue.found) continue;
+                const cx2 = clue.x - camera.x, cy2 = clue.y - camera.y;
+                if (cx2 < -60 || cx2 > W + 60) continue;
+                const pulse = 0.6 + Math.sin(t * 2.2 + clue.x * 0.01) * 0.35;
+                ctx.save();
+                ctx.shadowColor = '#40ffcc'; ctx.shadowBlur = 14 * pulse;
+                ctx.fillStyle = `rgba(30,200,150,${0.4 + pulse * 0.4})`;
+                ctx.fillRect(cx2, cy2, clue.w, clue.h);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(clue.label, cx2 + clue.w / 2, cy2 - 10);
+                ctx.fillStyle = '#40ffcc'; ctx.font = '10px Arial';
+                const heroDist = Math.abs((hero.x + hero.w / 2) - (clue.x + clue.w / 2));
+                if (heroDist < 80) ctx.fillText('F — Examine', cx2 + clue.w / 2, cy2 - 24);
+                ctx.restore();
+            }
+            // Exit door (left side)
+            const doorX = 40 - camera.x;
+            ctx.fillStyle = '#1e3050';
+            ctx.fillRect(doorX, LAB.floorY - camera.y - 80, 50, 80);
+            ctx.strokeStyle = '#4080c0'; ctx.lineWidth = 2;
+            ctx.strokeRect(doorX, LAB.floorY - camera.y - 80, 50, 80);
+            if (hero.x < 160) {
+                ctx.fillStyle = '#a0c8ff'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', doorX + 25, LAB.floorY - camera.y - 88);
+            }
+        }
+
+        function drawLabLois() {
+            if (!labLois.active || scene !== 'lab') return;
+            const lx = labLois.x - camera.x;
+            const fy = labLois.y - camera.y;
+            const fd = labLois.faceDir;
+            const bob = Math.sin(labLois.phase * 1.5) * 1.0;
+            ctx.save();
+            // Legs
+            ctx.fillStyle = '#1a1a2a';
+            ctx.fillRect(lx - 8, fy - 32, 7, 32);
+            ctx.fillRect(lx + 1, fy - 32, 7, 32);
+            // Shoes
+            ctx.fillStyle = '#cc2244';
+            ctx.fillRect(lx - 10, fy - 3, 10, 3);
+            ctx.fillRect(lx + 1, fy - 3, 10, 3);
+            // Body
+            ctx.fillStyle = '#8b2252';
+            ctx.fillRect(lx - 12, fy - 64 + bob, 24, 32);
+            // Shirt
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(lx - 4, fy - 64 + bob, 8, 10);
+            // Notepad
+            ctx.fillStyle = '#f5e8c0';
+            ctx.fillRect(lx + fd * 12, fy - 54 + bob, fd * 10, 14);
+            // Head
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(lx, fy - 72 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            // Hair
+            ctx.fillStyle = '#1a0a04';
+            ctx.beginPath(); ctx.arc(lx, fy - 75 + bob, 11, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            ctx.fillRect(lx - 10, fy - 82 + bob, 20, 8);
+            // Eyes
+            ctx.fillStyle = '#3a2010';
+            ctx.fillRect(lx - 4 + fd, fy - 74 + bob, 3, 2);
+            ctx.fillRect(lx + 1 + fd, fy - 74 + bob, 3, 2);
+            // Name label
+            ctx.fillStyle = 'rgba(180,200,255,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Lois', lx, fy - 86 + bob);
             ctx.restore();
         }
 
@@ -10471,6 +10916,25 @@
                 return;
             }
 
+            // ---- LEXCORP RESEARCH LAB INTERIOR ----
+            if (scene === 'lab') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                // Clamp to lab floor
+                if (hero.y + hero.h > LAB.floorY) { hero.y = LAB.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > LAB.floorY) { hound.y = LAB.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                updateLabLois();
+                updateHitFX();
+                updateCamera();
+                draw();
+                drawLabLois();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             // ---- DINING INTERIOR: diner / shop room ----
             if (diningScene) {
                 const pin = computeP1Input();
@@ -10510,6 +10974,13 @@
             updateCityLois();
             updatePrisonLois();
             updateLoisCar();
+            // Unlock lab entry when both loisCar has arrived AND hero is within 400px
+            if (questPhase === 'lab_explore' && !lexlabEntryUnlocked && loisCar.arrived) {
+                if (Math.abs((hero.x + hero.w/2) - LEXLAB_DOOR_X) < 400) {
+                    lexlabEntryUnlocked = true;
+                    titleCard = { text: 'LEXCORP LAB — ENTER', sub: 'Both have arrived. Press F near the door to enter.', timer: 200 };
+                }
+            }
             tickDialogue();
             updateDarkWing();
             updatePowerGirl();
