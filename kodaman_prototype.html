@@ -4237,8 +4237,8 @@
                 //   climbing (vy<0) -> nose up (less than flat)
                 //   level         -> ~flat (1.25)
                 //   diving (vy>0)  -> nose down (past flat), so he points where he's going
-                const baseFlat = 1.25;                 // ~72deg = nearly horizontal
-                const pitch = Math.max(-0.5, Math.min(0.6, e.vy * 0.07)); // vy>0 (down) => tip forward/down
+                const baseFlat = 0.45;                 // ~26deg = mostly horizontal
+                const pitch = Math.max(-0.3, Math.min(0.35, e.vy * 0.04)); // gentle pitch with vertical motion
                 lean = baseFlat + pitch;
             } else if (hovering) {
                 lean = 0;                              // perfectly upright when hovering in place
@@ -8729,47 +8729,52 @@
             if (dist < 280) return;   // close enough — hide arrow
 
             const dir = dx > 0 ? 1 : -1;
-            const pillW = 172, pillH = 34;
-            const pillX = dir > 0 ? W - pillW - 12 : 12;
+            const pillW = 200, pillH = 38;
+            // Always centered horizontally at top of screen
+            const pillX = W / 2 - pillW / 2;
+            const pillCY = screenY;  // vertical center
             const t = Date.now() * 0.001;
-            const pulse = 0.75 + Math.sin(t * 3.2) * 0.2;
+            const pulse = 0.80 + Math.sin(t * 3.2) * 0.18;
 
             ctx.save();
             ctx.globalAlpha = pulse;
 
             // Pill background
-            ctx.fillStyle = 'rgba(8,10,22,0.88)';
+            ctx.fillStyle = 'rgba(8,10,22,0.92)';
             ctx.strokeStyle = accentColor;
-            ctx.lineWidth = 1.8;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.roundRect(pillX, screenY - pillH / 2, pillW, pillH, 9);
+            ctx.roundRect(pillX, pillCY - pillH / 2, pillW, pillH, 10);
             ctx.fill(); ctx.stroke();
 
-            // Chevron arrow
-            const ax = dir > 0 ? pillX + pillW - 16 : pillX + 16;
-            const ay = screenY;
+            // Chevron arrow — on the side that indicates direction
+            const chevSize = 10;
+            const ay = pillCY;
             ctx.fillStyle = accentColor;
             ctx.beginPath();
             if (dir > 0) {
-                ctx.moveTo(ax - 1, ay - 8); ctx.lineTo(ax + 11, ay); ctx.lineTo(ax - 1, ay + 8);
+                // right-pointing chevron on right side
+                const ax = pillX + pillW - 18;
+                ctx.moveTo(ax - 1, ay - chevSize); ctx.lineTo(ax + chevSize + 1, ay); ctx.lineTo(ax - 1, ay + chevSize);
             } else {
-                ctx.moveTo(ax + 1, ay - 8); ctx.lineTo(ax - 11, ay); ctx.lineTo(ax + 1, ay + 8);
+                // left-pointing chevron on left side
+                const ax = pillX + 18;
+                ctx.moveTo(ax + 1, ay - chevSize); ctx.lineTo(ax - chevSize - 1, ay); ctx.lineTo(ax + 1, ay + chevSize);
             }
             ctx.closePath(); ctx.fill();
 
-            // Destination label
+            // Destination label — centered in pill
             ctx.globalAlpha = pulse;
             ctx.fillStyle = accentColor;
-            ctx.font = 'bold 11px Arial';
+            ctx.font = 'bold 12px Arial';
             ctx.textAlign = 'center';
-            const labelX = pillX + pillW / 2 + (dir > 0 ? -8 : 8);
-            ctx.fillText(label, labelX, screenY - 5);
+            ctx.fillText(label, W / 2, pillCY - 6);
 
             // Distance readout
             const distBlocks = Math.round(dist / 50) * 50;
             ctx.fillStyle = '#c0d0ff';
             ctx.font = '10px Arial';
-            ctx.fillText(distBlocks + 'm away  ' + (dir > 0 ? '→' : '←'), labelX, screenY + 9);
+            ctx.fillText(distBlocks + 'm away  ' + (dir > 0 ? '→' : '←'), W / 2, pillCY + 10);
 
             ctx.restore();
         }
