@@ -3345,8 +3345,8 @@
 
             // laser barriers removed
 
-            // collect power orbs (hero or hound)
-            for (const o of orbs) {
+            // collect power orbs (hero or hound) — only in the city
+            if (scene === 'city') for (const o of orbs) {
                 if (o.taken) continue;
                 const ocx = e.x + e.w / 2, ocy = e.y + e.h / 2;
                 if (Math.hypot(ocx - o.x, ocy - o.y) < o.r + e.w * 0.5) {
@@ -7714,6 +7714,33 @@
             }
             drawLoisCar();
             drawPrisonLois();
+            // Lois waits outside LexCorp when lexlabEntryUnlocked
+            if (currentLevel === 1 && lexlabEntryUnlocked && scene === 'city') {
+                const lx = LEXLAB_DOOR_X - 36;
+                const bob = Math.sin(Date.now() * 0.003) * 2;
+                const lsx = lx - camera.x;
+                if (lsx > -60 && lsx < W + 60) {
+                    ctx.save();
+                    // Legs
+                    ctx.fillStyle = '#1a1a30'; ctx.fillRect(lsx - 7, GROUND_Y - 22, 6, 22); ctx.fillRect(lsx + 1, GROUND_Y - 22, 6, 22);
+                    ctx.fillStyle = '#c01820'; ctx.fillRect(lsx - 8, GROUND_Y - 4, 8, 4); ctx.fillRect(lsx + 1, GROUND_Y - 4, 8, 4);
+                    // Red blazer
+                    ctx.fillStyle = '#b81c2c'; ctx.fillRect(lsx - 12, GROUND_Y - 58 + bob, 24, 36);
+                    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lsx - 5, GROUND_Y - 56 + bob, 10, 20);
+                    // Head + hair
+                    ctx.fillStyle = '#e8b080'; ctx.beginPath(); ctx.arc(lsx, GROUND_Y - 64 + bob, 9, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#3a1800'; ctx.fillRect(lsx - 10, GROUND_Y - 73 + bob, 20, 8);
+                    ctx.fillRect(lsx + 7, GROUND_Y - 70 + bob, 4, 12);
+                    // Speech bubble
+                    const bw = 140, bh = 22, bx = lsx - bw / 2, by2 = GROUND_Y - 100 + bob;
+                    ctx.fillStyle = 'rgba(255,240,245,0.95)'; ctx.strokeStyle = '#b81c2c'; ctx.lineWidth = 1.5;
+                    ctx.fillRect(bx, by2, bw, bh); ctx.strokeRect(bx, by2, bw, bh);
+                    ctx.beginPath(); ctx.moveTo(lsx - 5, by2 + bh); ctx.lineTo(lsx + 5, by2 + bh); ctx.lineTo(lsx, by2 + bh + 7); ctx.fill();
+                    ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 8px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('Press F — I\'ll follow you in', lsx, by2 + 15);
+                    ctx.restore();
+                }
+            }
 
             // ── Quest nav arrow (Phase 2+) — replaces old questZone arrow for L1 ──
             if (currentLevel === 1 && questPhase === 'travel_prison') {
@@ -9402,7 +9429,8 @@
         // 3 hidden lab clues — world positions within the lab
         const labClues = [
             {
-                x: 480, y: LAB.floorY - 60, w: 44, h: 44,
+                // Hidden under overturned filing cabinet — Room 1 (back wall)
+                x: 680, y: LAB.floorY - 58, w: 44, h: 44,
                 found: false, foundBy: null,
                 label: 'EXPERIMENT LOG',
                 icon: '📋',
@@ -9413,7 +9441,8 @@
                 ]
             },
             {
-                x: 1340, y: LAB.floorY - 60, w: 44, h: 44,
+                // Stashed under the active security terminal bench — Room 2
+                x: 1440, y: LAB.floorY - 58, w: 44, h: 44,
                 found: false, foundBy: null,
                 label: 'SECURITY TERMINAL',
                 icon: '💻',
@@ -9424,7 +9453,8 @@
                 ]
             },
             {
-                x: 2420, y: LAB.floorY - 60, w: 48, h: 52,
+                // Buried in scattered papers near crashed server — Room 3 (far end)
+                x: 2780, y: LAB.floorY - 58, w: 48, h: 52,
                 found: false, foundBy: null,
                 label: 'SCIENTIST\'S NOTE',
                 icon: '📝',
@@ -11122,142 +11152,265 @@
             // Background — fill the visible area in world coords
             ctx.fillStyle = '#0c0e14';
             ctx.fillRect(camera.x, camera.y, W, H);
-            // Ceiling infrastructure
-            ctx.fillStyle = '#1a1e28';
-            ctx.fillRect(camera.x, LAB.ceilingY, W, 40);
-            // Hanging fluorescent tubes (flicker slightly)
-            for (let lx = 200; lx < LAB.w; lx += 320) {
-                const sx = lx - camera.x;
-                if (sx < -120 || sx > W + 120) continue;
-                const flicker = 0.85 + Math.sin(t * 17.3 + lx) * 0.08;
+            // ── Ceiling structure ──
+            const DOOR_H = 210;   // doorway opening height from floor
+            ctx.fillStyle = '#151820';
+            ctx.fillRect(camera.x, LAB.ceilingY, W, 44);
+            // Overhead conduit pipes
+            ctx.strokeStyle = '#1e2230'; ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(camera.x, LAB.ceilingY + 54); ctx.lineTo(camera.x + W, LAB.ceilingY + 54); ctx.stroke();
+            ctx.strokeStyle = '#181c28'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(camera.x, LAB.ceilingY + 68); ctx.lineTo(camera.x + W, LAB.ceilingY + 68); ctx.stroke();
+
+            // ── Room 1 lighting: damaged fluorescents (flickering/broken) ──
+            for (let lx = 180; lx < 900; lx += 240) {
+                if (lx - camera.x < -120 || lx - camera.x > W + 120) continue;
+                const broken = lx === 420;
+                const flicker = broken
+                    ? (Math.sin(t * 31.1 + lx) > 0.6 ? 0.85 : Math.sin(t * 8.4 + lx) > 0.3 ? 0.18 : 0)
+                    : 0.72 + Math.sin(t * 2.1 + lx) * 0.1;
                 ctx.save();
                 ctx.globalAlpha = flicker;
-                ctx.fillStyle = '#d0e8ff';
-                ctx.fillRect(lx - 40, LAB.ceilingY + 8, 80, 6);
-                ctx.shadowColor = '#a0c8ff'; ctx.shadowBlur = 18;
-                ctx.fillRect(lx - 38, LAB.ceilingY + 8, 76, 4);
+                ctx.fillStyle = '#c8e0f8'; ctx.fillRect(lx - 32, LAB.ceilingY + 10, 64, 5);
+                ctx.shadowColor = '#90b8e8'; ctx.shadowBlur = 16;
+                ctx.fillRect(lx - 30, LAB.ceilingY + 11, 60, 3);
+                if (flicker > 0.3) {
+                    const lg = ctx.createRadialGradient(lx, LAB.ceilingY + 14, 8, lx, LAB.floorY, 180);
+                    lg.addColorStop(0, 'rgba(160,200,255,0.09)'); lg.addColorStop(1, 'rgba(100,150,255,0)');
+                    ctx.fillStyle = lg; ctx.globalAlpha = flicker * 0.7;
+                    ctx.fillRect(lx - 160, LAB.ceilingY + 14, 320, LAB.floorY - LAB.ceilingY);
+                }
                 ctx.restore();
             }
-            // Floor — polished lab tile with seams
-            ctx.fillStyle = '#141820'; ctx.fillRect(camera.x, LAB.floorY, W, 120);
-            ctx.strokeStyle = '#1e2430'; ctx.lineWidth = 1;
+            // ── Room 2 lighting: orange emergency strips ──
+            for (let lx = 1000; lx < 1800; lx += 320) {
+                if (lx - camera.x < -80 || lx - camera.x > W + 80) continue;
+                const ep = 0.5 + Math.sin(t * 1.6 + lx) * 0.38;
+                ctx.save();
+                ctx.globalAlpha = ep;
+                ctx.fillStyle = '#ff9010'; ctx.fillRect(lx - 10, LAB.ceilingY + 10, 20, 7);
+                ctx.shadowColor = '#ff6600'; ctx.shadowBlur = 16;
+                ctx.fillRect(lx - 8, LAB.ceilingY + 11, 16, 5);
+                ctx.globalAlpha = ep * 0.09;
+                const yg = ctx.createRadialGradient(lx, LAB.ceilingY + 14, 5, lx, LAB.floorY, 200);
+                yg.addColorStop(0, '#ff9010'); yg.addColorStop(1, 'rgba(255,100,0,0)');
+                ctx.fillStyle = yg; ctx.fillRect(lx - 180, LAB.ceilingY + 14, 360, LAB.floorY - LAB.ceilingY);
+                ctx.restore();
+            }
+            // ── Room 3 lighting: red emergency beacons ──
+            for (let lx = 1900; lx < LAB.w; lx += 340) {
+                if (lx - camera.x < -60 || lx - camera.x > W + 60) continue;
+                const rp = Math.sin(t * 3.8 + lx) > 0 ? 0.92 : 0.12;
+                ctx.save();
+                ctx.globalAlpha = rp;
+                ctx.fillStyle = '#ff1818';
+                ctx.beginPath(); ctx.arc(lx, LAB.ceilingY + 24, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 22; ctx.fillStyle = '#ff5050';
+                ctx.beginPath(); ctx.arc(lx, LAB.ceilingY + 24, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = rp * 0.1;
+                const rg2 = ctx.createRadialGradient(lx, LAB.ceilingY + 24, 4, lx, LAB.floorY, 240);
+                rg2.addColorStop(0, '#ff2020'); rg2.addColorStop(1, 'rgba(255,0,0,0)');
+                ctx.fillStyle = rg2; ctx.fillRect(lx - 220, LAB.ceilingY, 440, LAB.floorY - LAB.ceilingY + 40);
+                ctx.restore();
+            }
+
+            // ── Floor ──
+            ctx.fillStyle = '#0d0f15'; ctx.fillRect(camera.x, LAB.floorY, W, 120);
+            ctx.strokeStyle = '#14161e'; ctx.lineWidth = 1;
             for (let tx = Math.floor(camera.x / 80) * 80; tx < camera.x + W; tx += 80) {
-                ctx.beginPath(); ctx.moveTo(tx, LAB.floorY);
-                ctx.lineTo(tx, LAB.floorY + 120); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx, LAB.floorY); ctx.lineTo(tx, LAB.floorY + 120); ctx.stroke();
             }
-            // Caution stripe at base of walls
-            for (let sx = Math.floor(camera.x / 48) * 48; sx < camera.x + W; sx += 48) {
-                ctx.fillStyle = (Math.floor(sx / 48)) % 2 === 0 ? 'rgba(255,200,0,0.15)' : 'rgba(0,0,0,0)';
-                ctx.fillRect(sx, LAB.floorY, 48, 8);
+            // Room 3 bio-spill on floor
+            if (camera.x + W > 1800) {
+                ctx.save(); ctx.globalAlpha = 0.22;
+                ctx.fillStyle = '#20ff60';
+                ctx.beginPath(); ctx.ellipse(2200, LAB.floorY + 7, 120, 10, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
             }
-            // Lab equipment — workbenches, reactors, tanks along floor
-            const equipment = [
-                { x: 300, type: 'bench' }, { x: 620, type: 'reactor' }, { x: 980, type: 'bench' },
-                { x: 1300, type: 'tank' }, { x: 1650, type: 'bench' }, { x: 2000, type: 'reactor' },
-                { x: 2280, type: 'bench' }, { x: 2600, type: 'tank' },
-            ];
-            for (const eq of equipment) {
-                const ex = eq.x;
-                const esx = ex - camera.x;
-                if (esx < -200 || esx > W + 200) continue;
-                const ey = LAB.floorY;
-                if (eq.type === 'bench') {
-                    ctx.fillStyle = '#1e2530'; ctx.fillRect(ex, ey - 55, 110, 55);
-                    ctx.fillStyle = '#2a3040'; ctx.fillRect(ex + 2, ey - 56, 106, 6);
-                    ctx.fillStyle = '#0a0e18'; ctx.fillRect(ex + 20, ey - 90, 60, 35);
-                    const glow = 0.6 + Math.sin(t * 1.8 + eq.x * 0.02) * 0.3;
-                    ctx.fillStyle = `rgba(20,200,140,${glow})`;
-                    ctx.fillRect(ex + 24, ey - 86, 52, 27);
-                    ctx.strokeStyle = 'rgba(40,255,160,0.6)'; ctx.lineWidth = 1;
-                    for (let dl = 0; dl < 4; dl++) {
-                        ctx.beginPath();
-                        ctx.moveTo(ex + 26, ey - 82 + dl * 6);
-                        ctx.lineTo(ex + 26 + Math.random() * 40, ey - 82 + dl * 6);
-                        ctx.stroke();
-                    }
-                } else if (eq.type === 'reactor') {
-                    ctx.fillStyle = '#141c24'; ctx.fillRect(ex, ey - 90, 70, 90);
-                    const rp = 0.7 + Math.sin(t * 2.1 + eq.x) * 0.25;
-                    const rg = ctx.createRadialGradient(ex + 35, ey - 50, 4, ex + 35, ey - 50, 24);
-                    rg.addColorStop(0, `rgba(60,255,180,${rp})`);
-                    rg.addColorStop(1, 'rgba(20,180,100,0)');
-                    ctx.fillStyle = rg;
-                    ctx.beginPath(); ctx.arc(ex + 35, ey - 50, 24, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = '#1cf0a0';
-                    ctx.beginPath(); ctx.arc(ex + 35, ey - 50, 10, 0, Math.PI * 2); ctx.fill();
-                    ctx.strokeStyle = '#0a8050'; ctx.lineWidth = 4;
-                    ctx.beginPath(); ctx.moveTo(ex + 10, ey - 30); ctx.lineTo(ex + 10, ey); ctx.stroke();
-                    ctx.beginPath(); ctx.moveTo(ex + 60, ey - 30); ctx.lineTo(ex + 60, ey); ctx.stroke();
-                } else if (eq.type === 'tank') {
-                    ctx.fillStyle = '#101420'; ctx.fillRect(ex, ey - 120, 80, 120);
-                    const tg = ctx.createLinearGradient(ex, ey - 120, ex, ey);
-                    tg.addColorStop(0, 'rgba(20,160,200,0.45)');
-                    tg.addColorStop(1, 'rgba(10,80,120,0.35)');
-                    ctx.fillStyle = tg; ctx.fillRect(ex + 4, ey - 116, 72, 116);
-                    for (let b = 0; b < 3; b++) {
-                        const by2 = ((t * 30 + b * 40 + eq.x) % 110);
-                        ctx.fillStyle = 'rgba(180,240,255,0.35)';
-                        ctx.beginPath(); ctx.arc(ex + 18 + b * 22, ey - by2, 3 + b, 0, Math.PI * 2); ctx.fill();
-                    }
-                    ctx.strokeStyle = '#1e3a50'; ctx.lineWidth = 3;
-                    ctx.strokeRect(ex, ey - 120, 80, 120);
+
+            // ── ROOM 1: Abandoned Admin / Reception (x 0–900) ──
+            // Overturned reception desk
+            if (camera.x < 900) {
+                ctx.save(); ctx.translate(260, LAB.floorY - 48); ctx.rotate(-0.07);
+                ctx.fillStyle = '#1c2330'; ctx.fillRect(-55, -40, 110, 42);
+                ctx.fillStyle = '#262e3c'; ctx.fillRect(-55, -44, 110, 6); ctx.restore();
+                // Knocked-over filing cabinet
+                ctx.fillStyle = '#242c3a'; ctx.fillRect(580, LAB.floorY - 28, 68, 28);
+                ctx.fillStyle = '#1a2230'; ctx.fillRect(582, LAB.floorY - 24, 64, 4); ctx.fillRect(582, LAB.floorY - 16, 64, 4);
+                // Scattered papers — Room 1
+                ctx.fillStyle = '#c8c0b2';
+                for (const [px, pr] of [[155,0.22],[195,-0.14],[340,0.31],[420,-0.09],[530,0.18],[620,-0.25],[750,0.4],[820,-0.13]]) {
+                    if (px - camera.x < -40 || px - camera.x > W + 40) continue;
+                    ctx.save(); ctx.translate(px, LAB.floorY - 1); ctx.rotate(pr);
+                    ctx.fillRect(-18, 0, 38, 12); ctx.restore();
                 }
+                // Smashed monitor on floor
+                ctx.fillStyle = '#111820'; ctx.fillRect(760, LAB.floorY - 34, 48, 32);
+                ctx.strokeStyle = '#0a0e16'; ctx.lineWidth = 2; ctx.strokeRect(760, LAB.floorY - 34, 48, 32);
+                ctx.strokeStyle = 'rgba(80,120,200,0.25)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(768, LAB.floorY - 31); ctx.lineTo(792, LAB.floorY - 10); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(792, LAB.floorY - 10); ctx.lineTo(800, LAB.floorY - 5); ctx.stroke();
+                // Overturned chair
+                ctx.save(); ctx.translate(470, LAB.floorY - 4); ctx.rotate(0.65);
+                ctx.fillStyle = '#20222e'; ctx.fillRect(-9, -24, 18, 24); ctx.fillRect(-15, -30, 30, 7); ctx.restore();
+                // Spilled coffee on floor
+                ctx.save(); ctx.globalAlpha = 0.35;
+                ctx.fillStyle = '#3a2010';
+                ctx.beginPath(); ctx.ellipse(385, LAB.floorY + 4, 22, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
             }
-            // Platforms
+
+            // ── ROOM 2: Main Research Lab (x 900–1800) ──
+            if (camera.x < 1800 && camera.x + W > 900) {
+                // Overturned lab bench
+                ctx.save(); ctx.translate(960, LAB.floorY - 50); ctx.rotate(-0.04);
+                ctx.fillStyle = '#1c2430'; ctx.fillRect(0, -8, 115, 52);
+                ctx.fillStyle = '#262e3e'; ctx.fillRect(0, -12, 115, 6); ctx.restore();
+                // Active bench (security terminal)
+                ctx.fillStyle = '#1c2430'; ctx.fillRect(1380, LAB.floorY - 60, 110, 60);
+                ctx.fillStyle = '#262e3e'; ctx.fillRect(1380, LAB.floorY - 64, 110, 6);
+                ctx.fillStyle = '#080e18'; ctx.fillRect(1400, LAB.floorY - 100, 64, 44);
+                const gs = 0.55 + Math.sin(t * 1.4 + 1380) * 0.3;
+                ctx.fillStyle = `rgba(20,200,55,${gs})`; ctx.fillRect(1404, LAB.floorY - 96, 56, 36);
+                ctx.strokeStyle = `rgba(40,255,80,${gs * 0.8})`; ctx.lineWidth = 1;
+                for (let li = 0; li < 5; li++) { ctx.beginPath(); ctx.moveTo(1407, LAB.floorY - 92 + li * 7); ctx.lineTo(1407 + 18 + (li%3)*10, LAB.floorY - 92 + li*7); ctx.stroke(); }
+                // Big reactor (still humming)
+                ctx.fillStyle = '#121a22'; ctx.fillRect(1140, LAB.floorY - 118, 82, 118);
+                const rp = 0.6 + Math.sin(t * 1.9 + 1140) * 0.3;
+                ctx.save();
+                ctx.shadowColor = '#1cffcc'; ctx.shadowBlur = 28 * rp;
+                ctx.fillStyle = `rgba(28,255,200,${rp * 0.85})`;
+                ctx.beginPath(); ctx.arc(1181, LAB.floorY - 64, 24, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+                ctx.fillStyle = '#0affb0';
+                ctx.beginPath(); ctx.arc(1181, LAB.floorY - 64, 9, 0, Math.PI * 2); ctx.fill();
+                // Cracked containment tank (leaking)
+                ctx.fillStyle = '#0e1218'; ctx.fillRect(1640, LAB.floorY - 132, 82, 132);
+                ctx.strokeStyle = '#1c3a50'; ctx.lineWidth = 3; ctx.strokeRect(1640, LAB.floorY - 132, 82, 132);
+                const tg2 = ctx.createLinearGradient(1640, LAB.floorY - 132, 1640, LAB.floorY);
+                tg2.addColorStop(0, 'rgba(20,150,200,0.4)'); tg2.addColorStop(1, 'rgba(10,70,110,0.3)');
+                ctx.fillStyle = tg2; ctx.fillRect(1644, LAB.floorY - 128, 74, 128);
+                ctx.strokeStyle = '#30a0c8'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(1668, LAB.floorY - 75); ctx.lineTo(1685, LAB.floorY - 42); ctx.stroke();
+                ctx.save(); ctx.globalAlpha = 0.5;
+                ctx.fillStyle = '#18a0d8'; ctx.fillRect(1680, LAB.floorY - 42, 7, 42);
+                ctx.globalAlpha = 0.3; ctx.fillRect(1665, LAB.floorY, 40, 7); ctx.restore();
+                // Warning tape on floor
+                ctx.save(); ctx.globalAlpha = 0.55;
+                for (let tx = 1480; tx < 1640; tx += 30) {
+                    ctx.fillStyle = (Math.floor(tx/30))%2===0 ? '#e8be00' : '#181818';
+                    ctx.fillRect(tx, LAB.floorY + 1, 30, 6);
+                } ctx.restore();
+                // Scattered papers — Room 2
+                ctx.fillStyle = '#b8b0a0';
+                for (const [px, pr] of [[970,0.38],[1040,-0.21],[1220,0.12],[1360,-0.34],[1550,0.27],[1680,0.45],[1750,-0.18]]) {
+                    if (px - camera.x < -40 || px - camera.x > W + 40) continue;
+                    ctx.save(); ctx.translate(px, LAB.floorY - 1); ctx.rotate(pr);
+                    ctx.fillRect(-20, 0, 40, 13); ctx.restore();
+                }
+                // Overturned stool
+                ctx.save(); ctx.translate(1060, LAB.floorY - 3); ctx.rotate(0.78);
+                ctx.fillStyle = '#202030'; ctx.fillRect(-5, -28, 10, 28); ctx.fillRect(-18, -28, 36, 6); ctx.restore();
+            }
+
+            // ── ROOM 3: Server / Data Room (x 1800–3200) ──
+            if (camera.x + W > 1800) {
+                // Server racks (some crashed / sparking)
+                for (const sx of [1870, 2060, 2260, 2500, 2740, 2990]) {
+                    if (sx - camera.x < -80 || sx - camera.x > W + 80) continue;
+                    ctx.fillStyle = '#0e1116'; ctx.fillRect(sx, LAB.floorY - 148, 58, 148);
+                    ctx.strokeStyle = '#1c2230'; ctx.lineWidth = 2; ctx.strokeRect(sx, LAB.floorY - 148, 58, 148);
+                    for (let bl = 0; bl < 9; bl++) {
+                        const on = Math.sin(t * (2.5 + bl * 0.8) + sx * 0.01 + bl) > 0.35;
+                        ctx.fillStyle = on ? ['#00ff44','#ffaa00','#ff1818','#00aaff'][bl%4] : '#0e1116';
+                        ctx.beginPath(); ctx.arc(sx + 12 + (bl%3)*17, LAB.floorY - 138 + Math.floor(bl/3)*20, 3, 0, Math.PI * 2); ctx.fill();
+                    }
+                    if (sx === 2260 || sx === 2500) {
+                        if (Math.sin(t * 14 + sx) > 0.78) {
+                            ctx.save(); ctx.fillStyle = '#ffff90'; ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 12;
+                            ctx.fillRect(sx + 20, LAB.floorY - 154, 16, 9); ctx.restore();
+                        }
+                    }
+                }
+                // Hanging wires from ceiling
+                ctx.strokeStyle = '#1e2636'; ctx.lineWidth = 3;
+                for (const wx of [1960, 2160, 2440, 2680, 2920, 3080]) {
+                    if (wx - camera.x < -30 || wx - camera.x > W + 30) continue;
+                    ctx.beginPath(); ctx.moveTo(wx, LAB.ceilingY + 44);
+                    ctx.quadraticCurveTo(wx + 22, LAB.ceilingY + 130, wx + 12, LAB.ceilingY + 200); ctx.stroke();
+                }
+                // Fallen server tower on floor
+                ctx.save(); ctx.translate(2170, LAB.floorY - 8); ctx.rotate(1.48);
+                ctx.fillStyle = '#111418'; ctx.fillRect(-24, -62, 48, 124); ctx.restore();
+                // Scattered documents + notebook
+                ctx.fillStyle = '#a8a090';
+                for (const [px, pr] of [[1920,0.55],[2040,-0.28],[2200,0.16],[2380,-0.42],[2550,0.5],[2720,-0.19],[2810,0.33],[2870,-0.06],[2920,0.62],[3050,0.22]]) {
+                    if (px - camera.x < -40 || px - camera.x > W + 40) continue;
+                    ctx.save(); ctx.translate(px, LAB.floorY - 1); ctx.rotate(pr);
+                    ctx.fillRect(-22, 0, 44, 14); ctx.restore();
+                }
+                // Bio-hazard spill puddle
+                ctx.save(); ctx.globalAlpha = 0.28;
+                ctx.fillStyle = '#20ff60';
+                ctx.beginPath(); ctx.ellipse(2960, LAB.floorY + 6, 90, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+            }
+
+            // ── Room divider walls (drawn over props) ──
+            for (const wallX of [900, 1800]) {
+                if (wallX - camera.x < -20 || wallX - camera.x > W + 20) continue;
+                ctx.fillStyle = '#111520';
+                ctx.fillRect(wallX - 13, LAB.ceilingY, 26, LAB.floorY - LAB.ceilingY - DOOR_H);
+                ctx.strokeStyle = '#222838'; ctx.lineWidth = 3;
+                ctx.strokeRect(wallX - 17, LAB.floorY - DOOR_H - 2, 34, DOOR_H + 2);
+                ctx.fillStyle = 'rgba(120,150,200,0.35)'; ctx.font = 'italic 8px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(wallX === 900 ? 'MAIN LAB →' : 'SERVER ROOM →', wallX, LAB.floorY - DOOR_H - 14);
+            }
+
+            // ── Platforms (catwalks) ──
             for (const p of platforms) {
-                const psx = p.x - camera.x;
-                if (psx > W + 50 || psx + p.w < -50) continue;
-                ctx.fillStyle = '#1e2838'; ctx.fillRect(p.x, p.y, p.w, p.h);
-                ctx.fillStyle = '#2a3850'; ctx.fillRect(p.x, p.y, p.w, 3);
-                ctx.strokeStyle = '#304060'; ctx.lineWidth = 2;
+                if (p.x - camera.x > W + 50 || p.x + p.w - camera.x < -50) continue;
+                ctx.fillStyle = '#1a2434'; ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.fillStyle = '#263248'; ctx.fillRect(p.x, p.y, p.w, 3);
+                ctx.strokeStyle = '#2c3c58'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(p.x, p.y - 18); ctx.lineTo(p.x + p.w, p.y - 18); ctx.stroke();
                 for (let rx = p.x + 20; rx < p.x + p.w - 10; rx += 30) {
                     ctx.beginPath(); ctx.moveTo(rx, p.y); ctx.lineTo(rx, p.y - 18); ctx.stroke();
                 }
             }
-            // Clue objects — glowing interactable items
+
+            // ── Clue objects ──
             for (const clue of labClues) {
                 if (clue.found) continue;
-                const csx = clue.x - camera.x;
-                if (csx < -60 || csx > W + 60) continue;
-                const pulse = 0.6 + Math.sin(t * 2.2 + clue.x * 0.01) * 0.35;
+                if (clue.x - camera.x < -60 || clue.x - camera.x > W + 60) continue;
+                const pulse = 0.55 + Math.sin(t * 2.2 + clue.x * 0.01) * 0.35;
                 ctx.save();
-                ctx.shadowColor = '#40ffcc'; ctx.shadowBlur = 14 * pulse;
-                ctx.fillStyle = `rgba(30,200,150,${0.4 + pulse * 0.4})`;
+                ctx.shadowColor = '#40ffcc'; ctx.shadowBlur = 12 * pulse;
+                ctx.fillStyle = `rgba(28,190,145,${0.35 + pulse * 0.45})`;
                 ctx.fillRect(clue.x, clue.y, clue.w, clue.h);
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(clue.label, clue.x + clue.w / 2, clue.y - 10);
-                ctx.fillStyle = '#40ffcc'; ctx.font = '10px Arial';
-                const heroDist = Math.abs((hero.x + hero.w / 2) - (clue.x + clue.w / 2));
-                if (heroDist < 80) ctx.fillText('F — Examine', clue.x + clue.w / 2, clue.y - 24);
+                ctx.fillStyle = '#d0fff0'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(clue.label, clue.x + clue.w / 2, clue.y - 8);
+                if (Math.abs((hero.x + hero.w / 2) - (clue.x + clue.w / 2)) < 80) {
+                    ctx.fillStyle = '#40ffcc'; ctx.font = '10px Arial';
+                    ctx.fillText('F — Examine', clue.x + clue.w / 2, clue.y - 22);
+                }
                 ctx.restore();
             }
-            // Exit door (left side) — world x=40
+
+            // ── Exit door (left wall) ──
             const doorGlow = labExitReady ? (0.6 + Math.sin(t * 4) * 0.4) : 1;
-            ctx.fillStyle = '#1e3050';
-            ctx.fillRect(40, LAB.floorY - 80, 50, 80);
+            ctx.fillStyle = '#1a2a46'; ctx.fillRect(40, LAB.floorY - 84, 52, 84);
             ctx.save();
             if (labExitReady) {
                 ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 18 * doorGlow;
                 ctx.strokeStyle = `rgba(0,255,136,${doorGlow})`;
-            } else {
-                ctx.strokeStyle = '#4080c0';
-            }
-            ctx.lineWidth = 2;
-            ctx.strokeRect(40, LAB.floorY - 80, 50, 80);
-            ctx.restore();
+            } else { ctx.strokeStyle = '#3a70b0'; }
+            ctx.lineWidth = 2; ctx.strokeRect(40, LAB.floorY - 84, 52, 84); ctx.restore();
             if (labExitReady) {
-                // Pulsing EXIT arrow when player should leave
-                ctx.save();
-                ctx.globalAlpha = doorGlow;
+                ctx.save(); ctx.globalAlpha = doorGlow;
                 ctx.fillStyle = '#00ff88'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('F — EXIT', 65, LAB.floorY - 92);
-                ctx.fillText('▼', 65, LAB.floorY - 102);
-                ctx.restore();
+                ctx.fillText('F — EXIT', 66, LAB.floorY - 96); ctx.fillText('▼', 66, LAB.floorY - 107); ctx.restore();
             } else if (hero.x < 160) {
-                ctx.fillStyle = '#a0c8ff'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('F — Exit', 65, LAB.floorY - 88);
+                ctx.fillStyle = '#8ab8e8'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', 66, LAB.floorY - 92);
             }
         }
 
