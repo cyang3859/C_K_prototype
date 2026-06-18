@@ -10986,8 +10986,8 @@
         function drawBankSuspect(s) {
             if (scene !== 'bank') return;
             s.phase = (s.phase || 0) + 0.05;
-            const sx = s.x - camera.x;
-            const fy = s.y - camera.y;
+            const sx = s.x;   // world coords — camera transform is active
+            const fy = s.y;
             const fd = s.faceDir;
             const bob = Math.sin(s.phase) * 1.0;
             const done = s.interrogated;
@@ -11026,97 +11026,93 @@
 
         function drawBank() {
             const t = Date.now() * 0.001;
-            // Grand banking hall — marble, classical columns, robbery aftermath
-            ctx.fillStyle = '#f5f0e8'; ctx.fillRect(0, 0, W, H);
-            // Ceiling
-            ctx.fillStyle = '#e8e0cc'; ctx.fillRect(0, BANK_INT.ceilingY - camera.y, BANK_INT.w, 60);
+            // Background — fill visible area in world coords (camera transform is active)
+            ctx.fillStyle = '#f5f0e8'; ctx.fillRect(camera.x, camera.y, W, H);
+            // Ceiling band
+            ctx.fillStyle = '#e8e0cc'; ctx.fillRect(0, BANK_INT.ceilingY, BANK_INT.w, 60);
             ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.moveTo(0, BANK_INT.ceilingY - camera.y + 60);
-            ctx.lineTo(BANK_INT.w, BANK_INT.ceilingY - camera.y + 60); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, BANK_INT.ceilingY + 60);
+            ctx.lineTo(BANK_INT.w, BANK_INT.ceilingY + 60); ctx.stroke();
             // Marble floor
-            ctx.fillStyle = '#e8e4dc'; ctx.fillRect(0, BANK_INT.floorY - camera.y, BANK_INT.w, 120);
+            ctx.fillStyle = '#e8e4dc'; ctx.fillRect(0, BANK_INT.floorY, BANK_INT.w, 120);
             ctx.strokeStyle = '#d0ccc0'; ctx.lineWidth = 1;
             for (let tx = 0; tx < BANK_INT.w; tx += 100) {
-                ctx.beginPath(); ctx.moveTo(tx - camera.x, BANK_INT.floorY - camera.y);
-                ctx.lineTo(tx - camera.x, BANK_INT.floorY - camera.y + 120); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx, BANK_INT.floorY);
+                ctx.lineTo(tx, BANK_INT.floorY + 120); ctx.stroke();
             }
             // Classical columns
             for (let col = 250; col < BANK_INT.w; col += 380) {
-                const cx = col - camera.x;
-                const cg = ctx.createLinearGradient(cx - 18, 0, cx + 18, 0);
+                if (col - camera.x < -60 || col - camera.x > W + 60) continue;
+                const cg = ctx.createLinearGradient(col - 18, 0, col + 18, 0);
                 cg.addColorStop(0, '#ddd8cc'); cg.addColorStop(0.4, '#f5f0e8'); cg.addColorStop(1, '#c8c4b8');
                 ctx.fillStyle = cg;
-                ctx.fillRect(cx - 18, BANK_INT.ceilingY - camera.y + 60, 36, BANK_INT.floorY - BANK_INT.ceilingY - 60);
-                ctx.fillStyle = '#e0d8c0'; ctx.fillRect(cx - 24, BANK_INT.ceilingY - camera.y + 56, 48, 12);
-                ctx.fillStyle = '#d8d0b8'; ctx.fillRect(cx - 22, BANK_INT.floorY - camera.y - 12, 44, 12);
+                ctx.fillRect(col - 18, BANK_INT.ceilingY + 60, 36, BANK_INT.floorY - BANK_INT.ceilingY - 60);
+                ctx.fillStyle = '#e0d8c0'; ctx.fillRect(col - 24, BANK_INT.ceilingY + 56, 48, 12);
+                ctx.fillStyle = '#d8d0b8'; ctx.fillRect(col - 22, BANK_INT.floorY - 12, 44, 12);
             }
             // Teller counters + robbery debris
             for (const cx of [300, 700, 1100, 1600, 2000]) {
-                const ex = cx - camera.x;
-                if (ex < -180 || ex > W + 180) continue;
-                const ey = BANK_INT.floorY - camera.y;
-                ctx.fillStyle = '#8b6914'; ctx.fillRect(ex, ey - 60, 140, 60);
-                ctx.fillStyle = '#a07820'; ctx.fillRect(ex, ey - 62, 140, 4);
+                if (cx - camera.x < -180 || cx - camera.x > W + 180) continue;
+                ctx.fillStyle = '#8b6914'; ctx.fillRect(cx, BANK_INT.floorY - 60, 140, 60);
+                ctx.fillStyle = '#a07820'; ctx.fillRect(cx, BANK_INT.floorY - 62, 140, 4);
                 // Broken glass shards
                 ctx.strokeStyle = 'rgba(180,220,255,0.6)'; ctx.lineWidth = 1;
                 for (let s2 = 0; s2 < 3; s2++) {
-                    ctx.beginPath(); ctx.moveTo(ex + 20 + s2*30, ey - 60);
-                    ctx.lineTo(ex + 15 + s2*30 + (s2%2===0?5:-5), ey - 95 - s2*2); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(cx + 20 + s2*30, BANK_INT.floorY - 60);
+                    ctx.lineTo(cx + 15 + s2*30 + (s2%2===0?5:-5), BANK_INT.floorY - 95 - s2*2); ctx.stroke();
                 }
                 // Money bag
                 ctx.fillStyle = '#2a6030';
-                ctx.beginPath(); ctx.arc(ex + 160, ey - 12, 12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx + 160, BANK_INT.floorY - 12, 12, 0, Math.PI * 2); ctx.fill();
                 ctx.fillStyle = '#f0c840'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('$', ex + 160, ey - 8);
+                ctx.fillText('$', cx + 160, BANK_INT.floorY - 8);
             }
             // Overturned chairs
             for (const dx of [180, 450, 820, 1200, 1650, 1950]) {
-                const ex = dx - camera.x;
-                if (ex < -60 || ex > W + 60) continue;
-                ctx.fillStyle = '#604020'; ctx.fillRect(ex, BANK_INT.floorY - camera.y - 20, 20, 20);
-                ctx.fillRect(ex - 10, BANK_INT.floorY - camera.y - 28, 40, 6);
+                if (dx - camera.x < -60 || dx - camera.x > W + 60) continue;
+                ctx.fillStyle = '#604020'; ctx.fillRect(dx, BANK_INT.floorY - 20, 20, 20);
+                ctx.fillRect(dx - 10, BANK_INT.floorY - 28, 40, 6);
                 ctx.fillStyle = 'rgba(255,255,240,0.8)';
-                ctx.save(); ctx.translate(ex + 30, BANK_INT.floorY - camera.y - 4); ctx.rotate(0.4);
+                ctx.save(); ctx.translate(dx + 30, BANK_INT.floorY - 4); ctx.rotate(0.4);
                 ctx.fillRect(-12, -8, 24, 16); ctx.restore();
             }
-            // Alarm flash
+            // Alarm flash overlay — fills visible area
             const alarmFlash = Math.sin(t * 4.0) > 0 ? 0.10 : 0.03;
-            ctx.fillStyle = `rgba(255,60,40,${alarmFlash})`; ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = `rgba(255,60,40,${alarmFlash})`; ctx.fillRect(camera.x, camera.y, W, H);
             // Emergency lights on ceiling
             for (let lx = 160; lx < BANK_INT.w; lx += 400) {
+                if (lx - camera.x < -20 || lx - camera.x > W + 20) continue;
                 const flash2 = Math.sin(t * 4.0 + lx) > 0;
                 ctx.fillStyle = flash2 ? '#ff2020' : '#400808';
-                ctx.beginPath(); ctx.arc(lx - camera.x, BANK_INT.ceilingY - camera.y + 68, 8, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(lx, BANK_INT.ceilingY + 68, 8, 0, Math.PI * 2); ctx.fill();
                 if (flash2) {
                     ctx.save(); ctx.shadowColor = '#ff4040'; ctx.shadowBlur = 20;
                     ctx.fillStyle = '#ff4040';
-                    ctx.beginPath(); ctx.arc(lx - camera.x, BANK_INT.ceilingY - camera.y + 68, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(lx, BANK_INT.ceilingY + 68, 6, 0, Math.PI * 2); ctx.fill();
                     ctx.restore();
                 }
             }
-            // Platforms (balcony level)
+            // Platforms (balcony level) — world coords, camera transform handles offset
             for (const p of platforms) {
-                const px = p.x - camera.x, py = p.y - camera.y;
-                if (px > W + 50 || px + p.w < -50) continue;
-                const pg = ctx.createLinearGradient(px, py, px, py + p.h);
+                if (p.x - camera.x > W + 50 || p.x + p.w - camera.x < -50) continue;
+                const pg = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
                 pg.addColorStop(0, '#ddd4b8'); pg.addColorStop(1, '#c0b890');
-                ctx.fillStyle = pg; ctx.fillRect(px, py, p.w, p.h);
+                ctx.fillStyle = pg; ctx.fillRect(p.x, p.y, p.w, p.h);
                 ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(px, py - 20); ctx.lineTo(px + p.w, py - 20); ctx.stroke();
-                for (let rx = px + 20; rx < px + p.w - 10; rx += 28) {
-                    ctx.beginPath(); ctx.moveTo(rx, py); ctx.lineTo(rx, py - 20); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(p.x, p.y - 20); ctx.lineTo(p.x + p.w, p.y - 20); ctx.stroke();
+                for (let rx = p.x + 20; rx < p.x + p.w - 10; rx += 28) {
+                    ctx.beginPath(); ctx.moveTo(rx, p.y); ctx.lineTo(rx, p.y - 20); ctx.stroke();
                 }
             }
             // Suspects
             for (const s of bankSuspects) drawBankSuspect(s);
-            // Exit door (left side)
-            const doorX = 50 - camera.x;
-            ctx.fillStyle = '#6b4c1a'; ctx.fillRect(doorX, BANK_INT.floorY - camera.y - 90, 55, 90);
+            // Exit door (left side) — world x=50
+            ctx.fillStyle = '#6b4c1a'; ctx.fillRect(50, BANK_INT.floorY - 90, 55, 90);
             ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
-            ctx.strokeRect(doorX, BANK_INT.floorY - camera.y - 90, 55, 90);
+            ctx.strokeRect(50, BANK_INT.floorY - 90, 55, 90);
             if (hero.x < 160) {
                 ctx.fillStyle = '#c8a840'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('F — Exit', doorX + 27, BANK_INT.floorY - camera.y - 98);
+                ctx.fillText('F — Exit', 77, BANK_INT.floorY - 98);
             }
         }
 
