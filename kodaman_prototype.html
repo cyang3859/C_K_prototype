@@ -586,11 +586,12 @@
             if (constructionSpawned) return;
             constructionSpawned = true;
             workersInterrogated = 0;
-            // Reset worker positions for interior layout
-            yardWorkers[0].x = 550;  yardWorkers[0].y = CONSTRUCTION_INT.floorY; yardWorkers[0].interrogated = false;
-            yardWorkers[1].x = 1100; yardWorkers[1].y = CONSTRUCTION_INT.floorY; yardWorkers[1].interrogated = false;
-            yardWorkers[2].x = 1900; yardWorkers[2].y = CONSTRUCTION_INT.floorY; yardWorkers[2].interrogated = false;
-            yardWorkers[3].x = 850;  yardWorkers[3].y = CONSTRUCTION_INT.floorY; yardWorkers[3].interrogated = false; yardWorkers[3]._fleeing = false; yardWorkers[3]._vx = 0;
+            // Place regular workers left/middle, henchman hidden at the far right
+            const floorY = CONSTRUCTION_INT.floorY;
+            yardWorkers[0].x = 450;  yardWorkers[0].y = floorY; yardWorkers[0].interrogated = false;
+            yardWorkers[1].x = 1050; yardWorkers[1].y = floorY; yardWorkers[1].interrogated = false;
+            yardWorkers[2].x = 1700; yardWorkers[2].y = floorY; yardWorkers[2].interrogated = false;
+            yardWorkers[3].x = 2300; yardWorkers[3].y = floorY; yardWorkers[3].interrogated = false; yardWorkers[3]._fleeing = false; yardWorkers[3]._vx = 0;
         }
 
         function enterConstruction() {
@@ -610,11 +611,11 @@
             startDialogue({
                 speaker: 'Lois Lane', portrait: 'lois',
                 lines: [
-                    'Someone in here tipped off the bank robbers. Question the workers — one of them is the henchman.',
-                    'Watch for anyone acting nervous. Press E when you\'re close.'
+                    'Someone at this site knew about the bank robbery before it happened.',
+                    'Start questioning the workers — press E when you\'re close to one.'
                 ],
                 onDone: () => {
-                    titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — find the henchman hiding among them.', timer: 240 };
+                    titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — press E to interrogate.', timer: 240 };
                 }
             });
         }
@@ -636,13 +637,13 @@
             if (!constructionSpawned || scene !== 'construction' || currentLevel !== 1) return;
             for (const w of yardWorkers) {
                 w.phase += 0.04;
-                w.y = GROUND_Y;
+                w.y = CONSTRUCTION_INT.floorY;
                 if (w.isHenchman && w._fleeing) {
-                    // Flee rightward
                     w._vx = Math.min(w._vx + 0.4, 6.5);
                     w.x += w._vx;
                     w.faceDir = 1;
-                    // Hero catches henchman
+                    // Clamp to interior right wall
+                    w.x = Math.min(w.x, CONSTRUCTION_INT.w - 60);
                     if (questPhase === 'henchman_flee') {
                         const heroMid = hero.x + hero.w / 2;
                         if (Math.abs(heroMid - w.x) < 70) {
@@ -656,7 +657,6 @@
                         }
                     }
                 } else if (!w.isHenchman || !w.interrogated) {
-                    // Idle wander
                     const drift = Math.sin(w.phase * 0.4 + w.x * 0.001) * 0.5;
                     w.x += drift;
                     if (Math.abs(drift) > 0.05) w.faceDir = drift > 0 ? 1 : -1;
@@ -675,21 +675,29 @@
                     'Chen\'s been running everything from here while Lex sets up shop there. That\'s all I know, I swear!'
                 ],
                 onDone: () => {
-                    advanceQuest('travel_lexcorp2');
-                    // Auto-cut to city, Lois drives to LexCorp
-                    exitConstruction();
-                    loisCar.x = CONSTRUCTION_X + 60;
-                    loisCar.y = GROUND_Y;
-                    loisCar.active = true;
-                    driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
                     startDialogue({
-                        speaker: 'CK', portrait: 'hero',
+                        speaker: 'Lois Lane', portrait: 'lois',
                         lines: [
-                            'Lex Luthor is in Gotham. He\'s been one step ahead this whole time.',
-                            'I need to go back to LexCorp — there may be evidence pointing to his exact location.'
+                            'Lex Luthor — in Gotham? And nobody knew he was out?',
+                            'Chen\'s been running a shadow operation right here in Metropolis. This is bigger than a bank robbery.'
                         ],
                         onDone: () => {
-                            titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
+                            startDialogue({
+                                speaker: 'CK', portrait: 'hero',
+                                lines: [
+                                    'Lex Luthor is in Gotham. He\'s been one step ahead this whole time.',
+                                    'I need to go back to LexCorp — there may be evidence pointing to his exact location.'
+                                ],
+                                onDone: () => {
+                                    advanceQuest('travel_lexcorp2');
+                                    exitConstruction();
+                                    loisCar.x = CONSTRUCTION_X + 60;
+                                    loisCar.y = GROUND_Y;
+                                    loisCar.active = true;
+                                    driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
+                                    titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
+                                }
+                            });
                         }
                     });
                 }
@@ -999,7 +1007,15 @@
                     if (Math.abs(heroMid - w.x) < 70) {
                         w.interrogated = true;
                         if (w.isHenchman) {
-                            // Henchman recognizes CK — panics and flees
+                            // Henchman only reacts after Worker 2 gives the tip
+                            if (workersInterrogated < 2) {
+                                startDialogue({
+                                    speaker: 'WORKER', portrait: 'npc',
+                                    lines: ['...'],
+                                    onDone: () => {}
+                                });
+                                return true;
+                            }
                             w._fleeing = true; w._vx = 2;
                             advanceQuest('henchman_flee');
                             startDialogue({
