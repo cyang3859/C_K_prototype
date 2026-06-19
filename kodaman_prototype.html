@@ -567,8 +567,12 @@
 
         // ── PHASE 5: CONSTRUCTION YARD ───────────────────────────────────────
         const CONSTRUCTION_X = 9800;
+        const CONSTRUCTION_INT = { w: 2800, floorY: 840, ceilingY: 60 };
         let constructionSpawned = false;
+        let constructionEntryUnlocked = false;
+        let constructionScene = null;
         let workersInterrogated = 0;
+        const constructionLois = { x: 260, y: 0, faceDir: 1, phase: 0, active: false };
 
         // 3 workers + 1 henchman (index 3 is the henchman)
         const yardWorkers = [
@@ -582,11 +586,54 @@
             if (constructionSpawned) return;
             constructionSpawned = true;
             workersInterrogated = 0;
-            titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — find the henchman hiding among them.', timer: 240 };
+            // Reset worker positions for interior layout
+            yardWorkers[0].x = 550;  yardWorkers[0].y = CONSTRUCTION_INT.floorY; yardWorkers[0].interrogated = false;
+            yardWorkers[1].x = 1100; yardWorkers[1].y = CONSTRUCTION_INT.floorY; yardWorkers[1].interrogated = false;
+            yardWorkers[2].x = 1900; yardWorkers[2].y = CONSTRUCTION_INT.floorY; yardWorkers[2].interrogated = false;
+            yardWorkers[3].x = 850;  yardWorkers[3].y = CONSTRUCTION_INT.floorY; yardWorkers[3].interrogated = false; yardWorkers[3]._fleeing = false; yardWorkers[3]._vx = 0;
+        }
+
+        function enterConstruction() {
+            constructionScene = {
+                saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive }
+            };
+            hero.x = 140; hero.y = CONSTRUCTION_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 220; hound.y = CONSTRUCTION_INT.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true;
+            constructionLois.x = 280; constructionLois.y = CONSTRUCTION_INT.floorY; constructionLois.active = true; constructionLois.faceDir = 1;
+            scene = 'construction';
+            platforms.splice(0, platforms.length);
+            camera.x = 0; camera.y = Math.max(0, CONSTRUCTION_INT.floorY + 80 - H);
+            initConstructionYard();
+            advanceQuest('construction_interrogate');
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: [
+                    'Someone in here tipped off the bank robbers. Question the workers — one of them is the henchman.',
+                    'Watch for anyone acting nervous. Press E when you\'re close.'
+                ],
+                onDone: () => {
+                    titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — find the henchman hiding among them.', timer: 240 };
+                }
+            });
+        }
+
+        function exitConstruction() {
+            if (!constructionScene) return;
+            const s = constructionScene.saved;
+            hero.x = CONSTRUCTION_X + 20; hero.y = GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.facing = s.hf; hero.flightActive = false; hero.onGround = true;
+            constructionLois.active = false;
+            scene = 'city';
+            constructionScene = null;
+            platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2);
+            camera.y = 0;
         }
 
         function updateYardWorkers() {
-            if (!constructionSpawned || scene !== 'city' || currentLevel !== 1) return;
+            if (!constructionSpawned || scene !== 'construction' || currentLevel !== 1) return;
             for (const w of yardWorkers) {
                 w.phase += 0.04;
                 w.y = GROUND_Y;
@@ -629,6 +676,12 @@
                 ],
                 onDone: () => {
                     advanceQuest('travel_lexcorp2');
+                    // Auto-cut to city, Lois drives to LexCorp
+                    exitConstruction();
+                    loisCar.x = CONSTRUCTION_X + 60;
+                    loisCar.y = GROUND_Y;
+                    loisCar.active = true;
+                    driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
                     startDialogue({
                         speaker: 'CK', portrait: 'hero',
                         lines: [
@@ -637,9 +690,6 @@
                         ],
                         onDone: () => {
                             titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
-                            loisCar.x = CONSTRUCTION_X + 60;
-                            loisCar.y = GROUND_Y;
-                            driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
                         }
                     });
                 }
@@ -647,12 +697,12 @@
         }
 
         function drawYardWorkers() {
-            if (!constructionSpawned || scene !== 'city' || currentLevel !== 1) return;
+            if (!constructionSpawned || scene !== 'construction' || currentLevel !== 1) return;
             const t = Date.now() * 0.001;
             for (const w of yardWorkers) {
-                const sx = w.x - camera.x;
-                if (sx < -80 || sx > W + 80) continue;
-                const fy = w.y - camera.y;
+                const sx = w.x;          // world coords — camera transform is active
+                if (sx - camera.x < -80 || sx - camera.x > W + 80) continue;
+                const fy = w.y;          // world coords
                 const bob = Math.sin(w.phase) * 1.0;
                 const fd = w.faceDir;
                 const done = w.interrogated;
@@ -706,8 +756,6 @@
                 }
                 ctx.restore();
             }
-            // Draw scaffolding / construction site dressing
-            drawConstructionDressing();
         }
 
         // ── PHASE 6: RETURN TO LEXCORP ────────────────────────────────────────
@@ -944,7 +992,7 @@
         // E-key interrogation check — called from keydown handler
         function tryInteract() {
             // Construction yard: question workers / catch henchman
-            if (scene === 'city' && questPhase === 'construction_interrogate' && constructionSpawned) {
+            if (scene === 'construction' && questPhase === 'construction_interrogate' && constructionSpawned) {
                 const heroMid = hero.x + hero.w / 2;
                 for (const w of yardWorkers) {
                     if (w.interrogated) continue;
@@ -996,11 +1044,19 @@
                                         ],
                                         onDone: () => {
                                             advanceQuest('travel_construction');
-                                            titleCard = { text: 'CONSTRUCTION SITE', sub: 'Head to Fifth & Harbor — find the construction yard!', timer: 220 };
+                                            // Auto-cut to city like LexCorp exit
                                             exitBank();
                                             loisCar.x = BANK_X + 30;
                                             loisCar.y = GROUND_Y;
+                                            loisCar.active = true;
                                             driveLoisCar(CONSTRUCTION_X - 60, () => {}, 2.6);
+                                            startDialogue({
+                                                speaker: 'Lois Lane', portrait: 'lois',
+                                                lines: ['See you at the construction yard — that henchman isn\'t getting away!'],
+                                                onDone: () => {
+                                                    titleCard = { text: 'HEAD TO CONSTRUCTION SITE', sub: 'Fly to Fifth & Harbor — Lois is following.', timer: 260 };
+                                                }
+                                            });
                                         }
                                     });
                                 }
@@ -2841,6 +2897,16 @@
                     enterBank(); e.preventDefault();
                 }
             }
+            // Construction yard entry
+            if (e.code === 'KeyF' && scene === 'city' && constructionEntryUnlocked && currentLevel === 1) {
+                if (Math.abs((hero.x + hero.w / 2) - CONSTRUCTION_X) < 120 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                    enterConstruction(); e.preventDefault();
+                }
+            }
+            // Construction yard exit
+            if (e.code === 'KeyF' && scene === 'construction') {
+                if (hero.x < 160) { exitConstruction(); e.preventDefault(); }
+            }
             // F: talk to Lois when nearby in the interior
             if (e.code === 'KeyF' && scene === 'interior' && interior.note.read) {
                 const loisNPC = interior.npcs.find(n => n.lois);
@@ -2928,7 +2994,7 @@
                 }
             }
             // E: interact (talk to quest NPCs / ambient role NPCs) or drop carried civilians
-            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
+            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank' || scene === 'construction') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -7908,11 +7974,12 @@
             if (scene === 'temple') drawTemple();
             if (scene === 'lab') drawLab();
             if (scene === 'bank') drawBank();
+            if (scene === 'construction') drawConstruction();
             if (scene === 'city') {
                 // only draw quest overlays when on L1 and camera is near the relevant world X
-                if (currentLevel === 1 && constructionSpawned &&
-                    camera.x + W > CONSTRUCTION_X - 500 && camera.x < CONSTRUCTION_X + 500) {
-                    drawYardWorkers();
+                if (currentLevel === 1 && constructionEntryUnlocked &&
+                    camera.x + W > CONSTRUCTION_X - 400 && camera.x < CONSTRUCTION_X + 400) {
+                    drawConstructionDressing();
                 }
                 if (currentLevel === 1 && lexcorp2Spawned &&
                     camera.x + W > LEXLAB_X - 200 && camera.x < LEXLAB_X + 600) {
@@ -8905,7 +8972,7 @@
                     bankInterrogated = 0; bankEntryUnlocked = false;
                     bankSuspects.forEach(s => { s.interrogated = false; });
                     bankScene = null;
-                    constructionSpawned = false; workersInterrogated = 0;
+                    constructionSpawned = false; workersInterrogated = 0; constructionEntryUnlocked = false; constructionScene = null; constructionLois.active = false;
                     yardWorkers.forEach(w => { w.interrogated = false; w._fleeing = false; w._vx = 0; w.x = w === yardWorkers[3] ? CONSTRUCTION_X - 80 : w.x; });
                     lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0;
                     lexcorp2Clues.forEach(c => { c.found = false; });
@@ -11113,6 +11180,99 @@
             ctx.restore();
         }
 
+        function drawConstruction() {
+            const t = Date.now() * 0.001;
+            const CI = CONSTRUCTION_INT;
+            // Background — dusty concrete
+            ctx.fillStyle = '#2a2318'; ctx.fillRect(camera.x, camera.y, W, H);
+            // Sky/roof through broken panels
+            ctx.fillStyle = '#1a2a1a';
+            for (let wx = 200; wx < CI.w; wx += 420) {
+                if (wx - camera.x < -120 || wx - camera.x > W + 120) continue;
+                ctx.fillRect(wx, CI.ceilingY, 160, 60);
+            }
+            // Ceiling girders
+            ctx.strokeStyle = '#555'; ctx.lineWidth = 8;
+            for (let gx = 0; gx < CI.w; gx += 300) {
+                if (gx - camera.x < -20 || gx - camera.x > W + 20) continue;
+                ctx.beginPath(); ctx.moveTo(gx, CI.ceilingY); ctx.lineTo(gx, CI.ceilingY + 80); ctx.stroke();
+            }
+            ctx.strokeStyle = '#444'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(0, CI.ceilingY + 80); ctx.lineTo(CI.w, CI.ceilingY + 80); ctx.stroke();
+            // Dirt/concrete floor
+            ctx.fillStyle = '#3a3028'; ctx.fillRect(0, CI.floorY, CI.w, 120);
+            ctx.strokeStyle = '#4a4038'; ctx.lineWidth = 1;
+            for (let fx = 0; fx < CI.w; fx += 80) {
+                ctx.beginPath(); ctx.moveTo(fx, CI.floorY); ctx.lineTo(fx, CI.floorY + 120); ctx.stroke();
+            }
+            // Scaffolding sections
+            for (const sx of [400, 900, 1500, 2100]) {
+                if (sx - camera.x < -120 || sx - camera.x > W + 120) continue;
+                ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+                for (let ry = 0; ry < 3; ry++) {
+                    ctx.beginPath(); ctx.moveTo(sx, CI.floorY - ry * 70); ctx.lineTo(sx + 80, CI.floorY - ry * 70); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(sx, CI.floorY - ry * 70); ctx.lineTo(sx, CI.floorY - (ry+1)*70); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(sx+80, CI.floorY - ry * 70); ctx.lineTo(sx+80, CI.floorY - (ry+1)*70); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(sx, CI.floorY - ry*70); ctx.lineTo(sx+80, CI.floorY-(ry+1)*70); ctx.stroke();
+                }
+            }
+            // Stacked concrete blocks
+            for (const bx of [280, 680, 1300, 1750, 2300]) {
+                if (bx - camera.x < -80 || bx - camera.x > W + 80) continue;
+                ctx.fillStyle = '#5a5448';
+                for (let row = 0; row < 3; row++) ctx.fillRect(bx, CI.floorY - 24 - row * 24, 70, 22);
+                ctx.strokeStyle = '#6a6458'; ctx.lineWidth = 1;
+                for (let row = 0; row < 3; row++) ctx.strokeRect(bx, CI.floorY - 24 - row * 24, 70, 22);
+            }
+            // Cement mixer
+            ctx.fillStyle = '#555';
+            ctx.beginPath(); ctx.arc(1650, CI.floorY - 32, 28, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#666'; ctx.fillRect(1622, CI.floorY - 68, 56, 36);
+            // Warning tape strips
+            for (const tx of [160, 760, 1200, 2000]) {
+                if (tx - camera.x < -80 || tx - camera.x > W + 80) continue;
+                ctx.fillStyle = '#ffcc00'; ctx.fillRect(tx, CI.floorY - 50, 8, 50);
+                ctx.fillStyle = '#111';
+                for (let s = 0; s < 5; s++) ctx.fillRect(tx, CI.floorY - 50 + s*10, 8, 5);
+            }
+            // Overhead work lights
+            for (let lx = 300; lx < CI.w; lx += 500) {
+                if (lx - camera.x < -40 || lx - camera.x > W + 40) continue;
+                ctx.fillStyle = '#ffee88';
+                ctx.beginPath(); ctx.arc(lx, CI.ceilingY + 90, 14, 0, Math.PI * 2); ctx.fill();
+                ctx.save(); ctx.shadowColor = '#ffdd44'; ctx.shadowBlur = 30;
+                ctx.fillStyle = '#ffee88';
+                ctx.beginPath(); ctx.arc(lx, CI.ceilingY + 90, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+            // Entry door (left wall)
+            ctx.fillStyle = '#5a3a18'; ctx.fillRect(40, CI.floorY - 100, 60, 100);
+            ctx.strokeStyle = '#8a6a38'; ctx.lineWidth = 3; ctx.strokeRect(40, CI.floorY - 100, 60, 100);
+            if (hero.x < 160) {
+                ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', 70, CI.floorY - 108);
+            }
+            // Draw workers inside
+            drawYardWorkers();
+            // Draw Lois inside construction
+            if (constructionLois.active) {
+                constructionLois.phase += 0.04;
+                const lx = constructionLois.x; const ly = constructionLois.y;
+                const bob = Math.sin(constructionLois.phase) * 1.5;
+                if (lx - camera.x > -60 && lx - camera.x < W + 60) {
+                    ctx.save();
+                    ctx.fillStyle = '#1a1a30'; ctx.fillRect(lx-7, ly-22, 6, 22); ctx.fillRect(lx+1, ly-22, 6, 22);
+                    ctx.fillStyle = '#c01820'; ctx.fillRect(lx-8, ly-4, 8, 4); ctx.fillRect(lx+1, ly-4, 8, 4);
+                    ctx.fillStyle = '#b81c2c'; ctx.fillRect(lx-12, ly-58+bob, 24, 36);
+                    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lx-5, ly-56+bob, 10, 20);
+                    ctx.fillStyle = '#e8b080'; ctx.beginPath(); ctx.arc(lx, ly-64+bob, 9, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#1a0a04'; ctx.beginPath(); ctx.arc(lx, ly-66+bob, 10, Math.PI*1.05, Math.PI*1.95); ctx.fill();
+                    ctx.fillStyle = '#f8f8e8'; ctx.fillRect(lx+10, ly-50+bob, 12, 16);
+                    ctx.restore();
+                }
+            }
+        }
+
         function drawBank() {
             const t = Date.now() * 0.001;
             // Background — fill visible area in world coords (camera transform is active)
@@ -13178,6 +13338,24 @@
                 return;
             }
 
+            // ---- CONSTRUCTION YARD INTERIOR ----
+            if (scene === 'construction') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > CONSTRUCTION_INT.floorY) { hero.y = CONSTRUCTION_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > CONSTRUCTION_INT.floorY) { hound.y = CONSTRUCTION_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateYardWorkers();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             // ---- FIRST NATIONAL BANK INTERIOR ----
             if (scene === 'bank') {
                 const pin  = computeP1Input();
@@ -13252,11 +13430,11 @@
                 }
             }
             if (questPhase === 'lexcorp2_fight') checkLexcorp2Cleared();
-            // Trigger construction yard when hero arrives
-            if (questPhase === 'travel_construction' && !constructionSpawned) {
-                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 700) {
-                    initConstructionYard();
-                    advanceQuest('construction_interrogate');
+            // Unlock construction entry when hero arrives nearby
+            if (questPhase === 'travel_construction' && !constructionEntryUnlocked) {
+                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 500) {
+                    constructionEntryUnlocked = true;
+                    titleCard = { text: 'CONSTRUCTION SITE', sub: 'Both characters are here — press F at the entrance to go inside.', timer: 220 };
                 }
             }
             if (currentLevel === 1 && constructionSpawned) updateYardWorkers();
