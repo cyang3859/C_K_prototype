@@ -2928,7 +2928,7 @@
                 }
             }
             // E: interact (talk to quest NPCs / ambient role NPCs) or drop carried civilians
-            if (e.code === 'KeyE' && scene === 'city' && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
+            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -9593,6 +9593,19 @@
             });
         }
 
+        function updateBankLois() {
+            if (!bankLois.active || scene !== 'bank' || activeDialogue) return;
+            bankLois.phase += 0.05;
+            // Walk toward the next un-interrogated suspect
+            const next = bankSuspects.find(s => !s.interrogated);
+            const targetX = next ? next.x - 60 : bankLois.x;
+            const dx = targetX - bankLois.x;
+            if (Math.abs(dx) > 12) {
+                bankLois.x += Math.sign(dx) * 1.6;
+                bankLois.faceDir = Math.sign(dx);
+            }
+        }
+
         function exitBank() {
             if (!bankScene) return;
             const s = bankScene.saved;
@@ -9725,15 +9738,20 @@
                             'Go. I\'ll follow in my car. Stop them before anyone gets hurt.'
                         ],
                         onDone: () => {
-                            advanceQuest('lab_dialogue');
+                            advanceQuest('bank_fight');
                             labExitReady = false;
+                            // Spawn bank robbers immediately — robbery is already in progress
+                            if (!bankEnemiesSpawned) {
+                                bankEnemiesSpawned = true;
+                                initBankFight();
+                            }
                             // Cut straight to outside — no F-key needed
                             exitLexlab();
                             // Lois gets in her car and heads to the bank
                             loisCar.x = LEXLAB_X + 30;
                             loisCar.y = GROUND_Y;
                             loisCar.active = true;
-                            driveLoisCar(BANK_X - 90, () => { advanceQuest('travel_bank'); }, 2.8);
+                            driveLoisCar(BANK_X - 90, () => {}, 2.8);
                             startDialogue({
                                 speaker: 'Lois Lane', portrait: 'lois',
                                 lines: [
@@ -13169,6 +13187,7 @@
                 if (hero.y + hero.h > BANK_INT.floorY) { hero.y = BANK_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > BANK_INT.floorY) { hound.y = BANK_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
                 tickDialogue();
+                updateBankLois();
                 updateHitFX();
                 updateCamera();
                 draw();
@@ -13241,14 +13260,7 @@
                 }
             }
             if (currentLevel === 1 && constructionSpawned) updateYardWorkers();
-            // Trigger bank robbery enemies when hero arrives near the bank
-            if (questPhase === 'travel_bank' && !bankEnemiesSpawned) {
-                if (Math.abs((hero.x + hero.w/2) - BANK_DOOR_X) < 600) {
-                    bankEnemiesSpawned = true;
-                    advanceQuest('bank_fight');
-                    initBankFight();
-                }
-            }
+            // Bank enemies are spawned immediately when lab dialogue ends (see triggerBankRobberyDialogue)
             // Check bank fight cleared
             if (questPhase === 'bank_fight') checkBankCleared();
             tickDialogue();
