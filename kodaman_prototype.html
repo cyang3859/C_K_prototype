@@ -1474,59 +1474,61 @@
         function drawLoisCar() {
             if (!loisCar.active) return;
             const cx = loisCar.x;
-            const by = loisCar.y;   // ground level (feet)
+            const by = loisCar.y;
             const fd = loisCar.faceDir;
             const sx = cx - camera.x;
-            if (sx < -150 || sx > W + 150) return;   // off-screen cull
+            if (sx < -150 || sx > W + 150) return;
 
             ctx.save();
-            ctx.translate(cx, by);   // world → screen handled by existing camera translate
+            // Translate to ground level then raise 10px so wheel bottoms rest on ground
+            ctx.translate(cx, by - 10);
+            // Mirror horizontally for direction — all coords below assume facing right
+            ctx.scale(fd, 1);
 
-            // ── Car body — civilian sedan ──────────────────────────────────────
-            // Main body (lower rectangle)
-            ctx.fillStyle = '#8b2252';    // Lois's signature burgundy/maroon
-            ctx.fillRect(-46 * fd, -20, 92, 20);
-            // Roof cabin
-            ctx.fillRect(-28 * fd, -38, 56, 18);
-            // Front hood slope
-            ctx.fillStyle = '#701a40';
-            ctx.beginPath();
-            ctx.moveTo(28 * fd, -20); ctx.lineTo(46 * fd, -20);
-            ctx.lineTo(46 * fd, -10); ctx.lineTo(28 * fd, -14);
-            ctx.closePath(); ctx.fill();
-            // Windshield (forward-facing glass)
-            ctx.fillStyle = 'rgba(160,220,255,0.55)';
-            ctx.fillRect(12 * fd, -38, 16 * fd, 16);
-            // Rear window
-            ctx.fillRect(-28 * fd, -38, 14 * fd, 14);
-            // Headlight
-            ctx.fillStyle = '#ffe88a';
-            ctx.fillRect(40 * fd, -16, 6 * fd, 6);
-            // Tail-light
-            ctx.fillStyle = '#ff4444';
-            ctx.fillRect(-46 * fd, -16, -4 * fd, 6);
-            // Lois portrait in driver seat
-            ctx.fillStyle = '#e3bd9c';
-            ctx.beginPath(); ctx.arc(4 * fd, -28, 6, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#3a2010';
-            ctx.beginPath(); ctx.arc(4 * fd, -30, 7, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
-            // Wheels
-            const wheelAng = loisCar.phase;
+            // Wheels (axle at local y=0 = GROUND_Y-10; radius 10 → bottom at GROUND_Y)
+            const wheelAng = loisCar.phase * fd;
             for (const wx of [-28, 28]) {
                 ctx.fillStyle = '#1a1a1a';
-                ctx.beginPath(); ctx.arc(wx * fd, 0, 10, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(wx * fd, 0, 10, 0, Math.PI * 2); ctx.stroke();
-                // wheel spokes
-                ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(wx, 0, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(wx, 0, 10, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = '#777'; ctx.lineWidth = 1.5;
                 for (let s = 0; s < 4; s++) {
-                    const a = wheelAng * fd + s * Math.PI / 2;
+                    const a = wheelAng + s * Math.PI / 2;
                     ctx.beginPath();
-                    ctx.moveTo(wx * fd + Math.cos(a) * 3, Math.sin(a) * 3);
-                    ctx.lineTo(wx * fd + Math.cos(a) * 9, Math.sin(a) * 9);
+                    ctx.moveTo(wx + Math.cos(a) * 3, Math.sin(a) * 3);
+                    ctx.lineTo(wx + Math.cos(a) * 9, Math.sin(a) * 9);
                     ctx.stroke();
                 }
             }
+            // Main body (sits above axle)
+            ctx.fillStyle = '#8b2252';
+            ctx.fillRect(-44, -32, 88, 22);
+            // Roof cabin
+            ctx.fillRect(-26, -50, 52, 18);
+            // Hood slope (front-right)
+            ctx.fillStyle = '#701a40';
+            ctx.beginPath();
+            ctx.moveTo(26, -32); ctx.lineTo(44, -32);
+            ctx.lineTo(44, -22); ctx.lineTo(26, -26);
+            ctx.closePath(); ctx.fill();
+            // Windshield
+            ctx.fillStyle = 'rgba(160,220,255,0.55)';
+            ctx.fillRect(10, -50, 16, 16);
+            // Rear window
+            ctx.fillRect(-26, -50, 14, 14);
+            // Headlight
+            ctx.fillStyle = '#ffe88a';
+            ctx.fillRect(38, -28, 6, 6);
+            // Tail-light
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(-44, -28, 6, 6);
+            // Lois portrait (driver seat)
+            ctx.fillStyle = '#e3bd9c';
+            ctx.beginPath(); ctx.arc(2, -40, 6, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#3a2010';
+            ctx.beginPath(); ctx.arc(2, -42, 7, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+
             ctx.restore();
         }
 
@@ -9574,18 +9576,30 @@
         }
 
         // ── BANK INTERIOR ────────────────────────────────────────────────────
+        const bankLois = { x: 320, y: 0, faceDir: 1, phase: 0, active: false };
+
         function enterBank() {
             bankScene = {
                 saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive }
             };
             hero.x = 120; hero.y = BANK_INT.floorY - hero.h;
             hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            bankLois.x = 260; bankLois.y = BANK_INT.floorY; bankLois.active = true; bankLois.faceDir = 1;
             scene = 'bank';
             platforms.splice(0, platforms.length, ...BANK_INT_PLATFORMS);
             camera.x = 0; camera.y = Math.max(0, BANK_INT.floorY + 80 - H);
             bankInterrogated = 0;
             advanceQuest('bank_interrogate');
-            titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Approach witnesses and press E to question them.', timer: 220 };
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: [
+                    'I slipped in through the side entrance. The witnesses are still inside — shaken but talking.',
+                    'Question the teller near the vault and the security guard at the far end.'
+                ],
+                onDone: () => {
+                    titleCard = { text: 'FIRST NATIONAL BANK', sub: 'Approach witnesses and press E to question them.', timer: 220 };
+                }
+            });
         }
 
         function exitBank() {
@@ -9596,6 +9610,7 @@
             hero.onGround = true;
             scene = 'city';
             bankScene = null;
+            bankLois.active = false;
             platforms.splice(0, platforms.length, ...L1_PLATFORMS);
             camera.x = Math.max(0, hero.x - W / 2);
             camera.y = 0;
@@ -9627,14 +9642,15 @@
                 bankEnemiesSpawned = false;
                 advanceQuest('bank_enter');
                 bankEntryUnlocked = true;
-                titleCard = { text: 'ROBBERS DEFEATED', sub: 'Entering the bank — witness inside may have answers.', timer: 180 };
                 startDialogue({
                     speaker: 'CK', portrait: 'hero',
                     lines: [
                         'That\'s the last of them. But Dr. Chen\'s operation goes deeper than this...',
                         'There may be witnesses inside who saw something. I need to go in.'
                     ],
-                    onDone: () => { enterBank(); }
+                    onDone: () => {
+                        titleCard = { text: 'ENTER THE BANK', sub: 'Walk to the doors and press F to go inside.', timer: 240 };
+                    }
                 });
             }
         }
@@ -11156,6 +11172,38 @@
             }
             // Suspects
             for (const s of bankSuspects) drawBankSuspect(s);
+            // Lois inside bank
+            if (bankLois.active) {
+                bankLois.phase += 0.04;
+                const lx = bankLois.x;
+                const ly = bankLois.y;
+                const bob = Math.sin(bankLois.phase) * 1.5;
+                const lsx = lx - camera.x;
+                if (lsx > -60 && lsx < W + 60) {
+                    ctx.save();
+                    // Legs
+                    ctx.fillStyle = '#1a1a30'; ctx.fillRect(lx - 7, ly - 22, 6, 22); ctx.fillRect(lx + 1, ly - 22, 6, 22);
+                    ctx.fillStyle = '#c01820'; ctx.fillRect(lx - 8, ly - 4, 8, 4); ctx.fillRect(lx + 1, ly - 4, 8, 4);
+                    // Red blazer
+                    ctx.fillStyle = '#b81c2c'; ctx.fillRect(lx - 12, ly - 58 + bob, 24, 36);
+                    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lx - 5, ly - 56 + bob, 10, 20);
+                    // Head + hair
+                    ctx.fillStyle = '#e8b080'; ctx.beginPath(); ctx.arc(lx, ly - 64 + bob, 9, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#1a0a04'; ctx.beginPath(); ctx.arc(lx, ly - 66 + bob, 10, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+                    // Notepad
+                    ctx.fillStyle = '#f8f8e8'; ctx.fillRect(lx + 10 * bankLois.faceDir, ly - 50 + bob, 12, 16);
+                    ctx.strokeStyle = '#888'; ctx.lineWidth = 0.8;
+                    for (let li = 0; li < 3; li++) ctx.strokeRect(lx + 11 * bankLois.faceDir, ly - 48 + bob + li * 4, 10, 2);
+                    // Speech bubble — only before any witness is questioned
+                    if (bankInterrogated === 0 && !activeDialogue) {
+                        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                        ctx.beginPath(); ctx.roundRect(lx - 48, ly - 96 + bob, 96, 22, 6); ctx.fill();
+                        ctx.fillStyle = '#333'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                        ctx.fillText('Press E to question witnesses', lx, ly - 80 + bob);
+                    }
+                    ctx.restore();
+                }
+            }
             // Exit door (left side) — world x=50
             ctx.fillStyle = '#6b4c1a'; ctx.fillRect(50, BANK_INT.floorY - 90, 55, 90);
             ctx.strokeStyle = '#c8a840'; ctx.lineWidth = 3;
@@ -13101,11 +13149,6 @@
                 updateLabLois();
                 updateHitFX();
                 updateCamera();
-                // Auto-exit after bank robbery dialogue completes (countdown in frames)
-                if (labExitReady && labExitCountdown > 0) {
-                    labExitCountdown--;
-                    if (labExitCountdown <= 0) exitLexlab();
-                }
                 draw();
                 updateHUD();
                 requestAnimationFrame(loop);
