@@ -892,20 +892,25 @@
         }
 
         function drawConstructionDressing() {
-            const bx = CONSTRUCTION_X - 350 - camera.x;
-            if (bx > W + 400 || bx + 700 < 0) return;
-            const gy = GROUND_Y - camera.y;
+            // Called inside ctx.translate(-camera.x, -camera.y) — use world coords only
+            const cx0 = CONSTRUCTION_X - 350;
+            if (cx0 - camera.x > W + 400 || cx0 + 700 - camera.x < 0) return;
+            const gy = GROUND_Y;
             ctx.save();
             // Site boundary fence
             ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2;
             for (let fx = CONSTRUCTION_X - 350; fx < CONSTRUCTION_X + 350; fx += 40) {
-                const fx2 = fx - camera.x;
-                ctx.beginPath(); ctx.moveTo(fx2, gy); ctx.lineTo(fx2, gy - 50); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(fx, gy); ctx.lineTo(fx, gy - 50); ctx.stroke();
             }
-            ctx.beginPath(); ctx.moveTo(CONSTRUCTION_X - 350 - camera.x, gy - 50);
-            ctx.lineTo(CONSTRUCTION_X + 350 - camera.x, gy - 50); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(CONSTRUCTION_X - 350, gy - 50);
+            ctx.lineTo(CONSTRUCTION_X + 350, gy - 50); ctx.stroke();
+            // Entrance gate (centered on CONSTRUCTION_X)
+            ctx.fillStyle = '#5a3a18';
+            ctx.fillRect(CONSTRUCTION_X - 30, gy - 100, 60, 100);
+            ctx.strokeStyle = '#8a6a38'; ctx.lineWidth = 3;
+            ctx.strokeRect(CONSTRUCTION_X - 30, gy - 100, 60, 100);
             // Scaffolding tower
-            const tx = CONSTRUCTION_X + 150 - camera.x;
+            const tx = CONSTRUCTION_X + 150;
             ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
             for (let ry = 0; ry < 3; ry++) {
                 ctx.beginPath(); ctx.moveTo(tx, gy - 60 - ry*60); ctx.lineTo(tx + 60, gy - 60 - ry*60); ctx.stroke();
@@ -914,15 +919,17 @@
             }
             // Stacked materials
             ctx.fillStyle = '#b87333';
-            ctx.fillRect(CONSTRUCTION_X - 320 - camera.x, gy - 30, 60, 30);
-            ctx.fillRect(CONSTRUCTION_X - 320 - camera.x, gy - 50, 60, 18);
+            ctx.fillRect(CONSTRUCTION_X - 320, gy - 30, 60, 30);
+            ctx.fillRect(CONSTRUCTION_X - 320, gy - 50, 60, 18);
             // Cement mixer
             ctx.fillStyle = '#666'; ctx.beginPath();
-            ctx.arc(CONSTRUCTION_X + 240 - camera.x, gy - 30, 22, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#888'; ctx.fillRect(CONSTRUCTION_X + 218 - camera.x, gy - 60, 44, 30);
-            // Caution sign
+            ctx.arc(CONSTRUCTION_X + 240, gy - 30, 22, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#888'; ctx.fillRect(CONSTRUCTION_X + 218, gy - 60, 44, 30);
+            // Caution sign + F prompt
             ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-            ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X - camera.x, gy - 58);
+            ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X, gy - 108);
+            ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial';
+            ctx.fillText('F — Enter', CONSTRUCTION_X, gy - 112);
             ctx.restore();
         }
 
@@ -2740,7 +2747,14 @@
                 return;
             }
             // ---- dialogue engine intercepts ENTER before anything else ----
-            if (activeDialogue) { advanceDialogue(); e.preventDefault(); return; }
+            if (activeDialogue) {
+                e.preventDefault();
+                // Only Enter / Space / F advance dialogue — movement keys are swallowed
+                if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF') {
+                    advanceDialogue();
+                }
+                return;
+            }
             // ---- story modal (case-file note/clue) intercepts all input ----
             if (storyModal) {
                 if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF') {
