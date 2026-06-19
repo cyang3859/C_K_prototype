@@ -13468,11 +13468,11 @@
                 }
             }
             if (questPhase === 'lexcorp2_fight') checkLexcorp2Cleared();
-            // Unlock construction entry when hero arrives nearby
-            if (questPhase === 'travel_construction' && !constructionEntryUnlocked) {
-                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 500) {
+            // Auto-enter construction yard when hero arrives during travel_construction
+            if (questPhase === 'travel_construction' && !constructionEntryUnlocked && !activeDialogue) {
+                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 400) {
                     constructionEntryUnlocked = true;
-                    titleCard = { text: 'CONSTRUCTION SITE', sub: 'Both characters are here — press F at the entrance to go inside.', timer: 220 };
+                    enterConstruction();
                 }
             }
             if (currentLevel === 1 && constructionSpawned) updateYardWorkers();
