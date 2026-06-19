@@ -578,6 +578,14 @@
         let l2QuestPhase = 'idle';
         let l2IntroDone  = false;   // one-shot flag for fly-in landing dialogue
         function advanceL2Quest(p) { l2QuestPhase = p; console.log('[L2]', p); }
+        // L3 quest phase state machine
+        const VILLAGE_X   = 2200;
+        const RUINS_X     = 7500;
+        const VILLAGE_INT = { w: 2800, floorY: 840, ceilingY: 80 };
+        const RUINS_INT   = { w: 3000, floorY: 840, ceilingY: 60 };
+        let l3QuestPhase  = 'idle';
+        let l3IntroDone   = false;
+        function advanceL3Quest(p) { l3QuestPhase = p; console.log('[L3]', p); }
         let constructionSpawned = false;
         let constructionEntryUnlocked = false;
         let constructionScene = null;
@@ -1079,6 +1087,66 @@
                         });
                         return true;
                     }
+                }
+            }
+            // Amazonian Village: speak to witnesses + elder (E key)
+            if (scene === 'village' && l3QuestPhase === 'village_interior' && !activeDialogue) {
+                const heroMid = hero.x + hero.w / 2;
+                for (const w of villageWitnesses) {
+                    if (w.spoken) continue;
+                    if (Math.abs(heroMid - w.x) < 90) {
+                        w.spoken = true; witnessesSpoken++;
+                        startDialogue({ speaker: w.name, portrait: 'npc', lines: w.lines });
+                        return true;
+                    }
+                }
+                if (witnessesSpoken >= 3 && villageElderNPC.active && !activeDialogue) {
+                    if (Math.abs(heroMid - villageElderNPC.x) < 100) {
+                        villageElderNPC.active = false;
+                        startDialogue({ speaker: 'Village Elder', portrait: 'npc',
+                            lines: ['She fought until her last breath. Her weapons are in the old ruins — take them.'],
+                            onDone: () => startDialogue({ speaker: 'Village Elder', portrait: 'npc',
+                                lines: ['The temple has been sealed for a thousand years. Ares will use Diana as the key.'],
+                                onDone: () => startDialogue({ speaker: 'Village Elder', portrait: 'npc',
+                                    lines: ['Go. Before the ritual is complete.'],
+                                    onDone: () => exitVillage()
+                                })
+                            })
+                        });
+                        return true;
+                    }
+                }
+            }
+            // Ancient Ruins: fight cultists + examine altar (E key)
+            if (scene === 'ruins' && l3QuestPhase === 'ruins_interior' && !activeDialogue) {
+                const heroMid = hero.x + hero.w / 2;
+                // Defeat cultists
+                for (const c of ruinsCultists) {
+                    if (c.defeated || !c.active) continue;
+                    if (Math.abs(heroMid - c.x) < 80) {
+                        c.defeated = true; ruinsCultistsDefeated++;
+                        const cultistIdx = ruinsCultistsDefeated;
+                        startDialogue({ speaker: 'CK', portrait: 'hero',
+                            lines: ['Cultist down. ' + (ruinsCultistsDefeated < 3 ? 'Keep going.' : 'That\'s the last one — find Diana\'s gear.')]
+                        });
+                        return true;
+                    }
+                }
+                // Examine WW altar (after all cultists defeated)
+                if (!wwAltarExamined && ruinsCultistsDefeated >= 3 && Math.abs(heroMid - 2400) < 110) {
+                    wwAltarExamined = true;
+                    const compSpeaker2 = (l3Companion === 'powergirl') ? 'Power Girl' : 'Dark Wing';
+                    startDialogue({ speaker: 'CK', portrait: 'hero',
+                        lines: ['Her shield. Her lasso. Diana left these behind intentionally — a trail.'],
+                        onDone: () => startDialogue({ speaker: 'CK', portrait: 'hero',
+                            lines: ['The cultists were guarding this. She\'s at the main temple — that\'s where Lex is running the ritual.'],
+                            onDone: () => startDialogue({ speaker: compSpeaker2, portrait: 'npc',
+                                lines: ['Then we end this at the temple. Let\'s go.'],
+                                onDone: () => exitRuins()
+                            })
+                        })
+                    });
+                    return true;
                 }
             }
             // Construction yard: question workers / catch henchman
@@ -3023,6 +3091,22 @@
             if (e.code === 'KeyF' && scene === 'arkham' && l2QuestPhase === 'arkham_exit') {
                 if (hero.x < 160) { exitArkham(); e.preventDefault(); }
             }
+            // F: enter Amazonian Village (L3)
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 3 && l3QuestPhase === 'travel_village') {
+                if (Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 220) { enterVillage(); e.preventDefault(); }
+            }
+            // F: exit Amazonian Village
+            if (e.code === 'KeyF' && scene === 'village') {
+                if (hero.x < 160) { exitVillage(); e.preventDefault(); }
+            }
+            // F: enter Ancient Ruins (L3)
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 3 && l3QuestPhase === 'travel_ruins') {
+                if (Math.abs((hero.x + hero.w/2) - RUINS_X) < 220) { enterRuins(); e.preventDefault(); }
+            }
+            // F: exit Ancient Ruins (after altar examined)
+            if (e.code === 'KeyF' && scene === 'ruins' && wwAltarExamined) {
+                if (hero.x < 160) { exitRuins(); e.preventDefault(); }
+            }
             // F: talk to Lois when nearby in the interior
             if (e.code === 'KeyF' && scene === 'interior' && interior.note.read) {
                 const loisNPC = interior.npcs.find(n => n.lois);
@@ -4170,6 +4254,51 @@
                 if (en.type === 'warlord') {
                     if (en.baseY === undefined) en.baseY = en.y;
                     en.y = en.baseY + Math.sin(Date.now() * 0.0015) * 50;
+                }
+                // ── LEX BOSS: walk + fire kryptonite projectiles ──────────────
+                if (en.type === 'lex_boss') {
+                    // Walk toward hero
+                    const lexTargetX = hero.x + hero.w / 2;
+                    const lexDx = lexTargetX - (en.x + en.w / 2);
+                    const lexSpd = en.hp < 10 ? 2.2 : 1.4;
+                    en.x += Math.sign(lexDx) * lexSpd;
+                    en._moveDir = Math.sign(lexDx);
+                    en.x = Math.max(60, Math.min(TEMPLE_SCENE.w - en.w - 60, en.x));
+                    en.y = TEMPLE_SCENE.floorY - en.h;
+                    // Fire kryptonite beam periodically
+                    en._shootCD = (en._shootCD || 0) - 1;
+                    const shootInterval = en.hp < 10 ? 55 : 90;
+                    if (en._shootCD <= 0) {
+                        en._shootCD = shootInterval;
+                        if (!en._projArr) en._projArr = [];
+                        en._projArr.push({
+                            x: en.x + en.w / 2, y: en.y + en.h / 2,
+                            vx: Math.sign(lexDx) * 8, vy: -1,
+                            life: 80, r: 7
+                        });
+                    }
+                    // Update lex projectiles — damage hero on hit
+                    if (!en._projArr) en._projArr = [];
+                    for (let pi = en._projArr.length - 1; pi >= 0; pi--) {
+                        const proj = en._projArr[pi];
+                        proj.x += proj.vx; proj.y += proj.vy;
+                        proj.life--;
+                        if (proj.life <= 0) { en._projArr.splice(pi, 1); continue; }
+                        // Hit hero
+                        if (proj.x > hero.x && proj.x < hero.x + hero.w &&
+                            proj.y > hero.y && proj.y < hero.y + hero.h) {
+                            hero.hp = Math.max(0, (hero.hp || 10) - 1);
+                            screenShake = Math.max(screenShake, 4);
+                            en._projArr.splice(pi, 1);
+                        }
+                    }
+                    // Melee strike when very close
+                    en.attackCD = (en.attackCD || 0) - 1;
+                    if (en.attackCD <= 0 && Math.abs(lexDx) < 70) {
+                        en.attackCD = 60;
+                        hero.hp = Math.max(0, (hero.hp || 10) - 2);
+                        screenShake = Math.max(screenShake, 6);
+                    }
                 }
                 en.phase = (en.phase || 0) + 0.1;
             }
@@ -5410,6 +5539,71 @@
                     ctx.fillRect(X + i * pipW2 + 1, Y - 14, pipW2 - 3, 6);
                 }
                 ctx.shadowBlur = 0;
+            }
+
+            else if (en.type === 'lex_boss') {
+                // ── LEX LUTHOR — powered war-suit, kryptonite reactor ──
+                const X = en.x, Y = en.y, W2 = en.w, H2 = en.h;
+                const phase2 = en.phase || 0;
+                // Legs
+                ctx.fillStyle = '#1a2830';
+                ctx.fillRect(X + W2 * 0.08, Y + H2 * 0.62, W2 * 0.37, H2 * 0.38);
+                ctx.fillRect(X + W2 * 0.55, Y + H2 * 0.62, W2 * 0.37, H2 * 0.38);
+                // Boot accents
+                ctx.fillStyle = '#40ff80'; ctx.fillRect(X + W2 * 0.06, Y + H2 * 0.88, W2 * 0.40, H2 * 0.08);
+                ctx.fillRect(X + W2 * 0.54, Y + H2 * 0.88, W2 * 0.40, H2 * 0.08);
+                // Body suit
+                const lexGrd = ctx.createLinearGradient(X, Y + H2 * 0.2, X + W2, Y + H2 * 0.62);
+                lexGrd.addColorStop(0, '#2a3840'); lexGrd.addColorStop(1, '#162028');
+                ctx.fillStyle = lexGrd; ctx.fillRect(X, Y + H2 * 0.22, W2, H2 * 0.42);
+                // Chest kryptonite reactor (pulsing green)
+                const kryPulse = 0.7 + Math.sin(phase2 * 2.4) * 0.3;
+                ctx.fillStyle = `rgba(40,255,100,${kryPulse})`;
+                ctx.shadowColor = '#20ff60'; ctx.shadowBlur = 16 * kryPulse;
+                ctx.beginPath(); ctx.arc(X + W2 / 2, Y + H2 * 0.38, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#40ffa0'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(X + W2 / 2, Y + H2 * 0.38, 15, 0, Math.PI * 2); ctx.stroke();
+                // LexCorp "L" on chest
+                ctx.fillStyle = '#80c8ff'; ctx.font = `bold ${W2 * 0.4}px serif`; ctx.textAlign = 'center';
+                ctx.fillText('L', X + W2 / 2, Y + H2 * 0.30);
+                // Shoulder pads (angular, tech)
+                ctx.fillStyle = '#304858';
+                ctx.fillRect(X - 8, Y + H2 * 0.22, W2 * 0.28, H2 * 0.16);
+                ctx.fillRect(X + W2 - W2 * 0.20, Y + H2 * 0.22, W2 * 0.28, H2 * 0.16);
+                // Arms
+                ctx.fillStyle = '#243040';
+                ctx.fillRect(X - 6, Y + H2 * 0.26, 10, H2 * 0.34);
+                ctx.fillRect(X + W2 - 4, Y + H2 * 0.26, 10, H2 * 0.34);
+                // Head — bald, determined
+                ctx.fillStyle = '#d4b890'; ctx.beginPath(); ctx.arc(X + W2 / 2, Y + H2 * 0.13, W2 * 0.28, 0, Math.PI * 2); ctx.fill();
+                // Helmet visor band
+                ctx.fillStyle = '#40ffa0'; ctx.globalAlpha = 0.7;
+                ctx.fillRect(X + W2 * 0.18, Y + H2 * 0.09, W2 * 0.64, H2 * 0.07);
+                ctx.globalAlpha = 1;
+                // HP bar (large, green)
+                const hpFrac = en.hp / en.maxHp;
+                ctx.fillStyle = '#1a3020'; ctx.fillRect(X - 10, Y - 18, W2 + 20, 10);
+                ctx.fillStyle = hpFrac > 0.5 ? '#40ff80' : hpFrac > 0.25 ? '#c8c020' : '#ff4040';
+                ctx.shadowColor = '#40ff80'; ctx.shadowBlur = 4;
+                ctx.fillRect(X - 10, Y - 18, (W2 + 20) * hpFrac, 10);
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#60ffa0'; ctx.lineWidth = 1.5;
+                ctx.strokeRect(X - 10, Y - 18, W2 + 20, 10);
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('LEX LUTHOR', X + W2 / 2, Y - 22);
+                // Draw kryptonite projectiles
+                if (en._projArr) {
+                    for (const proj of en._projArr) {
+                        const pgrd = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, proj.r);
+                        pgrd.addColorStop(0, 'rgba(200,255,80,0.95)');
+                        pgrd.addColorStop(1, 'rgba(40,200,40,0)');
+                        ctx.fillStyle = pgrd;
+                        ctx.shadowColor = '#80ff40'; ctx.shadowBlur = 10;
+                        ctx.beginPath(); ctx.arc(proj.x, proj.y, proj.r, 0, Math.PI * 2); ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                }
             }
 
             if (frozen) {
@@ -8095,6 +8289,8 @@
             if (scene === 'construction') drawConstruction();
             if (scene === 'wayne') drawWayneInterior();
             if (scene === 'arkham') drawArkhamInterior();
+            if (scene === 'village') drawVillageInterior();
+            if (scene === 'ruins') drawRuinsInterior();
             if (scene === 'city') {
                 // L1 overlays
                 if (currentLevel === 1 && constructionEntryUnlocked &&
@@ -8111,6 +8307,13 @@
                 }
                 if (currentLevel === 2 && camera.x + W > ARKHAM_X - 600 && camera.x < ARKHAM_X + 600) {
                     drawArkhamExterior();
+                }
+                // L3 exteriors
+                if (currentLevel === 3 && camera.x + W > VILLAGE_X - 500 && camera.x < VILLAGE_X + 650) {
+                    drawVillageExterior();
+                }
+                if (currentLevel === 3 && camera.x + W > RUINS_X - 600 && camera.x < RUINS_X + 750) {
+                    drawRuinsExterior();
                 }
             }
 
@@ -8970,6 +9173,18 @@
             return L2_TRAVEL_DEST[l2QuestPhase] || null;
         }
 
+        const L3_TRAVEL_DEST = {
+            'travel_village':   { worldX: VILLAGE_X, label: 'AMAZONIAN VILLAGE', color: '#40b840' },
+            'village_interior': { worldX: VILLAGE_X, label: 'AMAZONIAN VILLAGE', color: '#40b840' },
+            'travel_ruins':     { worldX: RUINS_X,   label: 'ANCIENT RUINS',     color: '#c8a040' },
+            'ruins_interior':   { worldX: RUINS_X,   label: 'ANCIENT RUINS',     color: '#c8a040' },
+            'travel_temple':    { worldX: 14810,     label: 'TEMPLE OF ARES',    color: '#cc3030' },
+        };
+        function getL3Destination() {
+            if (currentLevel !== 3 || scene !== 'city') return null;
+            return L3_TRAVEL_DEST[l3QuestPhase] || null;
+        }
+
         function _drawDestArrow(worldX, label, accentColor, screenY) {
             const heroWorldX = hero.x + hero.w / 2;
             const dx = worldX - heroWorldX;
@@ -9035,6 +9250,10 @@
             // ── L2 quest travel arrow ──
             const l2dest = getL2Destination();
             if (l2dest) _drawDestArrow(l2dest.worldX, l2dest.label, l2dest.color, 38);
+
+            // ── L3 quest travel arrow ──
+            const l3dest = getL3Destination();
+            if (l3dest) _drawDestArrow(l3dest.worldX, l3dest.label, l3dest.color, 38);
 
             // ── L2/L3 clue zone arrow (legacy) ──
             if (!questZone || !pendingTrapCiv) return;
@@ -9982,9 +10201,9 @@
                     templeIntroStep++;
                     templeIntroTimer = 210;
                     const steps = [
-                        { text: 'ARES SPEAKS', sub: '"You dare enter my temple, child of man? Your world will burn."' },
-                        { text: 'LEX LUTHOR', sub: '"I\'ve upgraded my suit for divine power. Even gods can have a patron, Wonder Woman."' },
-                        { text: 'WONDER WOMAN', sub: '"Ares — your war ends here. Luthor — justice doesn\'t care about your suit."' },
+                        { text: 'ARES SPEAKS', sub: '"The Kryptonian arrives. Luthor said you would come."' },
+                        { text: 'LEX LUTHOR', sub: '"Right on schedule. Diana played her part beautifully."' },
+                        { text: 'WONDER WOMAN', sub: '"CK — free me! Ares is using my power to open the portal!"' },
                         { text: 'BATTLE BEGINS', sub: 'Thirty corrupted warriors flood the hall. Defeat them all.' },
                     ];
                     if (templeIntroStep < steps.length) {
@@ -9993,19 +10212,48 @@
                     } else {
                         spawnTempleWarriors();
                         templePhase = 'battle';
-                        wonderWoman.fightMode = true;
-                        darkWing.fightMode = true;
+                        darkWing.fightMode = darkWing._l3Active;
+                        powerGirl.fightMode = powerGirl.active;
                     }
                 }
                 return;
             }
 
-            // Battle: monitor enemy count
+            // Battle: monitor enemy count — spawn Lex boss after wave cleared
             if (templePhase === 'battle') {
-                if (enemies.filter(e => e.alive).length === 0) {
+                const aliveEnemies = enemies.filter(e => e.alive);
+                if (aliveEnemies.length === 0 && !lexSpawned) {
+                    lexSpawned = true;
+                    startDialogue({ speaker: 'Lex Luthor', portrait: 'npc',
+                        lines: ['Impressive. But you\'ve already lost — the portal is open.',
+                                'I don\'t need Ares anymore. I have what I came for.'],
+                        onDone: () => {
+                            // Spawn Lex as lex_boss type enemy
+                            enemies.push({ x: 2800, y: TEMPLE_SCENE.floorY - 80, w: 50, h: 80,
+                                vx: 0, vy: 0, alive: true, hp: 20, maxHp: 20, frozen: 0,
+                                type: 'lex_boss', attackCD: 0, _moveDir: -1, _shootCD: 0,
+                                dodgeCD: 0, dodgeTimer: 0, dodgeVY: 0, district: 'temple' });
+                            titleCard = { text: 'LEX LUTHOR', sub: 'The man behind it all. Defeat him.', timer: 220 };
+                        }
+                    });
+                }
+                if (lexSpawned && enemies.filter(e => e.alive).length === 0) {
                     templePhase = 'victory';
-                    titleCard = { text: 'VICTORY', sub: 'Ares is driven back. Luthor retreats into the shadows. The Amazon is free.', timer: 400 };
-                    setTimeout(() => exitTemple(), 5000);
+                    // Free Wonder Woman
+                    wonderWoman.x = 1400; wonderWoman.y = TEMPLE_SCENE.floorY - 80;
+                    wonderWoman._targetX = 1400; wonderWoman._onGround = true;
+                    wonderWoman.fightMode = false;
+                    startDialogue({ speaker: 'Wonder Woman', portrait: 'npc',
+                        lines: ['It\'s over. Ares\'s power fades without the ritual.',
+                                'You came for me. I won\'t forget that, Kal-El.'],
+                        onDone: () => startDialogue({ speaker: 'CK', portrait: 'hero',
+                            lines: ['The portal — it\'s closing. We need to get clear.'],
+                            onDone: () => {
+                                titleCard = { text: 'THE AMAZON IS FREE', sub: 'Lex Luthor defeated. Wonder Woman rescued.', timer: 300 };
+                                setTimeout(() => exitTemple(), 4000);
+                            }
+                        })
+                    });
                 }
             }
 
@@ -10056,61 +10304,60 @@
             orbs.splice(0, orbs.length, ...l3Orbs);
             platforms.splice(0, platforms.length, ...L3_PLATFORMS);
             emitters.splice(0, emitters.length, ...l3Emitters);
-            clues.splice(0, clues.length, ...l3Clues);
-            activeClueIndex = 0;
-            cluesFound = 0;
-            pendingTrapCiv = null;
-            questZone = null;
+            clues.splice(0, clues.length);   // L3 uses quest phases, not clue auto-progression
             enemies.splice(0);
             civilians.splice(0);
             carriedCivilians = [];
             orbsCollected = 0;
             bossDefeated = false;
-            templeEntryUnlocked = false;
+            templeEntryUnlocked = true;   // quest phase gates entry instead
             factoryEntryUnlocked = false;
             interior.note.read = true;
-            hero.x = 220; hero.y = L3_GROUND_Y - hero.h;
-            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true;
-            hound.x = 130; hound.y = L3_GROUND_Y - hound.h;
-            hound.vx = 0; hound.vy = 0; hound.flightActive = false; hound.onGround = true;
+            // Fly-in: hero + hound fall from sky
+            hero.x = 220; hero.y = L3_GROUND_Y - 420;
+            hero.vx = 0; hero.vy = 9; hero.flightActive = false; hero.onGround = false;
+            hound.x = 130; hound.y = L3_GROUND_Y - 320;
+            hound.vx = 0; hound.vy = 7; hound.flightActive = false; hound.onGround = false;
             camera.x = 0; camera.y = 0;
             currentDistrict = 'outskirts';
             scene = 'city';
-            // Drop Wonder Woman in from the sky as intro
-            wonderWoman.x = l3Clues[0].x - 80;
-            wonderWoman._targetX = wonderWoman.x;
-            wonderWoman.y = 200;
-            wonderWoman.vy = 6;
-            wonderWoman._onGround = false;
-            wonderWoman.fightMode = false;
-            wonderWoman.zoneCombat = false;
+            // Wonder Woman is CAPTURED — park off-screen, freed at temple victory
+            wonderWoman.x = -9999; wonderWoman._targetX = -9999;
+            wonderWoman.y = L3_GROUND_Y; wonderWoman.vy = 0;
+            wonderWoman._onGround = true; wonderWoman.fightMode = false; wonderWoman.zoneCombat = false;
 
-            // ── Activate previous-level companions based on title screen selection ──
-            // Dark Wing
+            // ── Activate companions based on title screen selection ──
             const hasDW = (l3Companion === 'darkwing' || l3Companion === 'both');
-            darkWing.x = l3Clues[0].x - 140;
+            darkWing.x = hasDW ? 300 : -9999;
             darkWing._targetX = darkWing.x;
-            darkWing.y = L3_GROUND_Y;
-            darkWing.vy = 0; darkWing._onGround = true;
+            darkWing.y = L3_GROUND_Y - 320; darkWing.vy = hasDW ? 7 : 0;
+            darkWing._onGround = false;
             darkWing._swinging = false; darkWing._gliding = false;
             darkWing.fightMode = false; darkWing.zoneCombat = false;
             darkWing.driving = false; darkWing._jumpCD = 0; darkWing._grappleCD = 0;
-            // Mark as active or parked off-screen
             darkWing._l3Active = hasDW;
-            if (!hasDW) darkWing.x = -9999;   // park off-screen if not selected
 
-            // Power Girl
             const hasPG = (l3Companion === 'powergirl' || l3Companion === 'both');
             powerGirl.active = hasPG;
             powerGirl.captured = false;
-            powerGirl.x = hasPG ? l3Clues[0].x - 200 : -9999;
-            powerGirl.y = L3_GROUND_Y;
-            powerGirl.vx = 0; powerGirl.vy = 0;
-            powerGirl.onGround = true; powerGirl.fightMode = hasPG;
+            powerGirl.x = hasPG ? 360 : -9999;
+            powerGirl.y = hasPG ? L3_GROUND_Y - 280 : L3_GROUND_Y;
+            powerGirl.vx = 0; powerGirl.vy = hasPG ? 7 : 0;
+            powerGirl.onGround = !hasPG; powerGirl.fightMode = hasPG;
             powerGirl.hp = 20; powerGirl.maxHp = 20;
 
+            // Quest state
+            l3QuestPhase = 'l3_intro';
+            l3IntroDone  = false;
+            villageScene = null; ruinsScene = null;
+            witnessesSpoken = 0;
+            villageWitnesses.forEach(w => { w.spoken = false; w.active = false; });
+            villageElderNPC.active = false;
+            ruinsCultists.forEach(c => { c.defeated = false; c.active = false; });
+            ruinsCultistsDefeated = 0; wwAltarExamined = false; lexSpawned = false;
+
             const compNames = { darkwing: 'Dark Wing', powergirl: 'Power Girl', both: 'Dark Wing & Power Girl' };
-            titleCard = { text: 'LEVEL 3 — THE AMAZON', sub: 'Wonder Woman: "Ares corrupts this forest. We fight together — now." Companions: ' + compNames[l3Companion], timer: 420 };
+            titleCard = { text: 'THE AMAZON', sub: 'Wonder Woman is missing. Find her. | Companions: ' + compNames[l3Companion], timer: 300 };
         }
 
         // ── Final battle: 30 henchmen + Lex Luthor boss ──────────────────────
@@ -11443,6 +11690,32 @@
                       'There\'s a meeting. Tonight. The old Falcone warehouse — docks district.'] },
         ];
 
+        // ── L3 Village NPC objects ────────────────────────────────────────────
+        let villageScene = null;
+        let ruinsScene   = null;
+        let witnessesSpoken = 0;
+        let ruinsCultistsDefeated = 0;
+        let wwAltarExamined = false;
+        let lexSpawned = false;
+
+        const villageElderNPC = { x: 2200, y: VILLAGE_INT.floorY, faceDir: -1, active: false };
+        const villageWitnesses = [
+            { x: 500,  y: VILLAGE_INT.floorY, faceDir:  1, active: false, spoken: false, name: 'WARRIOR MIRA',
+              lines: ['Three nights ago, soldiers in green armor came from the south. Too many to fight.',
+                      'They took Diana. She didn\'t go without a fight — we found her shield in the ruins.'] },
+            { x: 1000, y: VILLAGE_INT.floorY, faceDir: -1, active: false, spoken: false, name: 'WARRIOR THEA',
+              lines: ['The man with the bald head gave the orders. He was not Ares. He was… different. Cold.',
+                      'Lex Luthor. I\'ve seen his face on your world\'s broadcasts.'] },
+            { x: 1500, y: VILLAGE_INT.floorY, faceDir:  1, active: false, spoken: false, name: 'WARRIOR KIRA',
+              lines: ['They were headed toward the old temple. The one forbidden to outsiders.',
+                      'Ares awakens there when blood is spilled. Luthor knows this.'] },
+        ];
+        const ruinsCultists = [
+            { x: 600,  y: RUINS_INT.floorY, faceDir:  1, active: false, defeated: false, phase: 0 },
+            { x: 1300, y: RUINS_INT.floorY, faceDir: -1, active: false, defeated: false, phase: 1 },
+            { x: 2000, y: RUINS_INT.floorY, faceDir:  1, active: false, defeated: false, phase: 2 },
+        ];
+
         // ── Wayne servants (ambient) ──────────────────────────────────────────
         const wayneServants = [
             { x: 700,  y: WAYNE_INT.floorY, faceDir: 1, phase: 0, _dir: 1 },
@@ -12110,6 +12383,537 @@
             if (scene !== 'arkham') return;
             // Guard patrol drawn in drawArkhamGuards (updates position there)
             // Lois and Bruce follow handled in draw functions
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // L3 — AMAZONIAN VILLAGE
+        // ═══════════════════════════════════════════════════════════════════════
+        function drawVillageExterior() {
+            const t = Date.now() * 0.001;
+            const baseY = L3_GROUND_Y;
+            // 6 bamboo stilt huts
+            const huts = [
+                { x: VILLAGE_X - 300, w: 140, h: 90 },
+                { x: VILLAGE_X - 130, w: 160, h: 100 },
+                { x: VILLAGE_X + 50,  w: 150, h: 95 },
+                { x: VILLAGE_X + 220, w: 140, h: 85 },
+                { x: VILLAGE_X + 370, w: 130, h: 80 },
+                { x: VILLAGE_X - 460, w: 120, h: 75 },
+            ];
+            for (const h of huts) {
+                if (h.x + h.w < camera.x - 50 || h.x > camera.x + W + 50) continue;
+                const stiltsY = baseY - h.h - 40;
+                // Stilt legs
+                ctx.strokeStyle = '#5a3010'; ctx.lineWidth = 6;
+                for (let s = 0; s < 3; s++) {
+                    const sx = h.x + 20 + s * (h.w / 2 - 10);
+                    ctx.beginPath(); ctx.moveTo(sx, stiltsY + h.h); ctx.lineTo(sx, baseY); ctx.stroke();
+                }
+                // Hut body
+                ctx.fillStyle = '#7a4820'; ctx.fillRect(h.x, stiltsY, h.w, h.h);
+                // Bamboo wall texture
+                ctx.strokeStyle = '#5a3010'; ctx.lineWidth = 2;
+                for (let bx = h.x + 12; bx < h.x + h.w; bx += 12) {
+                    ctx.beginPath(); ctx.moveTo(bx, stiltsY); ctx.lineTo(bx, stiltsY + h.h); ctx.stroke();
+                }
+                // Thatched roof (triangle)
+                ctx.fillStyle = '#8b6030';
+                ctx.beginPath();
+                ctx.moveTo(h.x - 15, stiltsY);
+                ctx.lineTo(h.x + h.w / 2, stiltsY - 45);
+                ctx.lineTo(h.x + h.w + 15, stiltsY);
+                ctx.closePath(); ctx.fill();
+                // Roof texture stripes
+                ctx.strokeStyle = '#6a4820'; ctx.lineWidth = 1.5;
+                for (let rx = 0; rx < 5; rx++) {
+                    const t2 = rx / 4;
+                    ctx.beginPath();
+                    ctx.moveTo(h.x - 15 + t2 * (h.w / 2 + 15), stiltsY);
+                    ctx.lineTo(h.x + h.w / 2, stiltsY - 45); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(h.x + h.w + 15 - t2 * (h.w / 2 + 15), stiltsY);
+                    ctx.lineTo(h.x + h.w / 2, stiltsY - 45); ctx.stroke();
+                }
+                // Doorway
+                ctx.fillStyle = '#2a1508';
+                ctx.fillRect(h.x + h.w / 2 - 14, stiltsY + h.h - 36, 28, 36);
+            }
+            // Totem poles at entrance
+            for (let tp = 0; tp < 2; tp++) {
+                const tx2 = VILLAGE_X + (tp === 0 ? -30 : 30);
+                ctx.fillStyle = '#6a3815'; ctx.fillRect(tx2 - 10, baseY - 160, 20, 160);
+                // Totem face rings
+                for (let f = 0; f < 3; f++) {
+                    const fy = baseY - 40 - f * 48;
+                    ctx.fillStyle = ['#c84020', '#20a040', '#c8a020'][f];
+                    ctx.beginPath(); ctx.arc(tx2, fy, 14, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#2a1508'; ctx.lineWidth = 2; ctx.stroke();
+                }
+            }
+            // Central bonfire glow
+            const bfx = VILLAGE_X;
+            const flicker = Math.sin(t * 8) * 4;
+            const grd = ctx.createRadialGradient(bfx, baseY - 10, 5, bfx, baseY - 10, 40 + flicker);
+            grd.addColorStop(0, 'rgba(255,200,60,0.5)');
+            grd.addColorStop(1, 'rgba(255,80,0,0)');
+            ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(bfx, baseY - 10, 40 + flicker, 0, Math.PI * 2); ctx.fill();
+            // Flame
+            ctx.fillStyle = `rgba(255,${120 + Math.sin(t*12)*40|0},30,0.9)`;
+            ctx.beginPath();
+            ctx.moveTo(bfx - 12, baseY);
+            ctx.quadraticCurveTo(bfx, baseY - 35 - flicker * 2, bfx + 12, baseY);
+            ctx.closePath(); ctx.fill();
+            // F-key prompt
+            if (l3QuestPhase === 'travel_village' && Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 220) {
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                const sx = VILLAGE_X - camera.x;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx - 90, L3_GROUND_Y - camera.y - 140, 180, 30);
+                ctx.fillStyle = '#ffe080'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('F — Enter Village', sx, L3_GROUND_Y - camera.y - 120);
+                ctx.restore();
+            }
+        }
+
+        function enterVillage() {
+            if (villageScene) return;
+            villageScene = { saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive } };
+            hero.x = 120; hero.y = VILLAGE_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true;
+            hound.x = 200; hound.y = VILLAGE_INT.floorY - hound.h;
+            scene = 'village';
+            platforms.splice(0, platforms.length);
+            camera.x = 0; camera.y = Math.max(0, VILLAGE_INT.floorY + 80 - H);
+            advanceL3Quest('village_interior');
+            villageElderNPC.x = 2200; villageElderNPC.active = true;
+            villageWitnesses.forEach((w, i) => { w.x = 500 + i * 500; w.active = true; w.spoken = false; });
+            witnessesSpoken = 0;
+            startDialogue({ speaker: 'CK', portrait: 'hero',
+                lines: ['This village has seen battle. Someone here knows what happened to Diana.'],
+                onDone: () => { titleCard = { text: 'AMAZONIAN VILLAGE', sub: 'Speak to the survivors — press E when close.', timer: 220 }; }
+            });
+        }
+
+        function exitVillage() {
+            if (!villageScene) return;
+            hero.x = VILLAGE_X + 30; hero.y = L3_GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.facing = villageScene.saved.hf; hero.flightActive = false; hero.onGround = true;
+            scene = 'city'; villageScene = null;
+            platforms.splice(0, platforms.length, ...L3_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
+            advanceL3Quest('travel_ruins');
+            titleCard = { text: 'HEAD TO THE ANCIENT RUINS', sub: 'The trail leads deeper into the jungle.', timer: 240 };
+        }
+
+        function drawVillageInterior() {
+            const t = Date.now() * 0.001;
+            // Background — large meeting hut interior
+            ctx.fillStyle = '#3a2010'; ctx.fillRect(camera.x, camera.y, W, H);
+            // Bamboo wall texture
+            ctx.strokeStyle = '#4a2c14'; ctx.lineWidth = 3;
+            for (let bx = 0; bx < VILLAGE_INT.w; bx += 14) {
+                if (bx < camera.x - 20 || bx > camera.x + W + 20) continue;
+                ctx.globalAlpha = (bx % 28 === 0) ? 0.6 : 0.3;
+                ctx.beginPath(); ctx.moveTo(bx, VILLAGE_INT.ceilingY); ctx.lineTo(bx, VILLAGE_INT.floorY); ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+            // Thatched ceiling
+            ctx.fillStyle = '#2a1808';
+            ctx.beginPath();
+            ctx.moveTo(camera.x, VILLAGE_INT.ceilingY);
+            ctx.lineTo(camera.x + W / 2, VILLAGE_INT.ceilingY - 60);
+            ctx.lineTo(camera.x + W, VILLAGE_INT.ceilingY);
+            ctx.closePath(); ctx.fill();
+            // Ceiling straw stripes
+            ctx.strokeStyle = '#3a2410'; ctx.lineWidth = 2;
+            for (let rx = camera.x; rx < camera.x + W; rx += 18) {
+                ctx.beginPath();
+                ctx.moveTo(rx, VILLAGE_INT.ceilingY);
+                ctx.lineTo(camera.x + W / 2, VILLAGE_INT.ceilingY - 60); ctx.stroke();
+            }
+            // Hanging vines/herb bundles from ceiling
+            for (let hv = 300; hv < VILLAGE_INT.w; hv += 280) {
+                if (hv < camera.x - 30 || hv > camera.x + W + 30) continue;
+                ctx.strokeStyle = '#3a6020'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(hv, VILLAGE_INT.ceilingY + 10); ctx.lineTo(hv - 10, VILLAGE_INT.ceilingY + 50); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(hv, VILLAGE_INT.ceilingY + 10); ctx.lineTo(hv + 10, VILLAGE_INT.ceilingY + 45); ctx.stroke();
+                ctx.fillStyle = '#4a8030'; ctx.beginPath(); ctx.ellipse(hv - 10, VILLAGE_INT.ceilingY + 54, 8, 5, 0.3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(hv + 10, VILLAGE_INT.ceilingY + 49, 8, 5, -0.3, 0, Math.PI * 2); ctx.fill();
+            }
+            // Packed earth floor
+            ctx.fillStyle = '#5a3820'; ctx.fillRect(0, VILLAGE_INT.floorY, VILLAGE_INT.w, 120);
+            // Floor texture — subtle lighter patches
+            ctx.fillStyle = '#6a4030';
+            for (let fx = 80; fx < VILLAGE_INT.w; fx += 220) {
+                ctx.beginPath(); ctx.ellipse(fx, VILLAGE_INT.floorY + 8, 60, 8, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            // Weapon racks on walls
+            for (let wr = 200; wr < VILLAGE_INT.w - 200; wr += 600) {
+                if (wr < camera.x - 80 || wr > camera.x + W + 80) continue;
+                ctx.fillStyle = '#5a3010'; ctx.fillRect(wr - 5, VILLAGE_INT.floorY - 160, 10, 120);
+                ctx.strokeStyle = '#c8a040'; ctx.lineWidth = 2;
+                // Spears
+                for (let sp = 0; sp < 3; sp++) {
+                    const sx2 = wr - 20 + sp * 20;
+                    ctx.beginPath(); ctx.moveTo(sx2, VILLAGE_INT.floorY - 40); ctx.lineTo(sx2, VILLAGE_INT.floorY - 155); ctx.stroke();
+                    ctx.fillStyle = '#c0c0c0'; ctx.beginPath(); ctx.moveTo(sx2, VILLAGE_INT.floorY - 155);
+                    ctx.lineTo(sx2 - 5, VILLAGE_INT.floorY - 140); ctx.lineTo(sx2 + 5, VILLAGE_INT.floorY - 140); ctx.closePath(); ctx.fill();
+                }
+            }
+            // Amazonian tapestries
+            const tapColors = ['#c04020', '#20804a', '#c08020'];
+            for (let ti = 0; ti < 3; ti++) {
+                const tx3 = 400 + ti * 700;
+                if (tx3 < camera.x - 80 || tx3 > camera.x + W + 80) continue;
+                ctx.fillStyle = tapColors[ti]; ctx.fillRect(tx3 - 40, VILLAGE_INT.ceilingY + 10, 80, 140);
+                ctx.strokeStyle = '#f0e0a0'; ctx.lineWidth = 2;
+                ctx.strokeRect(tx3 - 40, VILLAGE_INT.ceilingY + 10, 80, 140);
+                // Simple warrior glyph
+                ctx.beginPath(); ctx.arc(tx3, VILLAGE_INT.ceilingY + 50, 14, 0, Math.PI * 2);
+                ctx.strokeStyle = '#f0e0a0'; ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(tx3, VILLAGE_INT.ceilingY + 64);
+                ctx.lineTo(tx3, VILLAGE_INT.ceilingY + 110); ctx.stroke();
+            }
+            // Central firepit glow + flame
+            const fpx = VILLAGE_INT.w / 2;
+            const flicker = Math.sin(t * 9) * 5;
+            const grd2 = ctx.createRadialGradient(fpx, VILLAGE_INT.floorY - 5, 5, fpx, VILLAGE_INT.floorY - 5, 55 + flicker);
+            grd2.addColorStop(0, 'rgba(255,200,60,0.45)');
+            grd2.addColorStop(1, 'rgba(255,60,0,0)');
+            ctx.fillStyle = grd2; ctx.beginPath(); ctx.arc(fpx, VILLAGE_INT.floorY - 5, 55 + flicker, 0, Math.PI * 2); ctx.fill();
+            // Fire logs
+            ctx.fillStyle = '#3a1c08'; ctx.fillRect(fpx - 28, VILLAGE_INT.floorY - 8, 56, 10);
+            ctx.fillStyle = `rgba(255,${130 + Math.sin(t*11)*40|0},30,0.9)`;
+            ctx.beginPath();
+            ctx.moveTo(fpx - 16, VILLAGE_INT.floorY);
+            ctx.quadraticCurveTo(fpx, VILLAGE_INT.floorY - 42 - flicker * 1.5, fpx + 16, VILLAGE_INT.floorY);
+            ctx.closePath(); ctx.fill();
+
+            // Witness NPCs
+            for (const w of villageWitnesses) {
+                if (!w.active) continue;
+                const wx = w.x; const wy = VILLAGE_INT.floorY;
+                // Bronze-armored Amazon warrior
+                ctx.fillStyle = w.spoken ? '#408040' : '#c87030';
+                ctx.fillRect(wx - 14, wy - 72, 28, 48);   // torso
+                ctx.fillStyle = '#c0a060'; ctx.beginPath(); ctx.arc(wx, wy - 86, 14, 0, Math.PI * 2); ctx.fill(); // head
+                // Helmet
+                ctx.fillStyle = '#a08040'; ctx.fillRect(wx - 14, wy - 100, 28, 16);
+                // Legs
+                ctx.fillStyle = '#8a5020'; ctx.fillRect(wx - 12, wy - 24, 11, 24); ctx.fillRect(wx + 1, wy - 24, 11, 24);
+                if (!w.spoken && Math.abs((hero.x + hero.w/2) - wx) < 90) {
+                    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                    const sx2 = wx - camera.x;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx2 - 60, VILLAGE_INT.floorY - camera.y - 130, 120, 24);
+                    ctx.fillStyle = '#ffe080'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+                    ctx.fillText('E — Speak', sx2, VILLAGE_INT.floorY - camera.y - 112);
+                    ctx.restore();
+                }
+            }
+            // Village Elder NPC
+            if (villageElderNPC.active) {
+                const ex = villageElderNPC.x; const ey = VILLAGE_INT.floorY;
+                // Elder body — ornate
+                ctx.fillStyle = '#c08040'; ctx.fillRect(ex - 14, ey - 76, 28, 50); // torso
+                ctx.fillStyle = '#e8c080'; ctx.beginPath(); ctx.arc(ex, ey - 90, 15, 0, Math.PI * 2); ctx.fill(); // head
+                // Headdress
+                ctx.fillStyle = '#c8a020';
+                ctx.beginPath(); ctx.moveTo(ex - 20, ey - 104); ctx.lineTo(ex, ey - 130); ctx.lineTo(ex + 20, ey - 104); ctx.closePath(); ctx.fill();
+                for (let fp2 = 0; fp2 < 5; fp2++) {
+                    ctx.fillStyle = ['#e04020','#20a040','#c8a020','#4060c0','#c04080'][fp2];
+                    ctx.fillRect(ex - 18 + fp2 * 9, ey - 116, 6, 14);
+                }
+                // Staff
+                ctx.strokeStyle = '#6a3810'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(ex + 18, ey); ctx.lineTo(ex + 18, ey - 120); ctx.stroke();
+                ctx.fillStyle = '#c8a020'; ctx.beginPath(); ctx.arc(ex + 18, ey - 124, 7, 0, Math.PI * 2); ctx.fill();
+                if (witnessesSpoken >= 3 && !activeDialogue && Math.abs((hero.x + hero.w/2) - ex) < 100) {
+                    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                    const sx3 = ex - camera.x;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx3 - 60, VILLAGE_INT.floorY - camera.y - 140, 120, 24);
+                    ctx.fillStyle = '#ffe080'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+                    ctx.fillText('E — Elder', sx3, VILLAGE_INT.floorY - camera.y - 122);
+                    ctx.restore();
+                }
+            }
+        }
+
+        function updateVillageNPCs() {
+            // Static NPCs — no movement needed
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // L3 — ANCIENT RUINS
+        // ═══════════════════════════════════════════════════════════════════════
+        function drawRuinsExterior() {
+            const t = Date.now() * 0.001;
+            const baseY = L3_GROUND_Y;
+            // Stone archway entrance
+            const ax = RUINS_X;
+            // Staircase
+            for (let st = 0; st < 5; st++) {
+                ctx.fillStyle = '#7a7060'; ctx.fillRect(ax - 80 + st * 8, baseY - st * 14, 160 - st * 16, 14);
+            }
+            // Archway pillars
+            ctx.fillStyle = '#6a6050';
+            ctx.fillRect(ax - 70, baseY - 200, 40, 130);  // left pillar
+            ctx.fillRect(ax + 30, baseY - 200, 40, 130);  // right pillar
+            // Moss on pillars
+            ctx.fillStyle = '#4a6830';
+            for (let mv = 0; mv < 6; mv++) {
+                ctx.beginPath(); ctx.ellipse(ax - 50 + mv * 4, baseY - 180 + mv * 10, 6 + mv * 2, 4, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(ax + 50 - mv * 4, baseY - 175 + mv * 8, 5 + mv * 2, 4, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            // Arch top
+            ctx.fillStyle = '#6a6050';
+            ctx.beginPath();
+            ctx.arc(ax, baseY - 200, 70, Math.PI, 0);
+            ctx.lineTo(ax + 70, baseY - 200);
+            ctx.lineTo(ax + 30, baseY - 200);
+            ctx.arc(ax, baseY - 200, 30, 0, Math.PI, true);
+            ctx.lineTo(ax - 70, baseY - 200);
+            ctx.closePath(); ctx.fill();
+            // Glyph glow on arch (animated pulse)
+            const glowAlpha = 0.3 + Math.sin(t * 2) * 0.15;
+            ctx.fillStyle = `rgba(200,160,40,${glowAlpha})`;
+            ctx.beginPath(); ctx.arc(ax, baseY - 200, 26, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = `rgba(220,180,60,${glowAlpha + 0.1})`; ctx.lineWidth = 2;
+            // Simple glyph marks
+            ctx.beginPath(); ctx.moveTo(ax - 10, baseY - 208); ctx.lineTo(ax + 10, baseY - 208); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ax, baseY - 215); ctx.lineTo(ax, baseY - 195); ctx.stroke();
+            // Broken column stumps flanking
+            for (let bc = -1; bc <= 1; bc += 2) {
+                const bx2 = ax + bc * 130;
+                ctx.fillStyle = '#787060'; ctx.fillRect(bx2 - 18, baseY - 80, 36, 80);
+                // Cracked top
+                ctx.fillStyle = '#5a5848'; ctx.fillRect(bx2 - 20, baseY - 82, 40, 10);
+                ctx.fillStyle = '#3a3830';
+                ctx.beginPath(); ctx.moveTo(bx2 - 5, baseY - 82); ctx.lineTo(bx2 + 3, baseY - 72); ctx.lineTo(bx2 - 10, baseY - 68); ctx.closePath(); ctx.fill();
+            }
+            // Scattered stone blocks
+            const blocks = [
+                { x: ax - 200, y: baseY - 20, w: 50, h: 20 },
+                { x: ax + 180, y: baseY - 18, w: 60, h: 18 },
+                { x: ax - 320, y: baseY - 14, w: 40, h: 14 },
+            ];
+            for (const b of blocks) {
+                ctx.fillStyle = '#7a7060'; ctx.fillRect(b.x, b.y, b.w, b.h);
+                ctx.fillStyle = '#4a6830';
+                ctx.beginPath(); ctx.ellipse(b.x + b.w * 0.3, b.y + 4, b.w * 0.3, 5, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            // Vines crawling up the arch
+            ctx.strokeStyle = '#3a6020'; ctx.lineWidth = 2;
+            for (let vn = 0; vn < 4; vn++) {
+                const vsx = ax - 65 + vn * 3;
+                ctx.beginPath();
+                ctx.moveTo(vsx, baseY - 70);
+                ctx.quadraticCurveTo(vsx - 8, baseY - 140, vsx + 5, baseY - 200);
+                ctx.stroke();
+            }
+            // F-key prompt
+            if (l3QuestPhase === 'travel_ruins' && Math.abs((hero.x + hero.w/2) - RUINS_X) < 220) {
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                const sx4 = RUINS_X - camera.x;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx4 - 90, L3_GROUND_Y - camera.y - 140, 180, 30);
+                ctx.fillStyle = '#ffe080'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('F — Enter Ruins', sx4, L3_GROUND_Y - camera.y - 120);
+                ctx.restore();
+            }
+        }
+
+        function enterRuins() {
+            if (ruinsScene) return;
+            ruinsScene = { saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive } };
+            hero.x = 120; hero.y = RUINS_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true;
+            hound.x = 200; hound.y = RUINS_INT.floorY - hound.h;
+            scene = 'ruins';
+            platforms.splice(0, platforms.length);
+            camera.x = 0; camera.y = Math.max(0, RUINS_INT.floorY + 80 - H);
+            advanceL3Quest('ruins_interior');
+            ruinsCultists.forEach((c, i) => { c.x = 600 + i * 700; c.active = true; c.defeated = false; });
+            ruinsCultistsDefeated = 0;
+            wwAltarExamined = false;
+            startDialogue({ speaker: 'CK', portrait: 'hero',
+                lines: ['Ares cultists — they\'ve been here recently. And look — Diana\'s gear.'],
+                onDone: () => { titleCard = { text: 'ANCIENT RUINS', sub: 'Defeat the cultists, then examine Diana\'s altar.', timer: 220 }; }
+            });
+        }
+
+        function exitRuins() {
+            if (!ruinsScene) return;
+            hero.x = RUINS_X + 30; hero.y = L3_GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.facing = ruinsScene.saved.hf; hero.flightActive = false; hero.onGround = true;
+            scene = 'city'; ruinsScene = null;
+            platforms.splice(0, platforms.length, ...L3_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
+            advanceL3Quest('travel_temple');
+            titleCard = { text: 'HEAD TO THE TEMPLE OF ARES', sub: 'Diana is inside. Move fast.', timer: 240 };
+        }
+
+        function drawRuinsInterior() {
+            const t = Date.now() * 0.001;
+            // Dark stone background
+            ctx.fillStyle = '#1c1810'; ctx.fillRect(camera.x, camera.y, W, H);
+            // Stone block wall pattern
+            ctx.strokeStyle = '#2a2418'; ctx.lineWidth = 1.5;
+            for (let row = 0; row < 8; row++) {
+                const ry = RUINS_INT.ceilingY + row * 60;
+                const offset = row % 2 === 0 ? 0 : 80;
+                for (let col = -offset; col < RUINS_INT.w; col += 160) {
+                    if (col + 160 < camera.x - 20 || col > camera.x + W + 20) continue;
+                    ctx.strokeRect(col, ry, 160, 60);
+                }
+            }
+            // Amazonian glyphs on walls — gold glow
+            for (let gl = 300; gl < RUINS_INT.w - 200; gl += 500) {
+                if (gl < camera.x - 60 || gl > camera.x + W + 60) continue;
+                const glAlpha = 0.4 + Math.sin(t * 1.5 + gl * 0.01) * 0.15;
+                ctx.fillStyle = `rgba(200,160,40,${glAlpha})`;
+                ctx.beginPath(); ctx.arc(gl, RUINS_INT.ceilingY + 90, 20, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = `rgba(220,180,60,${glAlpha + 0.15})`; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(gl - 12, RUINS_INT.ceilingY + 90); ctx.lineTo(gl + 12, RUINS_INT.ceilingY + 90); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(gl, RUINS_INT.ceilingY + 78); ctx.lineTo(gl, RUINS_INT.ceilingY + 102); ctx.stroke();
+            }
+            // Collapsed ceiling sections with sky patches
+            for (let cs = 400; cs < RUINS_INT.w; cs += 800) {
+                if (cs < camera.x - 120 || cs > camera.x + W + 120) continue;
+                ctx.fillStyle = '#1a3040';
+                ctx.fillRect(cs - 80, RUINS_INT.ceilingY, 160, 50);
+                // Vines hanging through gap
+                ctx.strokeStyle = '#3a6020'; ctx.lineWidth = 2;
+                for (let vh = 0; vh < 4; vh++) {
+                    const vhx = cs - 60 + vh * 40;
+                    ctx.beginPath(); ctx.moveTo(vhx, RUINS_INT.ceilingY);
+                    ctx.quadraticCurveTo(vhx + 8, RUINS_INT.ceilingY + 60, vhx - 5, RUINS_INT.ceilingY + 100); ctx.stroke();
+                }
+            }
+            // Cracked stone floor
+            ctx.fillStyle = '#2a2418'; ctx.fillRect(0, RUINS_INT.floorY, RUINS_INT.w, 120);
+            // Cracks in floor
+            ctx.strokeStyle = '#1a1410'; ctx.lineWidth = 1;
+            for (let cr = 100; cr < RUINS_INT.w; cr += 180) {
+                if (cr < camera.x - 50 || cr > camera.x + W + 50) continue;
+                ctx.beginPath();
+                ctx.moveTo(cr, RUINS_INT.floorY);
+                ctx.lineTo(cr + 20, RUINS_INT.floorY + 15);
+                ctx.lineTo(cr + 8, RUINS_INT.floorY + 30); ctx.stroke();
+                // Moss in cracks
+                ctx.fillStyle = '#2a4820';
+                ctx.beginPath(); ctx.ellipse(cr + 12, RUINS_INT.floorY + 18, 8, 4, 0.3, 0, Math.PI * 2); ctx.fill();
+            }
+            // Broken columns (5)
+            const colPositions = [250, 680, 1150, 1700, 2200];
+            for (const cpx of colPositions) {
+                if (cpx + 60 < camera.x - 30 || cpx > camera.x + W + 30) continue;
+                const broken = colPositions.indexOf(cpx) % 2 === 1;
+                const colH = broken ? 160 : 300;
+                // Column shaft
+                const cg2 = ctx.createLinearGradient(cpx - 20, 0, cpx + 20, 0);
+                cg2.addColorStop(0, '#5a5040'); cg2.addColorStop(0.5, '#7a7060'); cg2.addColorStop(1, '#4a4030');
+                ctx.fillStyle = cg2; ctx.fillRect(cpx - 20, RUINS_INT.floorY - colH, 40, colH);
+                // Capital
+                ctx.fillStyle = '#8a8070'; ctx.fillRect(cpx - 26, RUINS_INT.floorY - colH, 52, 14);
+                if (broken) {
+                    // Fallen chunk nearby
+                    ctx.fillStyle = '#6a6050';
+                    ctx.save(); ctx.translate(cpx + 60, RUINS_INT.floorY - 14);
+                    ctx.rotate(0.3); ctx.fillRect(-40, -14, 80, 28); ctx.restore();
+                }
+            }
+            // Wall torches — some lit, some dark
+            for (let to = 200; to < RUINS_INT.w - 100; to += 450) {
+                if (to < camera.x - 40 || to > camera.x + W + 40) continue;
+                const litTorch = (to / 450 | 0) % 3 !== 1;
+                // Bracket
+                ctx.fillStyle = '#4a4030'; ctx.fillRect(to - 6, RUINS_INT.ceilingY + 150, 12, 30);
+                ctx.fillRect(to - 10, RUINS_INT.ceilingY + 175, 20, 8);
+                if (litTorch) {
+                    const tflicker = Math.sin(t * 7 + to) * 4;
+                    ctx.fillStyle = `rgba(255,${140 + tflicker|0},30,0.85)`;
+                    ctx.beginPath();
+                    ctx.moveTo(to - 7, RUINS_INT.ceilingY + 175);
+                    ctx.quadraticCurveTo(to, RUINS_INT.ceilingY + 150 + tflicker, to + 7, RUINS_INT.ceilingY + 175);
+                    ctx.closePath(); ctx.fill();
+                    // Glow halo
+                    const tgrd = ctx.createRadialGradient(to, RUINS_INT.ceilingY + 160, 3, to, RUINS_INT.ceilingY + 160, 28);
+                    tgrd.addColorStop(0, 'rgba(255,160,40,0.3)'); tgrd.addColorStop(1, 'rgba(255,80,0,0)');
+                    ctx.fillStyle = tgrd; ctx.beginPath(); ctx.arc(to, RUINS_INT.ceilingY + 160, 28, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+            // Boss hint inscription on back wall
+            ctx.font = 'bold 18px serif'; ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(200,160,40,0.5)';
+            ctx.fillText('LEX COMMANDS WHERE ARES CONSENTS', RUINS_INT.w / 2, RUINS_INT.ceilingY + 50);
+
+            // WW Altar (far right)
+            const altarX = 2400;
+            // Stone dais
+            ctx.fillStyle = '#5a5040'; ctx.fillRect(altarX - 70, RUINS_INT.floorY - 28, 140, 28);
+            ctx.fillStyle = '#6a6050'; ctx.fillRect(altarX - 60, RUINS_INT.floorY - 48, 120, 20);
+            // Altar glow
+            const altarAlpha = 0.3 + Math.sin(t * 2) * 0.1;
+            const agrd = ctx.createRadialGradient(altarX, RUINS_INT.floorY - 60, 10, altarX, RUINS_INT.floorY - 60, 70);
+            agrd.addColorStop(0, `rgba(220,190,60,${altarAlpha + 0.1})`);
+            agrd.addColorStop(1, 'rgba(220,190,60,0)');
+            ctx.fillStyle = agrd; ctx.beginPath(); ctx.arc(altarX, RUINS_INT.floorY - 60, 70, 0, Math.PI * 2); ctx.fill();
+            // WW Shield (circle with star)
+            ctx.fillStyle = '#c8a020'; ctx.beginPath(); ctx.arc(altarX - 25, RUINS_INT.floorY - 60, 20, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#e0c840'; ctx.beginPath(); ctx.arc(altarX - 25, RUINS_INT.floorY - 60, 14, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#c84020'; ctx.lineWidth = 2;
+            for (let st2 = 0; st2 < 5; st2++) {
+                const ang = (st2 / 5) * Math.PI * 2 - Math.PI / 2;
+                ctx.beginPath(); ctx.moveTo(altarX - 25, RUINS_INT.floorY - 60);
+                ctx.lineTo(altarX - 25 + Math.cos(ang) * 14, RUINS_INT.floorY - 60 + Math.sin(ang) * 14); ctx.stroke();
+            }
+            // WW Lasso (gold coil)
+            ctx.strokeStyle = '#d4a820'; ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let la = 0; la < Math.PI * 4; la += 0.2) {
+                const lr = 6 + la * 2.5;
+                const lx = altarX + 25 + Math.cos(la) * lr;
+                const ly = RUINS_INT.floorY - 60 + Math.sin(la) * lr * 0.5;
+                la === 0 ? ctx.moveTo(lx, ly) : ctx.lineTo(lx, ly);
+            }
+            ctx.stroke();
+            // E prompt for altar
+            if (ruinsCultistsDefeated >= 3 && !wwAltarExamined && Math.abs((hero.x + hero.w/2) - altarX) < 110) {
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                const asx = altarX - camera.x;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(asx - 80, RUINS_INT.floorY - camera.y - 130, 160, 26);
+                ctx.fillStyle = '#ffe080'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('E — Examine Diana\'s gear', asx, RUINS_INT.floorY - camera.y - 111);
+                ctx.restore();
+            }
+
+            // Cultist NPCs
+            for (const c of ruinsCultists) {
+                if (!c.active || c.defeated) continue;
+                const cx2 = c.x; const cy2 = RUINS_INT.floorY;
+                // Dark robe
+                ctx.fillStyle = '#1a1428';
+                ctx.beginPath(); ctx.moveTo(cx2 - 16, cy2); ctx.lineTo(cx2 + 16, cy2);
+                ctx.lineTo(cx2 + 12, cy2 - 70); ctx.lineTo(cx2 - 12, cy2 - 70); ctx.closePath(); ctx.fill();
+                // Bone-white mask
+                ctx.fillStyle = '#e8e4d0'; ctx.fillRect(cx2 - 10, cy2 - 88, 20, 24);
+                // Mask eye slits
+                ctx.fillStyle = '#c84020'; ctx.fillRect(cx2 - 7, cy2 - 84, 5, 5); ctx.fillRect(cx2 + 2, cy2 - 84, 5, 5);
+                // Hood
+                ctx.fillStyle = '#0c0a18';
+                ctx.beginPath(); ctx.arc(cx2, cy2 - 88, 14, Math.PI, 0); ctx.closePath(); ctx.fill();
+                // E prompt to defeat
+                if (!activeDialogue && Math.abs((hero.x + hero.w/2) - cx2) < 80) {
+                    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                    const csx = cx2 - camera.x;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(csx - 60, RUINS_INT.floorY - camera.y - 130, 120, 24);
+                    ctx.fillStyle = '#ff8080'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+                    ctx.fillText('E — Fight Cultist', csx, RUINS_INT.floorY - camera.y - 112);
+                    ctx.restore();
+                }
+            }
+        }
+
+        function updateRuinsNPCs() {
+            // Cultists are static — no movement
         }
 
         function drawBank() {
@@ -14199,6 +15003,42 @@
             }
 
             // ---- WAYNE ENTERPRISES INTERIOR ----
+            // ---- AMAZONIAN VILLAGE INTERIOR ----
+            if (scene === 'village') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > VILLAGE_INT.floorY) { hero.y = VILLAGE_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > VILLAGE_INT.floorY) { hound.y = VILLAGE_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateVillageNPCs();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // ---- ANCIENT RUINS INTERIOR ----
+            if (scene === 'ruins') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > RUINS_INT.floorY) { hero.y = RUINS_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > RUINS_INT.floorY) { hound.y = RUINS_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateRuinsNPCs();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             if (scene === 'wayne') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
@@ -14357,6 +15197,46 @@
                     const heroNear = Math.abs((hero.x + hero.w/2) - ARKHAM_X) < 300;
                     const loisNear = loisCar.arrived && Math.abs(loisCar.x - ARKHAM_X) < 500;
                     if (heroNear && loisNear) enterArkham();
+                }
+            }
+            // ── L3 quest phase logic ──────────────────────────────────────────
+            if (currentLevel === 3) {
+                // Fire intro dialogue once hero lands after fly-in
+                if (l3QuestPhase === 'l3_intro' && !l3IntroDone && hero.onGround && !activeDialogue) {
+                    l3IntroDone = true;
+                    const compSpeaker = (l3Companion === 'powergirl') ? 'Power Girl' : 'Dark Wing';
+                    startDialogue({
+                        speaker: 'CK', portrait: 'hero',
+                        lines: ['The Amazon. I\'ve never been this far from Metropolis.'],
+                        onDone: () => startDialogue({
+                            speaker: compSpeaker, portrait: 'npc',
+                            lines: ['Diana sent a distress signal three days ago. Then nothing.'],
+                            onDone: () => startDialogue({
+                                speaker: 'CK', portrait: 'hero',
+                                lines: ['Ares has her. And Luthor is supplying the muscle — I can feel it.'],
+                                onDone: () => startDialogue({
+                                    speaker: compSpeaker, portrait: 'npc',
+                                    lines: ['The Amazonian village is close. Someone there will know what happened.'],
+                                    onDone: () => {
+                                        advanceL3Quest('travel_village');
+                                        titleCard = { text: 'AMAZONIAN VILLAGE', sub: 'Head there — the villagers may have seen something.', timer: 240 };
+                                    }
+                                })
+                            })
+                        })
+                    });
+                }
+                // Auto-enter Amazonian Village
+                if (l3QuestPhase === 'travel_village' && !villageScene && !activeDialogue) {
+                    if (Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 200) enterVillage();
+                }
+                // Auto-enter Ancient Ruins
+                if (l3QuestPhase === 'travel_ruins' && !ruinsScene && !activeDialogue) {
+                    if (Math.abs((hero.x + hero.w/2) - RUINS_X) < 200) enterRuins();
+                }
+                // Auto-enter Temple of Ares
+                if (l3QuestPhase === 'travel_temple' && !templeScene && !activeDialogue) {
+                    if (Math.abs((hero.x + hero.w/2) - 14810) < 300) enterTemple();
                 }
             }
             tickDialogue();
