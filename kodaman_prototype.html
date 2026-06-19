@@ -2256,6 +2256,7 @@
             const x = n.x, y = interior.floorY;
             const bob = Math.sin(n.phase) * 1.2;
             ctx.save();
+            ctx.translate(x, y); ctx.scale(0.8, 0.8); ctx.translate(-x, -y);
             // legs
             const moving = n.greeting <= 20;
             const sw = moving ? Math.sin(n.phase * 3) * 4 : 0;
@@ -7752,6 +7753,7 @@
                 const lx = cityLois.x, ly = cityLois.y;
                 const bob = Math.sin(cityLois.phase) * 1.2;
                 ctx.save();
+                ctx.translate(lx, GROUND_Y); ctx.scale(0.8, 0.8); ctx.translate(-lx, -GROUND_Y);
                 // legs
                 const sw = Math.abs(cityLois._targetX - cityLois.x) > 8 ? Math.sin(cityLois.phase * 3) * 4 : 0;
                 ctx.fillStyle = '#1a1a30';
@@ -7827,6 +7829,7 @@
                 const lsx = lx - camera.x;
                 if (lsx > -60 && lsx < W + 60) {
                     ctx.save();
+                    ctx.translate(lsx, GROUND_Y); ctx.scale(0.8, 0.8); ctx.translate(-lsx, -GROUND_Y);
                     // Legs
                     ctx.fillStyle = '#1a1a30'; ctx.fillRect(lsx - 7, GROUND_Y - 22, 6, 22); ctx.fillRect(lsx + 1, GROUND_Y - 22, 6, 22);
                     ctx.fillStyle = '#c01820'; ctx.fillRect(lsx - 8, GROUND_Y - 4, 8, 4); ctx.fillRect(lsx + 1, GROUND_Y - 4, 8, 4);
@@ -11291,6 +11294,7 @@
                 const bob = Math.sin(constructionLois.phase) * 1.5;
                 if (lx - camera.x > -60 && lx - camera.x < W + 60) {
                     ctx.save();
+                    ctx.translate(lx, ly); ctx.scale(0.8, 0.8); ctx.translate(-lx, -ly);
                     ctx.fillStyle = '#1a1a30'; ctx.fillRect(lx-7, ly-22, 6, 22); ctx.fillRect(lx+1, ly-22, 6, 22);
                     ctx.fillStyle = '#c01820'; ctx.fillRect(lx-8, ly-4, 8, 4); ctx.fillRect(lx+1, ly-4, 8, 4);
                     ctx.fillStyle = '#b81c2c'; ctx.fillRect(lx-12, ly-58+bob, 24, 36);
@@ -11394,6 +11398,7 @@
                 const lsx = lx - camera.x;
                 if (lsx > -60 && lsx < W + 60) {
                     ctx.save();
+                    ctx.translate(lx, ly); ctx.scale(0.8, 0.8); ctx.translate(-lx, -ly);
                     // Legs
                     ctx.fillStyle = '#1a1a30'; ctx.fillRect(lx - 7, ly - 22, 6, 22); ctx.fillRect(lx + 1, ly - 22, 6, 22);
                     ctx.fillStyle = '#c01820'; ctx.fillRect(lx - 8, ly - 4, 8, 4); ctx.fillRect(lx + 1, ly - 4, 8, 4);
@@ -11704,6 +11709,7 @@
             const fd = labLois.faceDir;
             const bob = Math.sin(labLois.phase * 1.5) * 1.0;
             ctx.save();
+            ctx.translate(lx, fy); ctx.scale(0.8, 0.8); ctx.translate(-lx, -fy);
             // Legs
             ctx.fillStyle = '#1a1a2a';
             ctx.fillRect(lx - 8, fy - 32, 7, 32);
