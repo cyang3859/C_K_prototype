@@ -568,6 +568,16 @@
         // ── PHASE 5: CONSTRUCTION YARD ───────────────────────────────────────
         const CONSTRUCTION_X = 9800;
         const CONSTRUCTION_INT = { w: 2800, floorY: 840, ceilingY: 60 };
+
+        // ── Level 2 locations ──────────────────────────────────────────────────
+        const WAYNE_X   = 3200;   // Wayne Enterprises — Gotham financial district
+        const ARKHAM_X  = 8200;   // Arkham Asylum — industrial outskirts
+        const WAYNE_INT  = { w: 3000, floorY: 840, ceilingY: 80 };
+        const ARKHAM_INT = { w: 3200, floorY: 840, ceilingY: 60 };
+
+        let l2QuestPhase = 'idle';
+        let l2IntroDone  = false;   // one-shot flag for fly-in landing dialogue
+        function advanceL2Quest(p) { l2QuestPhase = p; console.log('[L2]', p); }
         let constructionSpawned = false;
         let constructionEntryUnlocked = false;
         let constructionScene = null;
@@ -1017,6 +1027,60 @@
 
         // E-key interrogation check — called from keydown handler
         function tryInteract() {
+            // Wayne Enterprises: approach Bruce Wayne (E key)
+            if (scene === 'wayne' && l2QuestPhase === 'wayne_interior' && !wayneDialogueDone && !activeDialogue) {
+                if (Math.abs((hero.x + hero.w/2) - bruceWayne.x) < 90) {
+                    wayneDialogueDone = true;
+                    startDialogue({ speaker: 'Bruce', portrait: 'npc',
+                        lines: ['CK. I wondered when you\'d find your way to Gotham.'],
+                        onDone: () => startDialogue({ speaker: 'Lois Lane', portrait: 'lois',
+                            lines: ['Mr. Wayne — you said you had information on Luthor\'s escape?'],
+                            onDone: () => startDialogue({ speaker: 'Bruce', portrait: 'npc',
+                                lines: ['Lex didn\'t just escape. He was let out. Someone inside had help from the outside.',
+                                        'I\'ve been tracking the money. It all flows through Arkham. The real intelligence is locked inside those walls.'],
+                                onDone: () => startDialogue({ speaker: 'CK', portrait: 'hero',
+                                    lines: ['Arkham Asylum? That\'s maximum security — they won\'t just let us walk in.'],
+                                    onDone: () => startDialogue({ speaker: 'Bruce', portrait: 'npc',
+                                        lines: ['They will if I ask nicely. I have… an arrangement with the warden.'],
+                                        onDone: () => startDialogue({ speaker: 'Lois Lane', portrait: 'lois',
+                                            lines: ['Then let\'s not waste any more time. All three of us go in together.'],
+                                            onDone: () => exitWayne()
+                                        })
+                                    })
+                                })
+                            })
+                        })
+                    });
+                    return true;
+                }
+            }
+            // Arkham Asylum: question prisoners (E key)
+            if (scene === 'arkham' && l2QuestPhase === 'arkham_interrogate') {
+                const heroMid = hero.x + hero.w / 2;
+                for (const p of arkhamPrisoners) {
+                    if (p.interrogated) continue;
+                    if (Math.abs(heroMid - p.x) < 70) {
+                        p.interrogated = true;
+                        prisonersInterrogated++;
+                        const pIdx = prisonersInterrogated;
+                        startDialogue({ speaker: p.name, portrait: 'npc', lines: p.lines,
+                            onDone: () => {
+                                if (prisonersInterrogated >= 3) {
+                                    advanceL2Quest('arkham_exit');
+                                    startDialogue({ speaker: 'Lois Lane', portrait: 'lois',
+                                        lines: ['The Falcone warehouse — Lex is mobilizing tonight. We have to get there first.'],
+                                        onDone: () => startDialogue({ speaker: 'Bruce', portrait: 'npc',
+                                            lines: ['I know that district. I\'ll meet you there. Go.'],
+                                            onDone: () => exitArkham()
+                                        })
+                                    });
+                                }
+                            }
+                        });
+                        return true;
+                    }
+                }
+            }
             // Construction yard: question workers / catch henchman
             if (scene === 'construction' && questPhase === 'construction_interrogate' && constructionSpawned) {
                 const heroMid = hero.x + hero.w / 2;
@@ -2950,6 +3014,14 @@
             // Construction yard exit
             if (e.code === 'KeyF' && scene === 'construction') {
                 if (hero.x < 160) { exitConstruction(); e.preventDefault(); }
+            }
+            // F: exit Wayne Enterprises
+            if (e.code === 'KeyF' && scene === 'wayne') {
+                if (hero.x < 160) { exitWayne(); e.preventDefault(); }
+            }
+            // F: exit Arkham Asylum (auto-triggered by dialogue, but allow manual)
+            if (e.code === 'KeyF' && scene === 'arkham' && l2QuestPhase === 'arkham_exit') {
+                if (hero.x < 160) { exitArkham(); e.preventDefault(); }
             }
             // F: talk to Lois when nearby in the interior
             if (e.code === 'KeyF' && scene === 'interior' && interior.note.read) {
@@ -8021,8 +8093,10 @@
             if (scene === 'lab') drawLab();
             if (scene === 'bank') drawBank();
             if (scene === 'construction') drawConstruction();
+            if (scene === 'wayne') drawWayneInterior();
+            if (scene === 'arkham') drawArkhamInterior();
             if (scene === 'city') {
-                // only draw quest overlays when on L1 and camera is near the relevant world X
+                // L1 overlays
                 if (currentLevel === 1 && constructionEntryUnlocked &&
                     camera.x + W > CONSTRUCTION_X - 400 && camera.x < CONSTRUCTION_X + 400) {
                     drawConstructionDressing();
@@ -8030,6 +8104,13 @@
                 if (currentLevel === 1 && lexcorp2Spawned &&
                     camera.x + W > LEXLAB_X - 200 && camera.x < LEXLAB_X + 600) {
                     drawLexcorp2Clues();
+                }
+                // L2 exteriors
+                if (currentLevel === 2 && camera.x + W > WAYNE_X - 500 && camera.x < WAYNE_X + 500) {
+                    drawWayneExterior();
+                }
+                if (currentLevel === 2 && camera.x + W > ARKHAM_X - 600 && camera.x < ARKHAM_X + 600) {
+                    drawArkhamExterior();
                 }
             }
 
@@ -8879,6 +8960,16 @@
             return L1_TRAVEL_DEST[questPhase] || null;
         }
 
+        const L2_TRAVEL_DEST = {
+            'travel_wayne':   { worldX: WAYNE_X,  label: 'WAYNE ENTERPRISES', color: '#c8a840' },
+            'wayne_interior': { worldX: WAYNE_X,  label: 'WAYNE ENTERPRISES', color: '#c8a840' },
+            'travel_arkham':  { worldX: ARKHAM_X, label: 'ARKHAM ASYLUM',     color: '#8844cc' },
+        };
+        function getL2Destination() {
+            if (currentLevel !== 2 || scene !== 'city') return null;
+            return L2_TRAVEL_DEST[l2QuestPhase] || null;
+        }
+
         function _drawDestArrow(worldX, label, accentColor, screenY) {
             const heroWorldX = hero.x + hero.w / 2;
             const dx = worldX - heroWorldX;
@@ -8937,13 +9028,15 @@
         }
 
         function drawQuestZoneArrow() {
-            // ── L1 quest travel arrow (sits at screenY 38, above minimap) ──
+            // ── L1 quest travel arrow ──
             const l1dest = getL1Destination();
-            if (l1dest) {
-                _drawDestArrow(l1dest.worldX, l1dest.label, l1dest.color, 38);
-            }
+            if (l1dest) _drawDestArrow(l1dest.worldX, l1dest.label, l1dest.color, 38);
 
-            // ── L2/L3 clue zone arrow (original behaviour) ──
+            // ── L2 quest travel arrow ──
+            const l2dest = getL2Destination();
+            if (l2dest) _drawDestArrow(l2dest.worldX, l2dest.label, l2dest.color, 38);
+
+            // ── L2/L3 clue zone arrow (legacy) ──
             if (!questZone || !pendingTrapCiv) return;
             const heroWorldX = hero.x + hero.w / 2;
             const zoneWorldX = questZone.x;
@@ -9327,7 +9420,7 @@
         // ── startLevel2: swap all world arrays, reset state ──────────────────
         function startLevel2() {
             currentLevel = 2;
-            // splice-swap every const world array so all existing code sees L2 data
+            // splice-swap every world array so all existing code sees L2 data
             gaps.splice(0, gaps.length, ...l2Gaps);
             districts.splice(0, districts.length, ...l2Districts);
             gateways.splice(0, gateways.length, ...l2Gateways);
@@ -9336,29 +9429,25 @@
             orbs.splice(0, orbs.length, ...l2Orbs);
             platforms.splice(0, platforms.length, ...L2_PLATFORMS);
             emitters.splice(0, emitters.length, ...l2Emitters);
-            clues.splice(0, clues.length, ...l2Clues);
-            // reset quest state
-            activeClueIndex = 0;
-            cluesFound = 0;
-            pendingTrapCiv = null;
-            questZone = null;
+            clues.splice(0, clues.length);  // L2 uses quest phases, not clue auto-progression
+            // reset generic state
             enemies.splice(0);
             civilians.splice(0);
             carriedCivilians = [];
             orbsCollected = 0;
             bossDefeated = false;
             factoryEntryUnlocked = false;
-            interior.note.read = true;   // story has started — clues are live immediately
-            // reposition hero + hound at L2 start
-            hero.x = 200; hero.y = GROUND_Y - hero.h;
-            hero.vx = 0; hero.vy = 0; hero.flightActive = false; hero.onGround = true;
-            hound.x = 120; hound.y = GROUND_Y - hound.h;
-            hound.vx = 0; hound.vy = 0; hound.flightActive = false; hound.onGround = true;
+            interior.note.read = true;
+            // hero + hound fly in from above — gravity brings them to ground
+            hero.x = 300; hero.y = GROUND_Y - 420; hero.vx = 0; hero.vy = 9;
+            hero.flightActive = false; hero.onGround = false; hero.facing = 1;
+            hound.x = 180; hound.y = GROUND_Y - 320; hound.vx = 0; hound.vy = 7;
+            hound.flightActive = false; hound.onGround = false;
             camera.x = 0; camera.y = 0;
             currentDistrict = 'ruins';
             scene = 'city';
-            // init Dark Wing near the first clue
-            darkWing.x = l2Clues[0].x - 70;
+            // init Dark Wing near Wayne Enterprises
+            darkWing.x = WAYNE_X - 200;
             darkWing._targetX = darkWing.x;
             darkWing.y = GROUND_Y;
             darkWing.vy = 0;
@@ -9370,7 +9459,10 @@
             darkWing.fightMode = false;
             darkWing.driving = false;
             darkWing.zoneCombat = false;
-            titleCard = { text: 'LEVEL 2 — THE BADLANDS', sub: 'Something worse is lurking in the shadows. Dark Wing is with you.', timer: 360 };
+            // quest state
+            l2QuestPhase = 'l2_intro';
+            l2IntroDone  = false;
+            titleCard = { text: 'GOTHAM CITY', sub: 'The trail leads here. Stay sharp.', timer: 240 };
         }
 
         // ══════════════════════════════════════════════════════════════════
@@ -11320,6 +11412,704 @@
                     ctx.restore();
                 }
             }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // LEVEL 2 — WAYNE ENTERPRISES & ARKHAM ASYLUM
+        // ══════════════════════════════════════════════════════════════════════
+
+        // ── Scene state ───────────────────────────────────────────────────────
+        let wayneScene = null;
+        let arkhamScene = null;
+        let arkhamEntryUnlocked = false;
+        let prisonersInterrogated = 0;
+        let wayneDialogueDone = false;  // one-shot: Bruce dialogue triggered
+
+        // ── NPC objects ───────────────────────────────────────────────────────
+        const bruceWayne  = { x: 2400, y: WAYNE_INT.floorY,  faceDir: -1, phase: 0, active: false };
+        const loisWayne   = { x:  500, y: WAYNE_INT.floorY,  faceDir:  1, phase: 0, active: false };
+        const loisArkham  = { x:  280, y: ARKHAM_INT.floorY, faceDir:  1, phase: 0, active: false };
+        const bruceArkham = { x:  380, y: ARKHAM_INT.floorY, faceDir:  1, phase: 0, active: false };
+
+        const arkhamPrisoners = [
+            { x: 750,  y: ARKHAM_INT.floorY, faceDir:  1, phase: 0, interrogated: false, name: 'PRISONER 241',
+              lines: ['I don\'t know anything about Luthor. He paid us through a dummy corp — "Apex Solutions."',
+                      'Never met him. Just wired cash and orders.'] },
+            { x: 1550, y: ARKHAM_INT.floorY, faceDir: -1, phase: 1, interrogated: false, name: 'PRISONER 317',
+              lines: ['Lex has a safe house somewhere in the Narrows. East side, near the old textile mill.',
+                      'He was moving people in and out at night. Big operation.'] },
+            { x: 2600, y: ARKHAM_INT.floorY, faceDir:  1, phase: 2, interrogated: false, name: 'PRISONER 489',
+              lines: ['He\'s not hiding — he\'s recruiting. Anyone who wants to bring Metropolis down.',
+                      'There\'s a meeting. Tonight. The old Falcone warehouse — docks district.'] },
+        ];
+
+        // ── Wayne servants (ambient) ──────────────────────────────────────────
+        const wayneServants = [
+            { x: 700,  y: WAYNE_INT.floorY, faceDir: 1, phase: 0, _dir: 1 },
+            { x: 1400, y: WAYNE_INT.floorY, faceDir:-1, phase: 1, _dir:-1 },
+            { x: 2000, y: WAYNE_INT.floorY, faceDir: 1, phase: 2, _dir: 1 },
+        ];
+        // ── Arkham guards (ambient patrol) ────────────────────────────────────
+        const arkhamGuards = [
+            { x: 900,  y: ARKHAM_INT.floorY, faceDir: 1, phase: 0, _minX: 700,  _maxX: 1200 },
+            { x: 2100, y: ARKHAM_INT.floorY, faceDir:-1, phase: 1, _minX: 1800, _maxX: 2400 },
+        ];
+
+        // ── Wayne Enterprises exterior (world coords, inside camera transform) ─
+        function drawWayneExterior() {
+            const gx = WAYNE_X;
+            const gy = GROUND_Y;
+            const t  = Date.now() * 0.001;
+            ctx.save();
+            // Tower — Art Deco, tall
+            const towerH = 340;
+            const towerW = 160;
+            const tx = gx - towerW / 2;
+            // Main tower gradient
+            const tg = ctx.createLinearGradient(tx, gy - towerH, tx + towerW, gy - towerH);
+            tg.addColorStop(0, '#2a2010'); tg.addColorStop(0.5, '#3a2e18'); tg.addColorStop(1, '#1e1808');
+            ctx.fillStyle = tg;
+            ctx.fillRect(tx, gy - towerH, towerW, towerH);
+            // Gold vertical accent ribs
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2;
+            for (let rx = tx + 20; rx < tx + towerW; rx += 28) {
+                ctx.beginPath(); ctx.moveTo(rx, gy - towerH); ctx.lineTo(rx, gy); ctx.stroke();
+            }
+            // Stepped tower top
+            ctx.fillStyle = '#2a2010';
+            ctx.fillRect(tx + 20, gy - towerH - 40, towerW - 40, 40);
+            ctx.fillRect(tx + 40, gy - towerH - 70, towerW - 80, 30);
+            ctx.fillRect(tx + 55, gy - towerH - 90, towerW - 110, 20);
+            // Gold spire
+            ctx.strokeStyle = '#e8c030'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(gx, gy - towerH - 90); ctx.lineTo(gx, gy - towerH - 130); ctx.stroke();
+            // Windows — gold glow
+            for (let wy2 = gy - towerH + 20; wy2 < gy - 60; wy2 += 38) {
+                for (let wx2 = tx + 14; wx2 < tx + towerW - 14; wx2 += 28) {
+                    const lit = ((wx2 * 7 + wy2 * 3) % 11) > 3;
+                    ctx.fillStyle = lit ? 'rgba(240,200,80,0.35)' : 'rgba(20,18,8,0.6)';
+                    ctx.fillRect(wx2, wy2, 14, 22);
+                    ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 0.5;
+                    ctx.strokeRect(wx2, wy2, 14, 22);
+                }
+            }
+            // Sign: WAYNE ENTERPRISES
+            ctx.fillStyle = '#e8c030'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('WAYNE ENTERPRISES', gx, gy - towerH + 14);
+            // Entrance arch
+            ctx.fillStyle = '#3a2e18';
+            ctx.fillRect(gx - 50, gy - 100, 100, 100);
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(gx, gy - 100, 50, Math.PI, 0); ctx.stroke();
+            ctx.fillStyle = '#c8a820'; ctx.fillRect(gx - 52, gy - 103, 104, 4);
+            // Brass doors
+            ctx.fillStyle = '#8b6914'; ctx.fillRect(gx - 28, gy - 90, 24, 90);
+            ctx.fillStyle = '#8b6914'; ctx.fillRect(gx + 4,  gy - 90, 24, 90);
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 1;
+            ctx.strokeRect(gx - 28, gy - 90, 24, 90); ctx.strokeRect(gx + 4, gy - 90, 24, 90);
+            // Door handles
+            ctx.fillStyle = '#e8c030';
+            ctx.fillRect(gx - 8, gy - 46, 4, 8); ctx.fillRect(gx + 4, gy - 46, 4, 8);
+            // Red carpet
+            ctx.fillStyle = '#8b1414';
+            ctx.fillRect(gx - 60, gy - 6, 120, 6);
+            ctx.fillStyle = '#6b0e0e'; ctx.fillRect(gx - 60, gy - 6, 6, 6); ctx.fillRect(gx + 54, gy - 6, 6, 6);
+            // Stone lion statues
+            for (const lsx of [gx - 80, gx + 64]) {
+                ctx.fillStyle = '#5a5040';
+                ctx.fillRect(lsx, gy - 36, 20, 36);      // pedestal
+                ctx.beginPath(); ctx.arc(lsx + 10, gy - 44, 12, 0, Math.PI * 2); ctx.fill(); // body
+                ctx.beginPath(); ctx.arc(lsx + 14, gy - 56, 9,  0, Math.PI * 2); ctx.fill(); // head
+                ctx.fillStyle = '#6a6050';
+                ctx.beginPath(); ctx.arc(lsx + 14, gy - 56, 11, Math.PI * 1.2, Math.PI * 1.8); ctx.fill(); // mane
+            }
+            // F-prompt when hero is near and quest phase correct
+            if (l2QuestPhase === 'travel_wayne' && Math.abs((hero.x + hero.w/2) - gx) < 200) {
+                ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Enter Wayne Enterprises', gx, gy - 110);
+            }
+            ctx.restore();
+        }
+
+        // ── Arkham Asylum exterior ─────────────────────────────────────────────
+        function drawArkhamExterior() {
+            const ax = ARKHAM_X;
+            const gy = GROUND_Y;
+            const t  = Date.now() * 0.001;
+            ctx.save();
+            const wallW = 700, wallH = 200;
+            const wx0 = ax - wallW / 2;
+            // Main wall — brutalist concrete
+            const wg = ctx.createLinearGradient(wx0, gy - wallH, wx0, gy);
+            wg.addColorStop(0, '#2a2830'); wg.addColorStop(1, '#1a1820');
+            ctx.fillStyle = wg;
+            ctx.fillRect(wx0, gy - wallH, wallW, wallH);
+            // Horizontal concrete seams
+            ctx.strokeStyle = 'rgba(60,60,80,0.5)'; ctx.lineWidth = 1;
+            for (let sy = gy - wallH + 30; sy < gy; sy += 30) {
+                ctx.beginPath(); ctx.moveTo(wx0, sy); ctx.lineTo(wx0 + wallW, sy); ctx.stroke();
+            }
+            // Watch towers (left + right corners)
+            for (const twx of [wx0 - 30, wx0 + wallW - 40]) {
+                ctx.fillStyle = '#1e1c28';
+                ctx.fillRect(twx, gy - wallH - 60, 70, wallH + 60);
+                ctx.fillStyle = '#28263a';
+                ctx.fillRect(twx - 8, gy - wallH - 70, 86, 14); // overhang
+                // Arrow slit windows
+                ctx.fillStyle = '#0a0810';
+                for (let sw = gy - wallH - 50; sw < gy - 20; sw += 40) {
+                    ctx.fillRect(twx + 22, sw, 10, 22);
+                    ctx.fillRect(twx + 38, sw, 10, 22);
+                }
+                // Spotlight sweep
+                const angle = Math.sin(t * 0.6 + (twx > ax ? 1 : -1)) * 0.5;
+                const spotLen = 250;
+                ctx.save();
+                ctx.translate(twx + 35, gy - wallH - 65);
+                ctx.rotate(angle);
+                const sg = ctx.createLinearGradient(0, 0, 0, spotLen);
+                sg.addColorStop(0, 'rgba(255,255,200,0.18)');
+                sg.addColorStop(1, 'rgba(255,255,200,0)');
+                ctx.fillStyle = sg;
+                ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(18, 0); ctx.lineTo(50, spotLen); ctx.lineTo(-50, spotLen); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+            // Main gate — iron bars
+            const gateW = 100, gateX = ax - gateW / 2;
+            ctx.fillStyle = '#0a0810';
+            ctx.fillRect(gateX, gy - wallH, gateW, wallH);
+            ctx.strokeStyle = '#3a3848'; ctx.lineWidth = 5;
+            for (let bx2 = gateX + 10; bx2 < gateX + gateW; bx2 += 14) {
+                ctx.beginPath(); ctx.moveTo(bx2, gy - wallH + 4); ctx.lineTo(bx2, gy); ctx.stroke();
+            }
+            // Horizontal crossbar
+            ctx.lineWidth = 4; ctx.strokeStyle = '#4a4860';
+            ctx.beginPath(); ctx.moveTo(gateX, gy - wallH / 2); ctx.lineTo(gateX + gateW, gy - wallH / 2); ctx.stroke();
+            // Sign
+            ctx.fillStyle = '#c0b8d0'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('ARKHAM ASYLUM', ax, gy - wallH - 12);
+            ctx.fillStyle = '#7a7890'; ctx.font = '9px Arial';
+            ctx.fillText('FOR THE CRIMINALLY INSANE', ax, gy - wallH + 2);
+            // Barbed wire along wall top
+            ctx.strokeStyle = '#5a5870'; ctx.lineWidth = 1.5;
+            for (let bwx = wx0; bwx < wx0 + wallW; bwx += 12) {
+                ctx.beginPath(); ctx.moveTo(bwx, gy - wallH); ctx.lineTo(bwx + 6, gy - wallH - 8); ctx.lineTo(bwx + 12, gy - wallH); ctx.stroke();
+            }
+            // Guard silhouettes on wall top
+            for (const gsx of [ax - 200, ax + 160]) {
+                ctx.fillStyle = '#0e0c18';
+                ctx.fillRect(gsx - 5, gy - wallH - 24, 10, 24);
+                ctx.beginPath(); ctx.arc(gsx, gy - wallH - 28, 6, 0, Math.PI * 2); ctx.fill();
+            }
+            // F-prompt
+            if (l2QuestPhase === 'travel_arkham' && Math.abs((hero.x + hero.w/2) - ax) < 300) {
+                const waiting = !(loisCar.arrived && Math.abs(loisCar.x - ax) < 500);
+                ctx.fillStyle = waiting ? '#aaaaaa' : '#ffe040';
+                ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(waiting ? 'Waiting for Lois...' : 'Entering Arkham...', ax, gy - wallH - 30);
+            }
+            ctx.restore();
+        }
+
+        // ── Enter / Exit Wayne Enterprises ────────────────────────────────────
+        function enterWayne() {
+            if (wayneScene) return;
+            wayneScene = { saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive } };
+            hero.x = 120; hero.y = WAYNE_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 220; hound.y = WAYNE_INT.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true;
+            scene = 'wayne';
+            platforms.splice(0, platforms.length);
+            camera.x = 0; camera.y = Math.max(0, WAYNE_INT.floorY + 80 - H);
+            bruceWayne.x = 2400; bruceWayne.active = true; wayneDialogueDone = false;
+            loisWayne.x = 500; loisWayne.active = true; loisWayne.faceDir = 1;
+            wayneServants.forEach((s, i) => { s.x = [700, 1400, 2000][i]; });
+            advanceL2Quest('wayne_interior');
+            startDialogue({
+                speaker: 'CK', portrait: 'hero',
+                lines: ['Impressive. Wayne knows how to make a statement.'],
+                onDone: () => { titleCard = { text: 'WAYNE ENTERPRISES', sub: 'Find Bruce — he\'s expecting you. Press E when close.', timer: 240 }; }
+            });
+        }
+
+        function exitWayne() {
+            if (!wayneScene) return;
+            hero.x = WAYNE_X + 30; hero.y = GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.facing = wayneScene.saved.hf; hero.flightActive = false; hero.onGround = true;
+            scene = 'city'; wayneScene = null;
+            bruceWayne.active = false; loisWayne.active = false;
+            platforms.splice(0, platforms.length, ...L2_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
+            // Lois car departs toward Arkham
+            loisCar.x = WAYNE_X + 80; loisCar.y = GROUND_Y; loisCar.active = true; loisCar.faceDir = 1;
+            driveLoisCar(ARKHAM_X - 100, () => {}, 2.6);
+            // Dark Wing drives batmobile toward Arkham
+            darkWing.x = WAYNE_X - 60; darkWing.driving = true; darkWing._targetX = ARKHAM_X - 140;
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: ['Arkham. Of course that\'s where the trail leads.'],
+                onDone: () => {
+                    advanceL2Quest('travel_arkham');
+                    arkhamEntryUnlocked = false;
+                    titleCard = { text: 'HEAD TO ARKHAM ASYLUM', sub: 'Bruce and Lois are on their way — fly there now.', timer: 260 };
+                }
+            });
+        }
+
+        // ── Enter / Exit Arkham Asylum ────────────────────────────────────────
+        function enterArkham() {
+            if (arkhamScene) return;
+            arkhamScene = { saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive } };
+            hero.x = 140; hero.y = ARKHAM_INT.floorY - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
+            hound.x = 230; hound.y = ARKHAM_INT.floorY - hound.h;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true;
+            scene = 'arkham';
+            platforms.splice(0, platforms.length);
+            camera.x = 0; camera.y = Math.max(0, ARKHAM_INT.floorY + 80 - H);
+            loisArkham.x = 280; loisArkham.active = true; loisArkham.faceDir = 1;
+            bruceArkham.x = 380; bruceArkham.active = true; bruceArkham.faceDir = 1;
+            arkhamPrisoners.forEach((p, i) => { p.x = [750, 1550, 2600][i]; p.interrogated = false; });
+            arkhamGuards.forEach((g, i) => { g.x = [900, 2100][i]; });
+            prisonersInterrogated = 0;
+            advanceL2Quest('arkham_interrogate');
+            startDialogue({
+                speaker: 'Bruce', portrait: 'npc',
+                lines: [
+                    'The warden owed me a favor. We have 20 minutes before shift change.',
+                    'Three cells at the end of the block — those are Luthor\'s informants. Make it quick.'
+                ],
+                onDone: () => { titleCard = { text: 'ARKHAM ASYLUM', sub: 'Question the 3 prisoners — press E when close.', timer: 240 }; }
+            });
+        }
+
+        function exitArkham() {
+            if (!arkhamScene) return;
+            hero.x = ARKHAM_X + 40; hero.y = GROUND_Y - hero.h;
+            hero.vx = 0; hero.vy = 0; hero.facing = 1; hero.flightActive = false; hero.onGround = true;
+            scene = 'city'; arkhamScene = null;
+            loisArkham.active = false; bruceArkham.active = false;
+            platforms.splice(0, platforms.length, ...L2_PLATFORMS);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
+            loisCar.x = ARKHAM_X + 80; loisCar.y = GROUND_Y; loisCar.active = true; loisCar.faceDir = 1;
+            driveLoisCar(ARKHAM_X + 2500, () => {}, 2.4);
+            darkWing.x = ARKHAM_X - 60; darkWing.driving = true; darkWing._targetX = ARKHAM_X + 2500;
+            startDialogue({
+                speaker: 'Lois Lane', portrait: 'lois',
+                lines: ['The Falcone warehouse — Lex is mobilizing tonight. We have to get there first.'],
+                onDone: () => {
+                    advanceL2Quest('travel_falcone');
+                    titleCard = { text: 'THE FALCONE WAREHOUSE', sub: 'Head east — Lex\'s operation is there.', timer: 260 };
+                }
+            });
+        }
+
+        // ── Wayne Enterprises interior draw ───────────────────────────────────
+        function drawWayneInterior() {
+            const t = Date.now() * 0.001;
+            const WI = WAYNE_INT;
+            // Background — ivory cream walls
+            ctx.fillStyle = '#f0ead8'; ctx.fillRect(camera.x, camera.y, W, H);
+            // Coffered ceiling — deep navy with gold trim
+            ctx.fillStyle = '#14203a';
+            ctx.fillRect(0, WI.ceilingY, WI.w, 100);
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, WI.ceilingY + 100); ctx.lineTo(WI.w, WI.ceilingY + 100); ctx.stroke();
+            // Coffered panels along ceiling
+            for (let cx2 = 100; cx2 < WI.w - 100; cx2 += 220) {
+                if (cx2 - camera.x < -240 || cx2 - camera.x > W + 240) continue;
+                ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 1.5;
+                ctx.strokeRect(cx2, WI.ceilingY + 8, 180, 80);
+                ctx.strokeRect(cx2 + 10, WI.ceilingY + 18, 160, 60);
+            }
+            // Marble checkerboard floor
+            ctx.fillStyle = '#e8e4dc';
+            ctx.fillRect(0, WI.floorY, WI.w, 120);
+            for (let fx = 0; fx < WI.w; fx += 60) {
+                for (let fy2 = 0; fy2 < 2; fy2++) {
+                    if ((Math.floor(fx / 60) + fy2) % 2 === 0) {
+                        ctx.fillStyle = '#c8c4b8';
+                        ctx.fillRect(fx, WI.floorY + fy2 * 60, 60, 60);
+                    }
+                }
+            }
+            ctx.strokeStyle = '#b0aca0'; ctx.lineWidth = 0.5;
+            for (let fx = 0; fx < WI.w; fx += 60) { ctx.beginPath(); ctx.moveTo(fx, WI.floorY); ctx.lineTo(fx, WI.floorY + 120); ctx.stroke(); }
+            // Gold floor border strip
+            ctx.fillStyle = '#c8a820'; ctx.fillRect(0, WI.floorY - 4, WI.w, 4);
+            // Marble pillars (4)
+            for (const px of [300, 900, 1600, 2200]) {
+                if (px - camera.x < -60 || px - camera.x > W + 60) continue;
+                const pg = ctx.createLinearGradient(px - 18, 0, px + 18, 0);
+                pg.addColorStop(0, '#c8c4b8'); pg.addColorStop(0.4, '#f0ece4'); pg.addColorStop(1, '#a8a49c');
+                ctx.fillStyle = pg;
+                ctx.fillRect(px - 18, WI.ceilingY + 100, 36, WI.floorY - WI.ceilingY - 100);
+                // Capital
+                ctx.fillStyle = '#c8a820'; ctx.fillRect(px - 24, WI.ceilingY + 100, 48, 12);
+                ctx.fillRect(px - 22, WI.floorY - 12, 44, 12);
+            }
+            // Framed portraits (4 on back wall)
+            for (const [portX, portColor] of [[500, '#4a3828'], [1100, '#2a3840'], [1700, '#3a2840'], [2300, '#284040']]) {
+                if (portX - camera.x < -120 || portX - camera.x > W + 120) continue;
+                ctx.fillStyle = '#c8a820'; ctx.fillRect(portX - 44, WI.ceilingY + 108, 88, 6);
+                ctx.fillRect(portX - 44, WI.ceilingY + 108, 6, 70);
+                ctx.fillRect(portX + 38, WI.ceilingY + 108, 6, 70);
+                ctx.fillRect(portX - 44, WI.ceilingY + 172, 88, 6);
+                ctx.fillStyle = portColor;
+                ctx.fillRect(portX - 38, WI.ceilingY + 114, 76, 58);
+                // Silhouette subject
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.beginPath(); ctx.arc(portX, WI.ceilingY + 138, 16, 0, Math.PI * 2); ctx.fill();
+                ctx.fillRect(portX - 14, WI.ceilingY + 154, 28, 18);
+            }
+            // Chandeliers (3)
+            for (const chx of [600, 1400, 2200]) {
+                if (chx - camera.x < -120 || chx - camera.x > W + 120) continue;
+                const glow = 0.5 + Math.sin(t * 0.8 + chx * 0.002) * 0.1;
+                // Chain
+                ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(chx, WI.ceilingY + 100); ctx.lineTo(chx, WI.ceilingY + 160); ctx.stroke();
+                // Top ring
+                ctx.strokeStyle = '#e8c830'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.ellipse(chx, WI.ceilingY + 162, 40, 8, 0, 0, Math.PI * 2); ctx.stroke();
+                // Lower ring
+                ctx.beginPath(); ctx.ellipse(chx, WI.ceilingY + 178, 30, 6, 0, 0, Math.PI * 2); ctx.stroke();
+                // Candles/flames
+                ctx.save();
+                ctx.shadowColor = `rgba(255,200,80,${glow})`; ctx.shadowBlur = 20;
+                ctx.fillStyle = '#ffe060';
+                for (let ci = 0; ci < 6; ci++) {
+                    const ca = (ci / 6) * Math.PI * 2;
+                    const cx3 = chx + Math.cos(ca) * 34; const cy3 = WI.ceilingY + 162 + Math.sin(ca) * 7;
+                    ctx.fillRect(cx3 - 2, cy3 - 8, 4, 8);
+                    ctx.fillStyle = '#ffaa20';
+                    ctx.beginPath(); ctx.ellipse(cx3, cy3 - 10, 3, 5, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffe060';
+                }
+                ctx.restore();
+                // Warm glow halo on floor
+                const haloG = ctx.createRadialGradient(chx, WI.floorY - 10, 10, chx, WI.floorY - 10, 160);
+                haloG.addColorStop(0, `rgba(255,200,80,${0.07 * glow})`);
+                haloG.addColorStop(1, 'rgba(255,200,80,0)');
+                ctx.fillStyle = haloG;
+                ctx.fillRect(chx - 160, WI.floorY - 160, 320, 200);
+            }
+            // Wayne family bat crest on back wall (centered)
+            ctx.fillStyle = 'rgba(200,168,32,0.15)';
+            ctx.font = 'bold 60px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('🦇', WI.w / 2, WI.ceilingY + 175);
+            ctx.fillStyle = 'rgba(200,168,32,0.4)'; ctx.font = '10px Arial';
+            ctx.fillText('WAYNE FAMILY EST. 1939', WI.w / 2, WI.ceilingY + 195);
+            // Left exit door
+            ctx.fillStyle = '#8b6914'; ctx.fillRect(20, WI.floorY - 90, 50, 90);
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2; ctx.strokeRect(20, WI.floorY - 90, 50, 90);
+            if (hero.x < 160) {
+                ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', 45, WI.floorY - 98);
+            }
+            // Draw servants
+            drawWayneServants();
+            // Draw Lois companion inside WE
+            if (loisWayne.active) drawInteriorLois(loisWayne, WI.floorY, true);
+            // Draw Bruce Wayne
+            if (bruceWayne.active) drawBruceWayne();
+        }
+
+        function drawWayneServants() {
+            const t = Date.now() * 0.001;
+            for (const s of wayneServants) {
+                s.phase += 0.02;
+                // Gentle drift
+                s.x += s._dir * 0.3;
+                if (s.x > 2700 || s.x < 200) s._dir *= -1;
+                s.faceDir = s._dir;
+                const sx = s.x, fy = s.y;
+                if (sx - camera.x < -60 || sx - camera.x > W + 60) continue;
+                const bob = Math.sin(s.phase) * 0.6;
+                ctx.save();
+                // Legs (black trousers)
+                ctx.fillStyle = '#0a0a18'; ctx.fillRect(sx - 7, fy - 26, 6, 26); ctx.fillRect(sx + 1, fy - 26, 6, 26);
+                // Shoes
+                ctx.fillStyle = '#060610'; ctx.fillRect(sx - 9, fy - 3, 9, 3); ctx.fillRect(sx + 1, fy - 3, 9, 3);
+                // White shirt
+                ctx.fillStyle = '#f0f0f0'; ctx.fillRect(sx - 4, fy - 56 + bob, 8, 12);
+                // Black tuxedo jacket
+                ctx.fillStyle = '#0a0a1a'; ctx.fillRect(sx - 12, fy - 58 + bob, 24, 32);
+                // White lapels
+                ctx.fillStyle = '#e8e8e8'; ctx.fillRect(sx - 5, fy - 58 + bob, 4, 14); ctx.fillRect(sx + 1, fy - 58 + bob, 4, 14);
+                // Bow tie
+                ctx.fillStyle = '#1a1a3a'; ctx.fillRect(sx - 4, fy - 62 + bob, 8, 4);
+                // Head
+                ctx.fillStyle = '#d4a870'; ctx.beginPath(); ctx.arc(sx, fy - 66 + bob, 9, 0, Math.PI * 2); ctx.fill();
+                // Hair
+                ctx.fillStyle = '#1a1008'; ctx.fillRect(sx - 10, fy - 75 + bob, 20, 8);
+                ctx.restore();
+            }
+        }
+
+        function drawBruceWayne() {
+            if (!bruceWayne.active || scene !== 'wayne') return;
+            bruceWayne.phase = (bruceWayne.phase || 0) + 0.03;
+            const bx = bruceWayne.x, by = bruceWayne.y;
+            const bob = Math.sin(bruceWayne.phase) * 0.8;
+            const fd = bruceWayne.faceDir;
+            if (bx - camera.x < -80 || bx - camera.x > W + 80) return;
+            ctx.save();
+            // Scale Bruce slightly larger (confident stature)
+            ctx.translate(bx, by); ctx.scale(1.08, 1.08); ctx.translate(-bx, -by);
+            // Legs — navy trousers
+            ctx.fillStyle = '#0e1e40'; ctx.fillRect(bx - 9, by - 32, 8, 32); ctx.fillRect(bx + 1, by - 32, 8, 32);
+            // Shoes — black oxford
+            ctx.fillStyle = '#080810'; ctx.fillRect(bx - 11, by - 4, 11, 4); ctx.fillRect(bx + 1, by - 4, 11, 4);
+            // Body — deep navy suit
+            const sg = ctx.createLinearGradient(bx - 14, by - 70, bx + 14, by - 70);
+            sg.addColorStop(0, '#0e1e40'); sg.addColorStop(0.5, '#1a2e58'); sg.addColorStop(1, '#0e1e40');
+            ctx.fillStyle = sg; ctx.fillRect(bx - 14, by - 68 + bob, 28, 36);
+            // White pocket square
+            ctx.fillStyle = '#f0f0f0'; ctx.fillRect(bx + 4, by - 66 + bob, 6, 5);
+            // Lapels
+            ctx.fillStyle = '#0e1e40';
+            ctx.beginPath(); ctx.moveTo(bx - 8, by - 68 + bob); ctx.lineTo(bx - 2, by - 58 + bob); ctx.lineTo(bx - 14, by - 54 + bob); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(bx + 8, by - 68 + bob); ctx.lineTo(bx + 2, by - 58 + bob); ctx.lineTo(bx + 14, by - 54 + bob); ctx.closePath(); ctx.fill();
+            // Gold tie pin
+            ctx.fillStyle = '#c8a820'; ctx.fillRect(bx - 2, by - 62 + bob, 4, 2);
+            // Head — chiseled jaw
+            ctx.fillStyle = '#c89060'; ctx.beginPath(); ctx.arc(bx, by - 78 + bob, 11, 0, Math.PI * 2); ctx.fill();
+            // Dark slicked-back hair
+            ctx.fillStyle = '#0c0c14'; ctx.fillRect(bx - 12, by - 89 + bob, 24, 10);
+            ctx.beginPath(); ctx.arc(bx, by - 88 + bob, 12, Math.PI, 0); ctx.fill();
+            // Eyes — intense, sharp
+            ctx.fillStyle = '#1a1a2a'; ctx.fillRect(bx - 5 + fd, by - 80 + bob, 3, 2.5); ctx.fillRect(bx + 2 + fd, by - 80 + bob, 3, 2.5);
+            // Name label
+            ctx.fillStyle = '#c8a820'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('BRUCE WAYNE', bx, by - 96 + bob);
+            // E-prompt if hero is nearby
+            const heroDist = Math.abs((hero.x + hero.w/2) - bx);
+            if (heroDist < 90 && !wayneDialogueDone && !activeDialogue) {
+                ctx.fillStyle = '#ffe040'; ctx.font = 'bold 10px Arial';
+                ctx.fillText('E — Speak with Bruce', bx, by - 108 + bob);
+            }
+            ctx.restore();
+        }
+
+        // ── Shared interior Lois draw (Wayne + Arkham) ────────────────────────
+        function drawInteriorLois(loisObj, floorY, followHero) {
+            if (!loisObj.active) return;
+            if (followHero && !activeDialogue) {
+                const tx = hero.x + hero.w / 2 - 60;
+                const dx = tx - loisObj.x;
+                if (Math.abs(dx) > 20) { loisObj.x += Math.sign(dx) * 1.4; loisObj.faceDir = Math.sign(dx); }
+                loisObj.x = Math.max(40, Math.min(WAYNE_INT.w - 40, loisObj.x));
+            }
+            loisObj.phase = (loisObj.phase || 0) + 0.04;
+            const lx = loisObj.x, ly = floorY;
+            if (lx - camera.x < -60 || lx - camera.x > W + 60) return;
+            const bob = Math.sin(loisObj.phase) * 1.2;
+            ctx.save();
+            ctx.translate(lx, ly); ctx.scale(0.8, 0.8); ctx.translate(-lx, -ly);
+            ctx.fillStyle = '#1a1a30'; ctx.fillRect(lx - 7, ly - 22, 6, 22); ctx.fillRect(lx + 1, ly - 22, 6, 22);
+            ctx.fillStyle = '#c01820'; ctx.fillRect(lx - 8, ly - 4, 8, 4); ctx.fillRect(lx + 1, ly - 4, 8, 4);
+            ctx.fillStyle = '#b81c2c'; ctx.fillRect(lx - 12, ly - 58 + bob, 24, 36);
+            ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lx - 5, ly - 56 + bob, 10, 20);
+            ctx.fillStyle = '#e8b080'; ctx.beginPath(); ctx.arc(lx, ly - 64 + bob, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1a0a04'; ctx.beginPath(); ctx.arc(lx, ly - 66 + bob, 10, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+            ctx.fillStyle = 'rgba(255,200,210,0.7)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Lois', lx, ly - 78 + bob);
+            ctx.restore();
+        }
+
+        // ── Arkham Asylum interior draw ───────────────────────────────────────
+        function drawArkhamInterior() {
+            const t = Date.now() * 0.001;
+            const AI = ARKHAM_INT;
+            // Background — dark slate
+            ctx.fillStyle = '#0e0e18'; ctx.fillRect(camera.x, camera.y, W, H);
+            // Ceiling — low industrial
+            ctx.fillStyle = '#141420';
+            ctx.fillRect(0, AI.ceilingY, AI.w, 80);
+            ctx.strokeStyle = '#2a2838'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, AI.ceilingY + 80); ctx.lineTo(AI.w, AI.ceilingY + 80); ctx.stroke();
+            // Exposed pipes running horizontally
+            ctx.strokeStyle = '#1e2030'; ctx.lineWidth = 8;
+            for (let py = AI.ceilingY + 20; py < AI.ceilingY + 70; py += 22) {
+                ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(AI.w, py); ctx.stroke();
+                // Pipe joints
+                ctx.fillStyle = '#28283c';
+                for (let pjx = 200; pjx < AI.w; pjx += 300) {
+                    ctx.beginPath(); ctx.arc(pjx, py, 7, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+            // Fluorescent lights — some flickering
+            for (let lx2 = 200; lx2 < AI.w; lx2 += 350) {
+                if (lx2 - camera.x < -80 || lx2 - camera.x > W + 80) continue;
+                const flicker = (Math.floor(lx2 / 350) % 3 === 1) ? (Math.sin(t * 18 + lx2) > 0.3 ? 1 : 0.1) : 1;
+                ctx.fillStyle = `rgba(200,220,255,${0.9 * flicker})`;
+                ctx.fillRect(lx2 - 40, AI.ceilingY + 82, 80, 6);
+                if (flicker > 0.5) {
+                    const lg = ctx.createRadialGradient(lx2, AI.ceilingY + 85, 5, lx2, AI.ceilingY + 85, 200);
+                    lg.addColorStop(0, 'rgba(180,200,255,0.12)'); lg.addColorStop(1, 'rgba(180,200,255,0)');
+                    ctx.fillStyle = lg; ctx.fillRect(lx2 - 200, AI.ceilingY + 85, 400, 400);
+                }
+            }
+            // Concrete floor with yellow safety lines
+            ctx.fillStyle = '#1a1a24'; ctx.fillRect(0, AI.floorY, AI.w, 120);
+            ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2.5; ctx.setLineDash([30, 15]);
+            ctx.beginPath(); ctx.moveTo(0, AI.floorY + 18); ctx.lineTo(AI.w, AI.floorY + 18); ctx.stroke();
+            ctx.setLineDash([]);
+            // Cell block along back wall
+            for (let cellX = 500; cellX < AI.w - 200; cellX += 380) {
+                if (cellX - camera.x < -200 || cellX - camera.x > W + 200) continue;
+                // Cell back wall
+                ctx.fillStyle = '#12121e'; ctx.fillRect(cellX - 70, AI.ceilingY + 90, 160, AI.floorY - AI.ceilingY - 90);
+                // Iron bars
+                ctx.strokeStyle = '#3a3848'; ctx.lineWidth = 4;
+                for (let bx3 = cellX - 60; bx3 < cellX + 92; bx3 += 16) {
+                    ctx.beginPath(); ctx.moveTo(bx3, AI.ceilingY + 90); ctx.lineTo(bx3, AI.floorY); ctx.stroke();
+                }
+                ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(cellX - 70, AI.ceilingY + 135); ctx.lineTo(cellX + 90, AI.ceilingY + 135); ctx.stroke();
+                // Cell bunk bed
+                ctx.fillStyle = '#0e0e1a'; ctx.fillRect(cellX - 50, AI.floorY - 45, 60, 12);
+                ctx.fillRect(cellX - 50, AI.floorY - 70, 60, 12);
+                // Inmate silhouette inside cell
+                ctx.fillStyle = '#1a1826';
+                ctx.fillRect(cellX - 30, AI.floorY - 50, 14, 38);
+                ctx.beginPath(); ctx.arc(cellX - 23, AI.floorY - 56, 8, 0, Math.PI * 2); ctx.fill();
+            }
+            // Guard station (left side)
+            ctx.fillStyle = '#141422'; ctx.fillRect(60, AI.floorY - 70, 100, 70);
+            ctx.strokeStyle = '#2a2840'; ctx.lineWidth = 2; ctx.strokeRect(60, AI.floorY - 70, 100, 70);
+            // Monitor glow
+            ctx.fillStyle = '#003a60'; ctx.fillRect(80, AI.floorY - 58, 44, 30);
+            const mg = 0.5 + Math.sin(t * 0.4) * 0.2;
+            ctx.fillStyle = `rgba(0,120,200,${mg * 0.3})`; ctx.fillRect(80, AI.floorY - 58, 44, 30);
+            // Left exit door
+            ctx.fillStyle = '#1a1828'; ctx.fillRect(10, AI.floorY - 100, 50, 100);
+            ctx.strokeStyle = '#3a3850'; ctx.lineWidth = 3; ctx.strokeRect(10, AI.floorY - 100, 50, 100);
+            for (let bh = AI.floorY - 92; bh < AI.floorY; bh += 14) {
+                ctx.strokeStyle = '#2a2838'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(10, bh); ctx.lineTo(60, bh); ctx.stroke();
+            }
+            if (hero.x < 160 && l2QuestPhase === 'arkham_exit') {
+                ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit', 35, AI.floorY - 108);
+            }
+            // Reinforced far-right door
+            ctx.fillStyle = '#0e0e18'; ctx.fillRect(AI.w - 60, AI.floorY - 120, 60, 120);
+            ctx.strokeStyle = '#2a2840'; ctx.lineWidth = 4; ctx.strokeRect(AI.w - 60, AI.floorY - 120, 60, 120);
+            // Draw guards
+            drawArkhamGuards();
+            // Draw prisoners
+            drawArkhamPrisoners();
+            // Draw companions inside
+            if (loisArkham.active) drawInteriorLois(loisArkham, AI.floorY, true);
+            if (bruceArkham.active) drawBruceArkham();
+        }
+
+        function drawArkhamGuards() {
+            for (const g of arkhamGuards) {
+                g.phase = (g.phase || 0) + 0.03;
+                g.x += g.faceDir * 0.8;
+                if (g.x > g._maxX) { g.x = g._maxX; g.faceDir = -1; }
+                if (g.x < g._minX) { g.x = g._minX; g.faceDir =  1; }
+                const gx = g.x, gy = g.y;
+                if (gx - camera.x < -60 || gx - camera.x > W + 60) continue;
+                const bob = Math.sin(g.phase * 2) * 0.8;
+                const fd = g.faceDir;
+                ctx.save();
+                // Legs
+                ctx.fillStyle = '#1a1a2a'; ctx.fillRect(gx - 8, gy - 28, 7, 28); ctx.fillRect(gx + 1, gy - 28, 7, 28);
+                // Boots
+                ctx.fillStyle = '#080812'; ctx.fillRect(gx - 10, gy - 4, 10, 4); ctx.fillRect(gx + 1, gy - 4, 10, 4);
+                // Dark navy uniform
+                ctx.fillStyle = '#0e1428'; ctx.fillRect(gx - 12, gy - 60 + bob, 24, 32);
+                // Badge
+                ctx.fillStyle = '#c8a820'; ctx.fillRect(gx + 2, gy - 56 + bob, 8, 6);
+                // Head
+                ctx.fillStyle = '#c89060'; ctx.beginPath(); ctx.arc(gx, gy - 68 + bob, 9, 0, Math.PI * 2); ctx.fill();
+                // Cap
+                ctx.fillStyle = '#0e1428'; ctx.fillRect(gx - 11, gy - 77 + bob, 22, 8);
+                ctx.fillRect(gx - 13 * fd, gy - 79 + bob, 6, 4);
+                ctx.restore();
+            }
+        }
+
+        function drawArkhamPrisoners() {
+            for (const p of arkhamPrisoners) {
+                p.phase = (p.phase || 0) + 0.025;
+                const px = p.x, py = p.y;
+                if (px - camera.x < -80 || px - camera.x > W + 80) continue;
+                const bob = Math.sin(p.phase) * 0.7;
+                const done = p.interrogated;
+                ctx.save();
+                // Legs — orange jumpsuit
+                ctx.fillStyle = done ? '#4a3010' : '#c05010';
+                ctx.fillRect(px - 8, py - 30, 7, 30); ctx.fillRect(px + 1, py - 30, 7, 30);
+                // Jumpsuit body
+                ctx.fillStyle = done ? '#6a4018' : '#e06020';
+                ctx.fillRect(px - 12, py - 62 + bob, 24, 32);
+                // Prison number stencil
+                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.font = '7px Arial'; ctx.textAlign = 'center';
+                ctx.fillText(p.name.split(' ')[1] || '???', px, py - 48 + bob);
+                // Head
+                ctx.fillStyle = '#d4a878'; ctx.beginPath(); ctx.arc(px, py - 70 + bob, 10, 0, Math.PI * 2); ctx.fill();
+                // Eyes
+                ctx.fillStyle = '#2a1a0a'; ctx.fillRect(px - 4, py - 73 + bob, 3, 2); ctx.fillRect(px + 1, py - 73 + bob, 3, 2);
+                // Hair (shaved)
+                ctx.fillStyle = '#1a0a04'; ctx.fillRect(px - 10, py - 80 + bob, 20, 8);
+                // Status / prompt
+                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                if (done) {
+                    ctx.fillStyle = 'rgba(80,200,80,0.7)'; ctx.fillText('✓ Questioned', px, py - 85 + bob);
+                } else if (Math.abs((hero.x + hero.w/2) - px) < 70 && l2QuestPhase === 'arkham_interrogate') {
+                    ctx.fillStyle = '#ffe040'; ctx.fillText('E — Question', px, py - 85 + bob);
+                }
+                ctx.restore();
+            }
+        }
+
+        function drawBruceArkham() {
+            if (!bruceArkham.active || scene !== 'arkham') return;
+            bruceArkham.phase = (bruceArkham.phase || 0) + 0.03;
+            const bx = bruceArkham.x, by = bruceArkham.y;
+            const bob = Math.sin(bruceArkham.phase) * 0.8;
+            if (bx - camera.x < -80 || bx - camera.x > W + 80) return;
+            // Follow Lois/hero loosely
+            if (!activeDialogue) {
+                const tx = hero.x + hero.w / 2 + 80;
+                const dx = tx - bruceArkham.x;
+                if (Math.abs(dx) > 30) { bruceArkham.x += Math.sign(dx) * 1.2; bruceArkham.faceDir = Math.sign(dx); }
+                bruceArkham.x = Math.max(80, Math.min(ARKHAM_INT.w - 80, bruceArkham.x));
+            }
+            ctx.save();
+            ctx.translate(bx, by); ctx.scale(1.08, 1.08); ctx.translate(-bx, -by);
+            // Guard uniform (undercover)
+            ctx.fillStyle = '#1a1a2a'; ctx.fillRect(bx - 8, by - 28, 7, 28); ctx.fillRect(bx + 1, by - 28, 7, 28);
+            ctx.fillStyle = '#080812'; ctx.fillRect(bx - 10, by - 4, 10, 4); ctx.fillRect(bx + 1, by - 4, 10, 4);
+            ctx.fillStyle = '#0e1428'; ctx.fillRect(bx - 12, by - 60 + bob, 24, 32);
+            ctx.fillStyle = '#c8a820'; ctx.fillRect(bx + 2, by - 56 + bob, 8, 6);
+            ctx.fillStyle = '#c89060'; ctx.beginPath(); ctx.arc(bx, by - 68 + bob, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#0e1428'; ctx.fillRect(bx - 11, by - 77 + bob, 22, 8); ctx.fillRect(bx - 13, by - 79 + bob, 6, 4);
+            ctx.fillStyle = '#c8a820'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('BRUCE', bx, by - 88 + bob);
+            ctx.restore();
+        }
+
+        function updateWayneNPCs() {
+            if (scene !== 'wayne') return;
+            // Lois follow is handled inside drawInteriorLois
+            // Bruce faces the hero
+            if (bruceWayne.active) {
+                const dx = (hero.x + hero.w/2) - bruceWayne.x;
+                bruceWayne.faceDir = dx < 0 ? -1 : 1;
+            }
+        }
+
+        function updateArkhamNPCs() {
+            if (scene !== 'arkham') return;
+            // Guard patrol drawn in drawArkhamGuards (updates position there)
+            // Lois and Bruce follow handled in draw functions
         }
 
         function drawBank() {
@@ -13408,6 +14198,42 @@
                 return;
             }
 
+            // ---- WAYNE ENTERPRISES INTERIOR ----
+            if (scene === 'wayne') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > WAYNE_INT.floorY) { hero.y = WAYNE_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > WAYNE_INT.floorY) { hound.y = WAYNE_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateWayneNPCs();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // ---- ARKHAM ASYLUM INTERIOR ----
+            if (scene === 'arkham') {
+                const pin  = computeP1Input();
+                const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
+                updateEntity(hero, pin);
+                updateEntity(hound, p2in);
+                if (hero.y + hero.h > ARKHAM_INT.floorY) { hero.y = ARKHAM_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
+                if (hound.y + hound.h > ARKHAM_INT.floorY) { hound.y = ARKHAM_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
+                tickDialogue();
+                updateArkhamNPCs();
+                updateHitFX();
+                updateCamera();
+                draw();
+                updateHUD();
+                requestAnimationFrame(loop);
+                return;
+            }
+
             // ---- FIRST NATIONAL BANK INTERIOR ----
             if (scene === 'bank') {
                 const pin  = computeP1Input();
@@ -13495,6 +14321,44 @@
             // Bank enemies are spawned immediately when lab dialogue ends (see triggerBankRobberyDialogue)
             // Check bank fight cleared
             if (questPhase === 'bank_fight') checkBankCleared();
+
+            // ── Level 2 quest logic ───────────────────────────────────────────
+            if (currentLevel === 2) {
+                // Fire intro dialogue once hero lands after fly-in
+                if (l2QuestPhase === 'l2_intro' && !l2IntroDone && hero.onGround && !activeDialogue) {
+                    l2IntroDone = true;
+                    startDialogue({
+                        speaker: 'CK', portrait: 'hero',
+                        lines: ['Gotham City. Even from the air it feels different — heavier.'],
+                        onDone: () => startDialogue({
+                            speaker: 'Lois Lane', portrait: 'lois',
+                            lines: ['I\'ve been here before, but never like this. Lex is out there somewhere.'],
+                            onDone: () => startDialogue({
+                                speaker: 'CK', portrait: 'hero',
+                                lines: ['We\'re not alone. I called in a contact — someone who knows Gotham better than anyone.'],
+                                onDone: () => startDialogue({
+                                    speaker: 'Lois Lane', portrait: 'lois',
+                                    lines: ['Wayne Enterprises is just up ahead. Let\'s start there.'],
+                                    onDone: () => {
+                                        advanceL2Quest('travel_wayne');
+                                        titleCard = { text: 'WAYNE ENTERPRISES', sub: 'Head there — an old ally is waiting.', timer: 240 };
+                                    }
+                                })
+                            })
+                        })
+                    });
+                }
+                // Auto-enter Wayne Enterprises when hero arrives
+                if (l2QuestPhase === 'travel_wayne' && !wayneScene && !activeDialogue) {
+                    if (Math.abs((hero.x + hero.w/2) - WAYNE_X) < 200) enterWayne();
+                }
+                // Auto-enter Arkham when both hero and Lois car arrive
+                if (l2QuestPhase === 'travel_arkham' && !arkhamScene && !activeDialogue) {
+                    const heroNear = Math.abs((hero.x + hero.w/2) - ARKHAM_X) < 300;
+                    const loisNear = loisCar.arrived && Math.abs(loisCar.x - ARKHAM_X) < 500;
+                    if (heroNear && loisNear) enterArkham();
+                }
+            }
             tickDialogue();
             updateDarkWing();
             updatePowerGirl();
