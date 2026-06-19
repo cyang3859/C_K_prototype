@@ -633,6 +633,17 @@
             camera.y = 0;
         }
 
+        function updateConstructionLois() {
+            if (!constructionLois.active || scene !== 'construction' || activeDialogue) return;
+            const targetX = hero.x + hero.w / 2 - 60;
+            const dx = targetX - constructionLois.x;
+            if (Math.abs(dx) > 20) {
+                constructionLois.x += Math.sign(dx) * 1.4;
+                constructionLois.faceDir = Math.sign(dx);
+            }
+            constructionLois.x = Math.max(40, Math.min(CONSTRUCTION_INT.w - 40, constructionLois.x));
+        }
+
         function updateYardWorkers() {
             if (!constructionSpawned || scene !== 'construction' || currentLevel !== 1) return;
             for (const w of yardWorkers) {
@@ -691,11 +702,19 @@
                                 onDone: () => {
                                     advanceQuest('travel_lexcorp2');
                                     exitConstruction();
+                                    // Show Lois getting in her car and driving from construction site to LexCorp
                                     loisCar.x = CONSTRUCTION_X + 60;
                                     loisCar.y = GROUND_Y;
+                                    loisCar.faceDir = -1;
                                     loisCar.active = true;
                                     driveLoisCar(LEXLAB_X - 50, () => {}, 2.8);
-                                    titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
+                                    startDialogue({
+                                        speaker: 'Lois Lane', portrait: 'lois',
+                                        lines: ['I\'ll meet you at LexCorp — if Luthor left any trail, it starts there.'],
+                                        onDone: () => {
+                                            titleCard = { text: 'RETURN TO LEXCORP', sub: 'Head back to the LexCorp Lab — find Lex\'s trail.', timer: 220 };
+                                        }
+                                    });
                                 }
                             });
                         }
@@ -804,14 +823,6 @@
                 enemies.push(en);
             }
             titleCard = { text: 'LEXCORP — GUARDS REMAIN', sub: 'Clear the remaining guards, then search for evidence!', timer: 220 };
-            startDialogue({
-                speaker: 'CK', portrait: 'hero',
-                lines: [
-                    'They left guards behind — Chen must have known we\'d come back.',
-                    'Clear them out first.'
-                ],
-                onDone: () => {}
-            });
         }
 
         function checkLexcorp2Cleared() {
@@ -13388,6 +13399,7 @@
                 if (hound.y + hound.h > CONSTRUCTION_INT.floorY) { hound.y = CONSTRUCTION_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
                 tickDialogue();
                 updateYardWorkers();
+                updateConstructionLois();
                 updateHitFX();
                 updateCamera();
                 draw();
@@ -13470,9 +13482,11 @@
                 }
             }
             if (questPhase === 'lexcorp2_fight') checkLexcorp2Cleared();
-            // Auto-enter construction yard when hero arrives during travel_construction
+            // Auto-enter construction yard when BOTH hero and Lois car have arrived
             if (questPhase === 'travel_construction' && !constructionEntryUnlocked && !activeDialogue) {
-                if (Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 400) {
+                const heroNear = Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 400;
+                const loisNear = loisCar.arrived && Math.abs(loisCar.x - CONSTRUCTION_X) < 500;
+                if (heroNear && loisNear) {
                     constructionEntryUnlocked = true;
                     enterConstruction();
                 }
