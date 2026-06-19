@@ -566,7 +566,7 @@
         let prisonEnemiesSpawned = false;
 
         // ── PHASE 5: CONSTRUCTION YARD ───────────────────────────────────────
-        const CONSTRUCTION_X = 8400;
+        const CONSTRUCTION_X = 9800;
         let constructionSpawned = false;
         let workersInterrogated = 0;
 
@@ -1000,7 +1000,7 @@
                                             exitBank();
                                             loisCar.x = BANK_X + 30;
                                             loisCar.y = GROUND_Y;
-                                            driveLoisCar(8350, () => {}, 2.6);
+                                            driveLoisCar(CONSTRUCTION_X - 60, () => {}, 2.6);
                                         }
                                     });
                                 }
