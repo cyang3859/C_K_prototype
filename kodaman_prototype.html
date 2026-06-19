@@ -2929,8 +2929,10 @@
                 }
             }
             // Construction yard entry
-            if (e.code === 'KeyF' && scene === 'city' && constructionEntryUnlocked && currentLevel === 1) {
-                if (Math.abs((hero.x + hero.w / 2) - CONSTRUCTION_X) < 120 && (hero.y + hero.h) >= GROUND_Y - 50) {
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 1 &&
+                (constructionEntryUnlocked || questPhase === 'travel_construction')) {
+                if (Math.abs((hero.x + hero.w / 2) - CONSTRUCTION_X) < 300 && (hero.y + hero.h) >= GROUND_Y - 50) {
+                    constructionEntryUnlocked = true;
                     enterConstruction(); e.preventDefault();
                 }
             }
