@@ -9561,16 +9561,7 @@
             platforms.splice(0, platforms.length, ...L1_PLATFORMS);
             camera.x = Math.max(0, hero.x - W / 2);
             camera.y = 0;
-            if (labExitReady) {
-                // All clues found — Lois drives to bank, hero flies there
-                labExitReady = false;
-                loisCar.x = LEXLAB_X + 30;
-                loisCar.y = GROUND_Y;
-                driveLoisCar(BANK_X - 90, () => {
-                    advanceQuest('travel_bank');
-                }, 2.8);
-                titleCard = { text: 'HEAD TO FIRST NATIONAL BANK', sub: 'Fly Downtown — Lois is following in her car.', timer: 260 };
-            }
+            // (Lois car and next-quest setup handled by triggerBankRobberyDialogue onDone)
             camera.x = Math.max(0, hero.x - W / 2);
             camera.y = 0;
         }
@@ -9735,9 +9726,23 @@
                         ],
                         onDone: () => {
                             advanceQuest('lab_dialogue');
-                            labExitReady = true;
-                            labExitCountdown = 300; // auto-exit in ~5 seconds if F not pressed
-                            titleCard = { text: 'EXIT THE BUILDING', sub: 'Press F to leave now, or you\'ll exit automatically.', timer: 300 };
+                            labExitReady = false;
+                            // Cut straight to outside — no F-key needed
+                            exitLexlab();
+                            // Lois gets in her car and heads to the bank
+                            loisCar.x = LEXLAB_X + 30;
+                            loisCar.y = GROUND_Y;
+                            loisCar.active = true;
+                            driveLoisCar(BANK_X - 90, () => { advanceQuest('travel_bank'); }, 2.8);
+                            startDialogue({
+                                speaker: 'Lois Lane', portrait: 'lois',
+                                lines: [
+                                    'I\'ll meet you over at the bank. Don\'t let them get away with it!'
+                                ],
+                                onDone: () => {
+                                    titleCard = { text: 'HEAD TO FIRST NATIONAL BANK', sub: 'Fly Downtown — Lois is following in her car.', timer: 260 };
+                                }
+                            });
                         }
                     });
                 }
