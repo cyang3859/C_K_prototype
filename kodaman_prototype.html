@@ -3762,7 +3762,7 @@
                 }
             }
             // E: interact (talk to quest NPCs / ambient role NPCs) or drop carried civilians
-            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank' || scene === 'construction') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
+            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank' || scene === 'construction' || scene === 'arkham' || scene === 'wayne') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -12631,6 +12631,34 @@
             });
         }
 
+        function updateLoisArkham() {
+            if (!loisArkham.active || scene !== 'arkham' || activeDialogue) return;
+            loisArkham.phase += 0.05;
+            // Walk toward next un-interrogated prisoner to assist independently
+            const nextP = arkhamPrisoners.find(p => !p.interrogated);
+            const targetX = nextP ? nextP.x - 80 : 600;
+            const dx = targetX - loisArkham.x;
+            if (Math.abs(dx) > 30) {
+                loisArkham.x += Math.sign(dx) * 1.1;
+                loisArkham.faceDir = Math.sign(dx);
+            }
+            loisArkham.x = Math.max(80, Math.min(ARKHAM_INT.w - 80, loisArkham.x));
+        }
+
+        function updateBruceArkham() {
+            if (!bruceArkham.active || scene !== 'arkham' || activeDialogue) return;
+            bruceArkham.phase += 0.04;
+            // Bruce strides ahead toward each prisoner
+            const nextP = arkhamPrisoners.find(p => !p.interrogated);
+            const targetX = nextP ? nextP.x + 100 : ARKHAM_INT.w / 2;
+            const dx = targetX - bruceArkham.x;
+            if (Math.abs(dx) > 40) {
+                bruceArkham.x += Math.sign(dx) * 1.8;
+                bruceArkham.faceDir = Math.sign(dx);
+            }
+            bruceArkham.x = Math.max(80, Math.min(ARKHAM_INT.w - 80, bruceArkham.x));
+        }
+
         // ── Wayne Enterprises interior draw ───────────────────────────────────
         function drawWayneInterior() {
             const t = Date.now() * 0.001;
@@ -12878,8 +12906,8 @@
                     ctx.fillStyle = lg; ctx.fillRect(lx2 - 200, AI.ceilingY + 85, 400, 400);
                 }
             }
-            // Concrete floor with yellow safety lines
-            ctx.fillStyle = '#1a1a24'; ctx.fillRect(0, AI.floorY, AI.w, 120);
+            // Concrete floor — large height to eliminate camera-Y gaps
+            ctx.fillStyle = '#1a1a24'; ctx.fillRect(0, AI.floorY, AI.w, 600);
             ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2.5; ctx.setLineDash([30, 15]);
             ctx.beginPath(); ctx.moveTo(0, AI.floorY + 18); ctx.lineTo(AI.w, AI.floorY + 18); ctx.stroke();
             ctx.setLineDash([]);
@@ -12917,7 +12945,7 @@
                 ctx.strokeStyle = '#2a2838'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(10, bh); ctx.lineTo(60, bh); ctx.stroke();
             }
-            if (hero.x < 160 && l2QuestPhase === 'arkham_exit') {
+            if (hero.x < 200) {
                 ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
                 ctx.fillText('F — Exit', 35, AI.floorY - 108);
             }
@@ -15792,6 +15820,8 @@
             updateCityLois();
             updateL2Lois();
             updatePrisonLois();
+            updateLoisArkham();
+            updateBruceArkham();
             updateLoisCar();
             // Unlock lab entry when both loisCar has arrived AND hero is within 400px
             if (questPhase === 'lab_explore' && !lexlabEntryUnlocked && loisCar.arrived) {
