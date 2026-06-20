@@ -577,6 +577,7 @@
 
         let l2QuestPhase = 'idle';
         let l2IntroDone  = false;   // one-shot flag for fly-in landing dialogue
+        let l2IntroDelay = 0;       // frames to wait after landing before intro dialogue
         function advanceL2Quest(p) { l2QuestPhase = p; console.log('[L2]', p); }
         // Lois companion for L2 exterior (walks alongside hero, same as L1 cityLois pattern)
         const l2Lois = { x: 0, y: 0, vy: 0, faceDir: 1, phase: 0, active: false, onGround: false };
@@ -655,7 +656,6 @@
 
         function updateL2Lois() {
             if (!l2Lois.active || scene !== 'city' || currentLevel !== 2) return;
-            // Apply gravity until on ground
             if (!l2Lois.onGround) {
                 l2Lois.vy += GRAVITY;
                 l2Lois.y += l2Lois.vy;
@@ -664,10 +664,17 @@
                 }
             }
             if (activeDialogue) return;
-            // Follow hero at a comfortable distance
-            const targetX = hero.x + hero.w / 2 - 60;
+            // Independent navigation — target depends on quest phase
+            let targetX;
+            if (l2QuestPhase === 'travel_wayne' || l2QuestPhase === 'wayne_interior') {
+                targetX = WAYNE_X - 90;  // walk to Wayne on her own
+            } else if (l2QuestPhase === 'travel_arkham') {
+                targetX = ARKHAM_X - 90; // walk to Arkham
+            } else {
+                targetX = hero.x + hero.w / 2 - 80; // follow hero during intro/idle
+            }
             const dx = targetX - l2Lois.x;
-            if (Math.abs(dx) > 22) {
+            if (Math.abs(dx) > 25) {
                 l2Lois.x += Math.sign(dx) * 1.7;
                 l2Lois.faceDir = Math.sign(dx);
             }
@@ -3637,8 +3644,8 @@
                 if (hero.x < 160) { exitConstruction(); e.preventDefault(); }
             }
             // Wayne Enterprises entry (F key)
-            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 2 && l2QuestPhase === 'travel_wayne' && !wayneScene && !activeDialogue) {
-                if (Math.abs((hero.x + hero.w / 2) - WAYNE_X) < 180) { enterWayne(); e.preventDefault(); }
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 2 && (l2QuestPhase === 'travel_wayne' || l2QuestPhase === 'l2_intro') && !wayneScene && !activeDialogue) {
+                if (Math.abs((hero.x + hero.w / 2) - WAYNE_X) < 260) { enterWayne(); e.preventDefault(); }
             }
             // F: exit Wayne Enterprises
             if (e.code === 'KeyF' && scene === 'wayne') {
@@ -10296,6 +10303,7 @@
             // quest state
             l2QuestPhase = 'l2_intro';
             l2IntroDone  = false;
+            l2IntroDelay = 150; // ~2.5s after landing before intro dialogue fires
             titleCard = { text: 'GOTHAM CITY', sub: 'The trail leads here. Stay sharp.', timer: 240 };
         }
 
@@ -11330,19 +11338,25 @@
 
             // ── DRIVING MODE: Batmobile racing to the quest zone ────────────────
             if (darkWing.driving) {
-                const zx = questZone ? questZone.x : darkWing._targetX;
+                // When _targetX is explicitly set (e.g. exitWayne), use it; else follow questZone
+                const zx = (darkWing._driveSpeed && darkWing._targetX) ? darkWing._targetX : (questZone ? questZone.x : darkWing._targetX);
                 const dx = zx - darkWing.x;
                 darkWing._driveTrailX = darkWing.x;
                 if (Math.abs(dx) > 120) {
-                    darkWing.x += Math.sign(dx) * 6.5;
+                    darkWing.x += Math.sign(dx) * (darkWing._driveSpeed || 6.5);
                     darkWing.faceDir = Math.sign(dx);
                     darkWing.phase += 0.12;
                 } else {
-                    // arrived — switch to zone combat
+                    // arrived at destination
+                    const wasCustomDrive = !!darkWing._driveSpeed;
                     darkWing.driving = false;
-                    darkWing.zoneCombat = true;
-                    darkWing._targetX = darkWing.x;  // anchor here
-                    titleCard = { text: 'DARK WING ARRIVED', sub: 'Fighting alongside you at ' + (questZone ? questZone.label : 'the zone') + '!', timer: 150 };
+                    darkWing._driveSpeed = 0;
+                    darkWing._targetX = darkWing.x;
+                    if (!wasCustomDrive) {
+                        // normal quest-zone drive — enter combat mode
+                        darkWing.zoneCombat = true;
+                        if (questZone) titleCard = { text: 'DARK WING ARRIVED', sub: 'Fighting alongside you at ' + questZone.label + '!', timer: 150 };
+                    }
                 }
                 return;
             }
@@ -12548,9 +12562,10 @@
             camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
             // Lois car departs toward Arkham
             loisCar.x = WAYNE_X + 80; loisCar.y = GROUND_Y; loisCar.active = true; loisCar.faceDir = 1;
-            driveLoisCar(ARKHAM_X - 100, () => {}, 2.6);
-            // Dark Wing drives batmobile toward Arkham
+            driveLoisCar(ARKHAM_X - 100, () => {}, 1.8); // Lois car — slower
+            // Dark Wing batmobile — faster than Lois, arrives first
             darkWing.x = WAYNE_X - 60; darkWing.driving = true; darkWing._targetX = ARKHAM_X - 140;
+            darkWing._driveSpeed = 4.2;
             startDialogue({
                 speaker: 'Lois Lane', portrait: 'lois',
                 lines: ['Arkham. Of course that\'s where the trail leads.'],
@@ -15805,29 +15820,31 @@
 
             // ── Level 2 quest logic ───────────────────────────────────────────
             if (currentLevel === 2) {
-                // Fire intro dialogue once hero lands after fly-in
-                if (l2QuestPhase === 'l2_intro' && !l2IntroDone && hero.onGround && !activeDialogue) {
-                    l2IntroDone = true;
-                    startDialogue({
-                        speaker: 'CK', portrait: 'hero',
-                        lines: ['Gotham City. Even from the air it feels different — heavier.'],
-                        onDone: () => startDialogue({
-                            speaker: 'Lois Lane', portrait: 'lois',
-                            lines: ['I\'ve been here before, but never like this. Lex is out there somewhere.'],
+                // Fire intro dialogue once hero AND Lois both land, after a short delay
+                if (l2QuestPhase === 'l2_intro' && !l2IntroDone && hero.onGround && l2Lois.onGround && !activeDialogue) {
+                    if (l2IntroDelay > 0) { l2IntroDelay--; }
+                    else { l2IntroDone = true;
+                        startDialogue({
+                            speaker: 'CK', portrait: 'hero',
+                            lines: ['Gotham City. Even from the air it feels different — heavier.'],
                             onDone: () => startDialogue({
-                                speaker: 'CK', portrait: 'hero',
-                                lines: ['We\'re not alone. I called in a contact — someone who knows Gotham better than anyone.'],
+                                speaker: 'Lois Lane', portrait: 'lois',
+                                lines: ['I\'ve been here before, but never like this. Lex is out there somewhere.'],
                                 onDone: () => startDialogue({
-                                    speaker: 'Lois Lane', portrait: 'lois',
-                                    lines: ['Wayne Enterprises is just up ahead. Let\'s start there.'],
-                                    onDone: () => {
-                                        advanceL2Quest('travel_wayne');
-                                        titleCard = { text: 'WAYNE ENTERPRISES', sub: 'Head there — an old ally is waiting.', timer: 240 };
-                                    }
+                                    speaker: 'CK', portrait: 'hero',
+                                    lines: ['We\'re not alone. I called in a contact — someone who knows Gotham better than anyone.'],
+                                    onDone: () => startDialogue({
+                                        speaker: 'Lois Lane', portrait: 'lois',
+                                        lines: ['Wayne Enterprises is just up ahead. Let\'s start there.'],
+                                        onDone: () => {
+                                            advanceL2Quest('travel_wayne');
+                                            titleCard = { text: 'WAYNE ENTERPRISES', sub: 'Head there — an old ally is waiting.', timer: 240 };
+                                        }
+                                    })
                                 })
                             })
-                        })
-                    });
+                        });
+                    } // end else (delay expired)
                 }
                 // Wayne entry is F-key only (handled in keydown listener)
                 // Auto-enter Arkham when both hero and Lois car arrive
