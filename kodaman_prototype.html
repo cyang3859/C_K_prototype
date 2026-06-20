@@ -3628,8 +3628,8 @@
                         e.preventDefault(); break;
                     }
                 }
-                // Exit door — near entrance (x<260) or after all clues found
-                if (labExitReady || hero.x < 260 || labCluesFound >= 3) {
+                // Exit door — near entrance (x<260) only; bank robbery dialogue auto-exits after all clues
+                if (labExitReady || hero.x < 260) {
                     exitLexlab(); e.preventDefault();
                 }
             }
@@ -4556,51 +4556,136 @@
                 return input;
             }
 
-            // ── NORMAL MODE: trail the hero ──────────────────────────────────
-            const FOLLOW_GAP = 140;
-            const desiredX = hero.x - hero.facing * FOLLOW_GAP;
-            const desiredY = hero.y;
-            const hdx = desiredX - hound.x;
-            const hdy = desiredY - hound.y;
+            // ── KRYPTO STATE MACHINE ─────────────────────────────────────────
+            // States: 'follow' → 'engage' → 'lift' → 'drop' → 'follow'
+            if (!hound._kState) { hound._kState = 'follow'; hound._kTarget = null; hound._kCarried = null; hound._kCD = 0; }
+            if (hound._kCD > 0) hound._kCD--;
 
-            if (Math.abs(hdx) > 40) {
-                if (hdx > 0) { input.right = true; hound.facing = 1; }
-                else { input.left = true; hound.facing = -1; }
-                if (Math.abs(hdx) > 320) input.dash = true;
-            }
-
-            const heroAirborne = !hero.onGround;
-            if (heroAirborne || hound.flightActive) {
-                if (hdy < -40 && !hound.flightActive) input.jumpHeld = true;
-                else if (hound.flightActive) {
-                    if (hdy < -25) input.jumpHeld = true;
-                    else if (hdy > 35) input.moveDown = true;
+            // Keep carried enemy pinned to Krypto's mouth each frame
+            if (hound._kCarried) {
+                const ec = hound._kCarried;
+                if (!ec.alive) {
+                    ec._kryptoBite = false; ec.grabbed = false;
+                    hound._kCarried = null; hound._kState = 'follow'; hound._kCD = 30;
+                } else {
+                    ec.x = hound.x + (hound.facing > 0 ? hound.w - 4 : -ec.w + 4);
+                    ec.y = hound.y - ec.h * 0.2;
+                    ec.vx = 0; ec.vy = 0; ec.onGround = false;
+                    ec.frozen = Math.max(ec.frozen || 0, 3);
                 }
             }
-            if (!heroAirborne && hound.flightActive && hound.y > GROUND_Y - 160) {
-                input.moveDown = true;
-            }
 
-            // hazard avoidance removed (laser barriers gone)
+            const hcx = hound.x + hound.w / 2, hcy = hound.y + hound.h / 2;
+            const heroCx = hero.x + hero.w / 2, heroCy = hero.y + hero.h / 2;
 
-            // drag nearby enemies
-            let best = null, bestD = Infinity;
-            const hcxN = hound.x + hound.w / 2, hcyN = hound.y + hound.h / 2;
+            // Survey threats — count enemies near hero and find best targets
+            let heroThreatCount = 0, closestToHero = null, closestToHeroDist = Infinity;
+            let closestToHound = null, closestToHoundDist = Infinity;
             for (const en of enemies) {
-                if (!en.alive) continue;
-                const ex = en.x + en.w / 2, ey2 = en.y + en.h / 2;
-                const d = Math.hypot(ex - hcxN, ey2 - hcyN);
-                const inFront = (ex - hcxN) * hound.facing > -20;
-                if (d < bestD && d < 160 && inFront && Math.abs(ey2 - hcyN) < 80) { bestD = d; best = en; }
+                if (!en.alive || en._kryptoBite) continue;
+                const enCx = en.x + en.w / 2, enCy = en.y + en.h / 2;
+                const dHero  = Math.hypot(enCx - heroCx, enCy - heroCy);
+                const dHound = Math.hypot(enCx - hcx,    enCy - hcy);
+                if (dHero < 160) { heroThreatCount++; if (dHero < closestToHeroDist) { closestToHeroDist = dHero; closestToHero = en; } }
+                if (dHound < closestToHoundDist) { closestToHoundDist = dHound; closestToHound = en; }
             }
-            if (best && (hound._dragCD || 0) <= 0) {
-                const dragDir = best.x < hound.x ? -1 : 1;
-                best.vx = dragDir * 3.5;
-                best.x += dragDir * 14;
-                tryHitEnemy(best, 1, 3, 'punch', hound);
-                hound._dragCD = 55;
+            // When hero is swarmed (2+ enemies), help hero; otherwise pick own target
+            const kTarget = (heroThreatCount >= 2 && closestToHero) ? closestToHero : (closestToHound || closestToHero);
+
+            switch (hound._kState) {
+                case 'follow': {
+                    // Trail hero
+                    const FOLLOW_GAP = 140;
+                    const desiredX = hero.x - hero.facing * FOLLOW_GAP;
+                    const hdx = desiredX - hound.x, hdy = hero.y - hound.y;
+                    if (Math.abs(hdx) > 40) {
+                        if (hdx > 0) { input.right = true; hound.facing = 1; }
+                        else { input.left = true; hound.facing = -1; }
+                        if (Math.abs(hdx) > 320) input.dash = true;
+                    }
+                    const heroAirborne = !hero.onGround;
+                    if (heroAirborne || hound.flightActive) {
+                        if (hdy < -40 && !hound.flightActive) input.jumpHeld = true;
+                        else if (hound.flightActive) {
+                            if (hdy < -25) input.jumpHeld = true;
+                            else if (hdy > 35) input.moveDown = true;
+                        }
+                    }
+                    if (!heroAirborne && hound.flightActive && hound.y > GROUND_Y - 160) input.moveDown = true;
+                    // Engage if enemies present
+                    if (kTarget && hound._kCD <= 0) { hound._kTarget = kTarget; hound._kState = 'engage'; }
+                    break;
+                }
+                case 'engage': {
+                    const en = hound._kTarget;
+                    if (!en || !en.alive) { hound._kTarget = null; hound._kState = 'follow'; hound._kCD = 20; break; }
+                    // Re-target if hero is being swarmed
+                    if (heroThreatCount >= 2 && closestToHero && closestToHero !== en) hound._kTarget = closestToHero;
+                    const enCx = en.x + en.w / 2, enCy = en.y + en.h / 2;
+                    const tdx = enCx - hcx, tdy = enCy - hcy;
+                    const dist2 = Math.hypot(tdx, tdy);
+                    // Chase
+                    if (Math.abs(tdx) > 30) {
+                        if (tdx > 0) { input.right = true; hound.facing = 1; }
+                        else { input.left = true; hound.facing = -1; }
+                        if (dist2 > 350) input.dash = true;
+                    }
+                    if (hound.flightActive) {
+                        if (tdy < -30) input.jumpHeld = true;
+                        else if (tdy > 30) input.moveDown = true;
+                    } else if (tdy < -80) { input.jumpHeld = true; }
+                    // Bite-grab when close enough (not bosses)
+                    if (dist2 < 55 && hound._kCD <= 0 && !en.boss) {
+                        hound._kCarried = en; en._kryptoBite = true; en.grabbed = true;
+                        spawnImpact(enCx, enCy, 'punch', false);
+                        hound._kState = 'lift'; hound._kCD = 8;
+                    } else if (dist2 < 80 && (hound._dragCD || 0) <= 0) {
+                        // Punch while closing
+                        tryHitEnemy(en, 2, 6, 'punch', hound);
+                        spawnImpact(enCx, enCy, 'punch', false);
+                        hound._dragCD = 40;
+                    }
+                    if ((hound._dragCD || 0) > 0) hound._dragCD--;
+                    // Give up if enemy runs far away or dies
+                    if (dist2 > 600 || !kTarget) { hound._kTarget = null; hound._kState = 'follow'; hound._kCD = 30; }
+                    break;
+                }
+                case 'lift': {
+                    const en = hound._kCarried;
+                    if (!en || !en.alive) {
+                        if (en) { en._kryptoBite = false; en.grabbed = false; }
+                        hound._kCarried = null; hound._kState = 'follow'; hound._kCD = 30; break;
+                    }
+                    // Activate flight and fly up
+                    if (!hound.flightActive) hound.flightActive = true;
+                    input.jumpHeld = true;
+                    // Drift toward a point above the hero so drop lands near them
+                    const dropTargetX = heroCx;
+                    const dxDrop = dropTargetX - hcx;
+                    if (Math.abs(dxDrop) > 60) {
+                        if (dxDrop > 0) { input.right = true; hound.facing = 1; }
+                        else { input.left = true; hound.facing = -1; }
+                    }
+                    // Drop once high enough (280px above ground or 260px above hero)
+                    const dropAlt = Math.min(heroCy - 260, GROUND_Y - 320);
+                    if (hound.y <= dropAlt) { hound._kState = 'drop'; hound._kCD = 4; }
+                    break;
+                }
+                case 'drop': {
+                    const en = hound._kCarried;
+                    if (en) {
+                        en._kryptoBite = false; en.grabbed = false;
+                        en.vx = hound.facing * 2; en.vy = 20; en.onGround = false;
+                        tryHitEnemy(en, 5, 0, 'punch', hound);
+                        spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'punch', false);
+                    }
+                    hound._kCarried = null;
+                    // Land and rest before next grab
+                    hound.flightActive = false;
+                    hound._kState = 'follow'; hound._kCD = 100;
+                    break;
+                }
             }
-            if ((hound._dragCD || 0) > 0) hound._dragCD--;
             return input;
         }
         // ── Grab: latch onto nearest enemy within 70 px ─────────────────
@@ -4649,7 +4734,7 @@
             }
             // Remove dead enemies whose fade has finished; skip currently grabbed enemy
             for (let i = enemies.length - 1; i >= 0; i--) {
-                if (!enemies[i].alive && (enemies[i].deathTimer || 0) <= 0 && enemies[i] !== grabbedEnemy) {
+                if (!enemies[i].alive && (enemies[i].deathTimer || 0) <= 0 && enemies[i] !== grabbedEnemy && !enemies[i]._kryptoBite) {
                     enemies.splice(i, 1);
                 }
             }
@@ -5562,8 +5647,15 @@
             // LASER — lock-on tracking beam that follows target anywhere on screen
             if (e.laserTimer > 0) {
                 const srcMidY = e._laserSrcY || (eyA + eyB) / 2;
-                const endX  = e._laserStopX !== undefined ? e._laserStopX : (dir === 1 ? exA + 2200 : exA - 2200);
-                const endY  = e._laserStopY !== undefined ? e._laserStopY : srcMidY;
+                // Dynamically follow live target position so beam tracks enemy movement
+                let endX, endY;
+                if (e._laserTarget && e._laserTarget.alive) {
+                    endX = e._laserTarget.x + e._laserTarget.w / 2;
+                    endY = e._laserTarget.y + e._laserTarget.h / 2;
+                } else {
+                    endX = e._laserStopX !== undefined ? e._laserStopX : (dir === 1 ? exA + 2200 : exA - 2200);
+                    endY = e._laserStopY !== undefined ? e._laserStopY : srcMidY;
+                }
                 // Beam goes from both eyes converging on the same target point
                 const impY = endY;
 
@@ -5761,6 +5853,17 @@
                 fist: [w + 14, h * 0.6],
             });
 
+            ctx.restore();
+
+            // Krypto name label
+            ctx.save();
+            ctx.setTransform(1,0,0,1,0,0);
+            const ksx = e.x + e.w / 2 - camera.x, ksy = e.y - 10 - camera.y;
+            ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            ctx.fillText('Krypto', ksx + 1, ksy + 1);
+            ctx.fillStyle = '#ffe066';
+            ctx.fillText('Krypto', ksx, ksy);
             ctx.restore();
 
             drawHoundFXWorld(e);
