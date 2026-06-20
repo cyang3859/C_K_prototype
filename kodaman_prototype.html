@@ -4646,6 +4646,12 @@
             for (const en of enemies) {
                 if (!en.alive && (en.deathTimer || 0) > 0) en.deathTimer--;
             }
+            // Remove dead enemies whose fade has finished; skip currently grabbed enemy
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                if (!enemies[i].alive && (enemies[i].deathTimer || 0) <= 0 && enemies[i] !== grabbedEnemy) {
+                    enemies.splice(i, 1);
+                }
+            }
 
             for (const en of enemies) {
                 if (!en.alive) continue;
