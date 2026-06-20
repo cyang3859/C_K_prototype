@@ -3636,7 +3636,8 @@
                 }
             }
             // LexCorp Research Lab entry
-            if (e.code === 'KeyF' && scene === 'city' && lexlabEntryUnlocked && currentLevel === 1) {
+            if (e.code === 'KeyF' && scene === 'city' && lexlabEntryUnlocked && currentLevel === 1 && !activeDialogue
+                && questPhase !== 'lexcorp2_final_dialogue' && questPhase !== 'lois_departs') {
                 if (Math.abs((hero.x + hero.w / 2) - LEXLAB_DOOR_X) < 100 && (hero.y + hero.h) >= GROUND_Y - 50) {
                     enterLexlab(); e.preventDefault();
                 }
@@ -5437,10 +5438,35 @@
                 ctx.beginPath(); ctx.arc(w * 0.43, h * -0.26, w * 0.12, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(w * 0.64, h * -0.26, w * 0.12, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
+                // Back arm always tucked at side
                 ctx.fillRect(w * 0.20, h * 0.32, ARM_W, h * 0.28);
-                ctx.fillRect(w * 0.66, h * 0.40, w * 0.44, ARM_W);
-                ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 1.12, h * 0.47, w * 0.13, 0, Math.PI * 2); ctx.fill();
+                if (flying) {
+                    // Find nearest enemy and punch toward it
+                    const heroCx = e.x + e.w / 2, heroCy = e.y + e.h / 2;
+                    let nearDx = facing, nearDy = 0, nearDist = Infinity;
+                    for (const en of enemies) {
+                        if (!en.alive) continue;
+                        const dx = (en.x + en.w / 2) - heroCx;
+                        const dy = (en.y + en.h / 2) - heroCy;
+                        const d = Math.sqrt(dx * dx + dy * dy);
+                        if (d < nearDist) { nearDist = d; nearDx = dx; nearDy = dy; }
+                    }
+                    const worldAngle = Math.atan2(nearDy, nearDx);
+                    // Convert world angle into local drawing space (undo body lean + facing flip)
+                    const localAngle = facing === 1 ? worldAngle - lean : Math.PI - worldAngle - lean;
+                    ctx.save();
+                    ctx.translate(w * 0.60, h * 0.35); // shoulder origin
+                    ctx.rotate(localAngle);
+                    ctx.fillStyle = armColor;
+                    ctx.fillRect(0, -ARM_W / 2, w * 0.50, ARM_W);
+                    ctx.fillStyle = fistColor;
+                    ctx.beginPath(); ctx.arc(w * 0.52, 0, w * 0.13, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.fillRect(w * 0.66, h * 0.40, w * 0.44, ARM_W);
+                    ctx.fillStyle = fistColor;
+                    ctx.beginPath(); ctx.arc(w * 1.12, h * 0.47, w * 0.13, 0, Math.PI * 2); ctx.fill();
+                }
             } else if (running) {
                 const armSwing = Math.sin(e.gaitPhase + Math.PI) * h * 0.08;
                 ctx.fillRect(w * 0.20, h * 0.32 + armSwing, ARM_W, h * 0.26);
