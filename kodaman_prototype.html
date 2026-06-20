@@ -4431,13 +4431,14 @@
             if (e.laserCD > 0) e.laserCD--;
             if (e.freezeCD > 0) e.freezeCD--;
 
-            if (input.punch) { if (e.punchCD === 0) { doPunch(e); e.punchCD = PUNCH_CD; } e.punchTimer = PUNCH_EFFECT; }
+            const canAttack = e !== hero || !activeDialogue;
+            if (canAttack && input.punch) { if (e.punchCD === 0) { doPunch(e); e.punchCD = PUNCH_CD; } e.punchTimer = PUNCH_EFFECT; }
             else if (e.punchTimer > 0) e.punchTimer--;
 
-            if (input.laser) { if (e.laserCD === 0) { doLaser(e); e.laserCD = LASER_CD; } e.laserTimer = LASER_EFFECT; }
+            if (canAttack && input.laser) { if (e.laserCD === 0) { doLaser(e); e.laserCD = LASER_CD; } e.laserTimer = LASER_EFFECT; }
             else { if (e.laserTimer > 0) e.laserTimer--; e._laserTarget = null; }
 
-            if (input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
+            if (canAttack && input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
 
             // Position all carried civilians — stacked/spread in the hero's arms
