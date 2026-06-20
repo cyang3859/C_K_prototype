@@ -620,9 +620,9 @@
             constructionScene = {
                 saved: { hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy, hf: hero.facing, hfly: hero.flightActive }
             };
-            hero.x = 140; hero.y = CONSTRUCTION_INT.floorY - hero.h;
+            hero.x = 200; hero.y = CONSTRUCTION_INT.floorY - hero.h;
             hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false; hero.facing = 1;
-            hound.x = 220; hound.y = CONSTRUCTION_INT.floorY - hound.h;
+            hound.x = 280; hound.y = CONSTRUCTION_INT.floorY - hound.h;
             hound.vx = 0; hound.vy = 0; hound.onGround = true;
             constructionLois.x = 280; constructionLois.y = CONSTRUCTION_INT.floorY; constructionLois.active = true; constructionLois.faceDir = 1;
             scene = 'construction';
@@ -3654,7 +3654,7 @@
                 }
             }
             // Construction yard exit
-            if (e.code === 'KeyF' && scene === 'construction') {
+            if (e.code === 'KeyF' && scene === 'construction' && !activeDialogue) {
                 if (hero.x < 160) { exitConstruction(); e.preventDefault(); }
             }
             // Wayne Enterprises entry (F key)
