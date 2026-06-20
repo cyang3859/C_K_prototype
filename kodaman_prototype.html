@@ -5431,11 +5431,11 @@
                 ctx.beginPath(); ctx.arc(w * 0.27, h * 0.68, w * 0.09, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(w * 0.73, h * 0.68, w * 0.09, 0, Math.PI * 2); ctx.fill();
             } else if (flying && !punching) {
-                // Shaft runs from shoulders (h*0.30) all the way to fist tip — no gap
-                ctx.fillRect(w * 0.36, h * -0.46, w * 0.28, h * 0.76);
+                // Shaft from shoulders (h*0.30) to fists — shorter reach
+                ctx.fillRect(w * 0.36, h * -0.24, w * 0.28, h * 0.54);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.43, h * -0.48, w * 0.12, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(w * 0.64, h * -0.48, w * 0.12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.43, h * -0.26, w * 0.12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.64, h * -0.26, w * 0.12, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
                 ctx.fillRect(w * 0.20, h * 0.32, ARM_W, h * 0.28);
                 ctx.fillRect(w * 0.66, h * 0.40, w * 0.44, ARM_W);
