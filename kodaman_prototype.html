@@ -475,6 +475,7 @@
         function updateCityLois() {
             if (currentLevel !== 1) return;    // Lois is level-1 only; Dark Wing handles level 2
             if (!interior.note.read) return;   // she only appears after the briefing
+            if (flyAwayCutscene || questPhase === 'lois_departs' || questPhase === 'lexcorp2_final_dialogue') return;
             const cl = clues[activeClueIndex];
             if (!cl) return;
             // re-target 55px left of the active clue
@@ -5287,216 +5288,209 @@
 
             // ---- LEGS (pose-aware) ----
             const legSwing = running ? Math.sin(e.gaitPhase) * h * 0.12 : 0;
+            const LEG_W = w * 0.18;  // wider legs for heroic build
             if (persona === 'super') {
                 ctx.fillStyle = '#1e3f7a';
                 if (superLanding) {
-                    // SUPERHERO LANDING: deep crouch — one knee nearly touches ground
-                    const lt = (e._landTimer || 0) / 22; // 1→0
-                    const crouch = (1 - lt) * h * 0.18;  // deepen crouch as timer winds down then springs up
-                    ctx.fillRect(w * 0.30, h * 0.62 + crouch, w * 0.16, h * 0.28 - crouch * 0.8);
-                    ctx.fillRect(w * 0.54, h * 0.62 + crouch * 0.5, w * 0.16, h * 0.32 - crouch * 0.4);
+                    const lt = (e._landTimer || 0) / 22;
+                    const crouch = (1 - lt) * h * 0.18;
+                    ctx.fillRect(w * 0.28, h * 0.62 + crouch, LEG_W, h * 0.28 - crouch * 0.8);
+                    ctx.fillRect(w * 0.54, h * 0.62 + crouch * 0.5, LEG_W, h * 0.32 - crouch * 0.4);
                 } else if (rising) {
-                    // RISING/LAUNCH: legs pressed together pointing straight down
-                    ctx.fillRect(w * 0.40, h * 0.62, w * 0.10, h * 0.42);
-                    ctx.fillRect(w * 0.50, h * 0.62, w * 0.10, h * 0.42);
+                    ctx.fillRect(w * 0.38, h * 0.62, LEG_W * 0.85, h * 0.40);
+                    ctx.fillRect(w * 0.52, h * 0.62, LEG_W * 0.85, h * 0.40);
                 } else if (hovering) {
-                    // HOVERING: upright, legs slightly bent and ready
-                    ctx.fillRect(w * 0.34, h * 0.64, w * 0.14, h * 0.32);
-                    ctx.fillRect(w * 0.52, h * 0.64, w * 0.14, h * 0.32);
+                    ctx.fillRect(w * 0.30, h * 0.64, LEG_W, h * 0.30);
+                    ctx.fillRect(w * 0.52, h * 0.64, LEG_W, h * 0.30);
                 } else if (flying) {
-                    // legs together, trailing straight back
-                    ctx.fillRect(w * 0.36, h * 0.62, w * 0.14, h * 0.4);
-                    ctx.fillRect(w * 0.5, h * 0.62, w * 0.14, h * 0.4);
+                    ctx.fillRect(w * 0.34, h * 0.62, LEG_W, h * 0.38);
+                    ctx.fillRect(w * 0.50, h * 0.62, LEG_W, h * 0.38);
                 } else if (standing) {
-                    // STANDING POSE: feet apart, neutral
-                    ctx.fillRect(w * 0.32, h * 0.62, w * 0.16, h * 0.38);
-                    ctx.fillRect(w * 0.52, h * 0.62, w * 0.16, h * 0.38);
+                    ctx.fillRect(w * 0.28, h * 0.62, LEG_W, h * 0.36);
+                    ctx.fillRect(w * 0.54, h * 0.62, LEG_W, h * 0.36);
                 } else {
-                    // running: front leg forward, back leg back
-                    ctx.fillRect(w * 0.32, h * 0.62 - legSwing, w * 0.16, h * 0.38);
-                    ctx.fillRect(w * 0.52, h * 0.62 + legSwing, w * 0.16, h * 0.38);
+                    ctx.fillRect(w * 0.28, h * 0.62 - legSwing, LEG_W, h * 0.36);
+                    ctx.fillRect(w * 0.54, h * 0.62 + legSwing, LEG_W, h * 0.36);
                 }
                 // boots
                 ctx.fillStyle = '#b81f2c';
                 if (superLanding) {
                     const lt = (e._landTimer || 0) / 22;
                     const crouch = (1 - lt) * h * 0.18;
-                    ctx.fillRect(w * 0.28, h * 0.88 + crouch * 0.8, w * 0.20, h * 0.10);
-                    ctx.fillRect(w * 0.52, h * 0.92 + crouch * 0.4, w * 0.20, h * 0.10);
+                    ctx.fillRect(w * 0.25, h * 0.88 + crouch * 0.8, w * 0.23, h * 0.10);
+                    ctx.fillRect(w * 0.52, h * 0.92 + crouch * 0.4, w * 0.23, h * 0.10);
                 } else if (rising) {
-                    ctx.fillRect(w * 0.39, h * 1.0, w * 0.11, h * 0.08);
-                    ctx.fillRect(w * 0.50, h * 1.0, w * 0.11, h * 0.08);
+                    ctx.fillRect(w * 0.38, h * 0.99, w * 0.13, h * 0.08);
+                    ctx.fillRect(w * 0.52, h * 0.99, w * 0.13, h * 0.08);
                 } else if (hovering) {
-                    ctx.fillRect(w * 0.32, h * 0.92, w * 0.16, h * 0.1);
-                    ctx.fillRect(w * 0.52, h * 0.92, w * 0.16, h * 0.1);
+                    ctx.fillRect(w * 0.28, h * 0.91, w * 0.22, h * 0.10);
+                    ctx.fillRect(w * 0.52, h * 0.91, w * 0.22, h * 0.10);
                 } else if (flying) {
-                    ctx.fillRect(w * 0.34, h * 0.98, w * 0.16, h * 0.08);
-                    ctx.fillRect(w * 0.5, h * 0.98, w * 0.16, h * 0.08);
+                    ctx.fillRect(w * 0.32, h * 0.97, w * 0.20, h * 0.08);
+                    ctx.fillRect(w * 0.50, h * 0.97, w * 0.20, h * 0.08);
                 } else if (standing) {
-                    // standing boots - symmetrical
-                    ctx.fillRect(w * 0.30, h * 0.9, w * 0.2, h * 0.1);
-                    ctx.fillRect(w * 0.5, h * 0.9, w * 0.2, h * 0.1);
+                    ctx.fillRect(w * 0.25, h * 0.90, w * 0.23, h * 0.10);
+                    ctx.fillRect(w * 0.52, h * 0.90, w * 0.23, h * 0.10);
                 } else {
-                    ctx.fillRect(w * 0.30, h * 0.9 - legSwing, w * 0.2, h * 0.1);
-                    ctx.fillRect(w * 0.5, h * 0.9 + legSwing, w * 0.2, h * 0.1);
+                    ctx.fillRect(w * 0.25, h * 0.90 - legSwing, w * 0.23, h * 0.10);
+                    ctx.fillRect(w * 0.52, h * 0.90 + legSwing, w * 0.23, h * 0.10);
                 }
-                // torso
-                const torso = ctx.createLinearGradient(0, h * 0.28, 0, h * 0.66);
-                torso.addColorStop(0, '#3a6fd9');
+                // torso — broad V-taper shoulders
+                const torso = ctx.createLinearGradient(0, h * 0.26, 0, h * 0.64);
+                torso.addColorStop(0, '#4a7fe8');
+                torso.addColorStop(0.5, '#3a6fd9');
                 torso.addColorStop(1, '#234a93');
                 ctx.fillStyle = torso;
                 ctx.beginPath();
-                ctx.moveTo(w * 0.3, h * 0.32);
-                ctx.lineTo(w * 0.7, h * 0.32);
-                ctx.lineTo(w * 0.66, h * 0.66);
-                ctx.lineTo(w * 0.34, h * 0.66);
+                ctx.moveTo(w * 0.18, h * 0.30);   // left shoulder — much wider
+                ctx.lineTo(w * 0.82, h * 0.30);   // right shoulder
+                ctx.lineTo(w * 0.68, h * 0.64);   // right waist
+                ctx.lineTo(w * 0.32, h * 0.64);   // left waist
                 ctx.closePath();
                 ctx.fill();
-                // chest emblem - original diamond crest
+                // shoulder caps — rounded muscle mass at each shoulder
+                ctx.fillStyle = '#4a7fe8';
+                ctx.beginPath(); ctx.ellipse(w * 0.18, h * 0.34, w * 0.10, h * 0.065, -0.3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(w * 0.82, h * 0.34, w * 0.10, h * 0.065, 0.3, 0, Math.PI * 2); ctx.fill();
+                // chest muscle definition — subtle center line
+                ctx.strokeStyle = 'rgba(30,63,122,0.45)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(w * 0.5, h * 0.30); ctx.lineTo(w * 0.5, h * 0.60); ctx.stroke();
+                // chest emblem — larger diamond crest
                 ctx.fillStyle = '#ffd84d';
                 ctx.beginPath();
-                ctx.moveTo(w * 0.5, h * 0.37);
-                ctx.lineTo(w * 0.6, h * 0.45);
-                ctx.lineTo(w * 0.5, h * 0.53);
-                ctx.lineTo(w * 0.4, h * 0.45);
+                ctx.moveTo(w * 0.50, h * 0.34);
+                ctx.lineTo(w * 0.63, h * 0.44);
+                ctx.lineTo(w * 0.50, h * 0.54);
+                ctx.lineTo(w * 0.37, h * 0.44);
                 ctx.closePath();
                 ctx.fill();
                 ctx.strokeStyle = '#c89a1a'; ctx.lineWidth = 1.5; ctx.stroke();
                 ctx.fillStyle = '#d23541';
                 ctx.beginPath();
-                ctx.moveTo(w * 0.5, h * 0.41); ctx.lineTo(w * 0.56, h * 0.45);
-                ctx.lineTo(w * 0.5, h * 0.49); ctx.lineTo(w * 0.44, h * 0.45);
+                ctx.moveTo(w * 0.50, h * 0.38); ctx.lineTo(w * 0.58, h * 0.44);
+                ctx.lineTo(w * 0.50, h * 0.50); ctx.lineTo(w * 0.42, h * 0.44);
                 ctx.closePath(); ctx.fill();
             } else {
-                // civilian - suit (pose-aware legs)
+                // civilian — suit (pose-aware legs)
                 ctx.fillStyle = '#3a3f52';
                 if (flying) {
-                    ctx.fillRect(w * 0.36, h * 0.64, w * 0.14, h * 0.38);
-                    ctx.fillRect(w * 0.5, h * 0.64, w * 0.14, h * 0.38);
+                    ctx.fillRect(w * 0.34, h * 0.64, LEG_W, h * 0.36);
+                    ctx.fillRect(w * 0.52, h * 0.64, LEG_W, h * 0.36);
                 } else if (standing) {
-                    // standing civilian pose
-                    ctx.fillRect(w * 0.32, h * 0.64, w * 0.16, h * 0.36);
-                    ctx.fillRect(w * 0.52, h * 0.64, w * 0.16, h * 0.36);
+                    ctx.fillRect(w * 0.28, h * 0.64, LEG_W, h * 0.34);
+                    ctx.fillRect(w * 0.54, h * 0.64, LEG_W, h * 0.34);
                 } else {
-                    ctx.fillRect(w * 0.32, h * 0.64 - legSwing, w * 0.16, h * 0.36);
-                    ctx.fillRect(w * 0.52, h * 0.64 + legSwing, w * 0.16, h * 0.36);
+                    ctx.fillRect(w * 0.28, h * 0.64 - legSwing, LEG_W, h * 0.34);
+                    ctx.fillRect(w * 0.54, h * 0.64 + legSwing, LEG_W, h * 0.34);
                 }
                 ctx.fillStyle = '#15171f';
                 if (flying) {
-                    ctx.fillRect(w * 0.34, h * 0.98, w * 0.16, h * 0.06);
-                    ctx.fillRect(w * 0.5, h * 0.98, w * 0.16, h * 0.06);
+                    ctx.fillRect(w * 0.32, h * 0.97, w * 0.19, h * 0.06);
+                    ctx.fillRect(w * 0.50, h * 0.97, w * 0.19, h * 0.06);
                 } else {
-                    ctx.fillRect(w * 0.30, h * 0.94 - legSwing, w * 0.2, h * 0.06);
-                    ctx.fillRect(w * 0.5, h * 0.94 + legSwing, w * 0.2, h * 0.06);
+                    ctx.fillRect(w * 0.26, h * 0.93 - legSwing, w * 0.23, h * 0.06);
+                    ctx.fillRect(w * 0.52, h * 0.93 + legSwing, w * 0.23, h * 0.06);
                 }
                 ctx.fillStyle = '#2b3145';
                 ctx.beginPath();
-                ctx.moveTo(w * 0.3, h * 0.32); ctx.lineTo(w * 0.7, h * 0.32);
-                ctx.lineTo(w * 0.66, h * 0.66); ctx.lineTo(w * 0.34, h * 0.66);
+                ctx.moveTo(w * 0.20, h * 0.30); ctx.lineTo(w * 0.80, h * 0.30);
+                ctx.lineTo(w * 0.66, h * 0.64); ctx.lineTo(w * 0.34, h * 0.64);
                 ctx.closePath(); ctx.fill();
                 ctx.fillStyle = '#e8eaf2';
-                ctx.fillRect(w * 0.45, h * 0.32, w * 0.1, h * 0.32);
+                ctx.fillRect(w * 0.45, h * 0.30, w * 0.10, h * 0.32);
                 ctx.fillStyle = '#d23541';
-                ctx.fillRect(w * 0.47, h * 0.34, w * 0.06, h * 0.28);
+                ctx.fillRect(w * 0.47, h * 0.32, w * 0.06, h * 0.28);
             }
 
-            // arms (rising = one fist up like a launch; flight = both forward; punch; running)
+            // arms
             const punching = e.punchTimer > 0;
-            const armColor = persona === 'super' ? '#2a5fd9' : '#2b3145';
+            const armColor = persona === 'super' ? '#3464d0' : '#2b3145';
             const fistColor = persona === 'super' ? '#b81f2c' : '#e8c5a8';
+            const ARM_W = w * 0.14;  // thicker arms
             ctx.fillStyle = armColor;
             if (superLanding && !punching) {
-                // SUPERHERO LANDING: one fist planted on ground, other arm cocked back
                 const lt = (e._landTimer || 0) / 22;
                 const crouch = (1 - lt) * h * 0.18;
-                // Planted fist arm — drives diagonally down to ground
-                ctx.fillRect(w * 0.52, h * 0.34, w * 0.10, h * 0.30 + crouch);
+                ctx.fillRect(w * 0.54, h * 0.32, ARM_W, h * 0.30 + crouch);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.57, h * 0.66 + crouch, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.61, h * 0.64 + crouch, w * 0.12, 0, Math.PI * 2); ctx.fill();
                 ctx.fillStyle = armColor;
-                // Cocked back arm — raised and bent back for drama
-                ctx.fillRect(w * 0.22, h * 0.30 - crouch * 0.3, w * 0.10, h * 0.28);
+                ctx.fillRect(w * 0.18, h * 0.28 - crouch * 0.3, ARM_W, h * 0.28);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.27, h * 0.28 - crouch * 0.3, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.25, h * 0.26 - crouch * 0.3, w * 0.12, 0, Math.PI * 2); ctx.fill();
             } else if (rising && !punching) {
-                // ONE arm thrust UP (lead), one tucked along the body — classic launch pose.
-                // In local space the body is upright, so "up" is -y / above the head.
-                ctx.fillRect(w * 0.50, h * -0.04, w * 0.1, h * 0.42);   // lead arm raised up
+                ctx.fillRect(w * 0.50, h * -0.06, ARM_W, h * 0.40);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.55, h * -0.06, w * 0.12, 0, Math.PI * 2); ctx.fill(); // raised fist
+                ctx.beginPath(); ctx.arc(w * 0.57, h * -0.08, w * 0.13, 0, Math.PI * 2); ctx.fill();
                 ctx.fillStyle = armColor;
-                ctx.fillRect(w * 0.30, h * 0.36, w * 0.1, h * 0.26);    // trailing arm at side
+                ctx.fillRect(w * 0.26, h * 0.34, ARM_W, h * 0.24);
             } else if (hovering && !punching) {
-                // HOVER: arms hang straight DOWN at the sides (body is upright).
-                ctx.fillRect(w * 0.26, h * 0.34, w * 0.1, h * 0.34);    // left arm down
-                ctx.fillRect(w * 0.64, h * 0.34, w * 0.1, h * 0.34);    // right arm down
+                ctx.fillRect(w * 0.20, h * 0.32, ARM_W, h * 0.34);
+                ctx.fillRect(w * 0.66, h * 0.32, ARM_W, h * 0.34);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.31, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(w * 0.69, h * 0.70, w * 0.075, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.27, h * 0.68, w * 0.09, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.73, h * 0.68, w * 0.09, 0, Math.PI * 2); ctx.fill();
             } else if (flying && !punching) {
-                // FLYING FORWARD: both arms thrust forward along the body axis.
-                // At lean≈1.5 (horizontal) local -y = world forward, so "above head"
-                // in local space reads as arms outstretched in front (Superman pose).
-                // Single merged arm block so it reads as both arms together.
-                ctx.fillRect(w * 0.38, h * -0.42, w * 0.24, h * 0.38);  // merged arm shaft forward
+                ctx.fillRect(w * 0.36, h * -0.44, w * 0.28, h * 0.38);
                 ctx.fillStyle = fistColor;
-                // Two fists side by side at the tip
-                ctx.beginPath(); ctx.arc(w * 0.44, h * -0.44, w * 0.11, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(w * 0.62, h * -0.44, w * 0.11, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.43, h * -0.46, w * 0.12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.64, h * -0.46, w * 0.12, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
-                // back arm tucked, lead arm thrust forward with fist
-                ctx.fillRect(w * 0.24, h * 0.34, w * 0.1, h * 0.28);
-                ctx.fillRect(w * 0.66, h * 0.42, w * 0.42, h * 0.1);
+                ctx.fillRect(w * 0.20, h * 0.32, ARM_W, h * 0.28);
+                ctx.fillRect(w * 0.66, h * 0.40, w * 0.44, ARM_W);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 1.1, h * 0.47, w * 0.12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 1.12, h * 0.47, w * 0.13, 0, Math.PI * 2); ctx.fill();
             } else if (running) {
                 const armSwing = Math.sin(e.gaitPhase + Math.PI) * h * 0.08;
-                ctx.fillRect(w * 0.24, h * 0.34 + armSwing, w * 0.1, h * 0.26);
-                ctx.fillRect(w * 0.66, h * 0.34 - armSwing, w * 0.1, h * 0.26);
+                ctx.fillRect(w * 0.20, h * 0.32 + armSwing, ARM_W, h * 0.26);
+                ctx.fillRect(w * 0.66, h * 0.32 - armSwing, ARM_W, h * 0.26);
             } else {
-                ctx.fillRect(w * 0.24, h * 0.34, w * 0.1, h * 0.28);
-                ctx.fillRect(w * 0.66, h * 0.34, w * 0.1, h * 0.28);
+                ctx.fillRect(w * 0.20, h * 0.32, ARM_W, h * 0.28);
+                ctx.fillRect(w * 0.66, h * 0.32, ARM_W, h * 0.28);
             }
 
-            // ---- HEAD (now in the same local space, sits right on the shoulders) ----
-            const headCX = w * 0.5, headCY = h * 0.18;
-            // neck
-            ctx.fillStyle = '#e3bd9c';
-            ctx.fillRect(w * 0.44, h * 0.27, w * 0.12, h * 0.06);
+            // ---- HEAD ----
+            const headCX = w * 0.5, headCY = h * 0.16;  // slightly higher for better ratio
+            // neck — wider and more visible
+            ctx.fillStyle = '#d4a878';
+            ctx.fillRect(w * 0.40, h * 0.26, w * 0.20, h * 0.06);
+            // jaw base — square hero jaw
+            ctx.fillStyle = '#e8c898';
+            ctx.fillRect(w * 0.34, h * 0.18, w * 0.32, h * 0.10);
             // head
-            const skin = ctx.createLinearGradient(0, h * 0.06, 0, h * 0.28);
-            skin.addColorStop(0, '#f5d5b8'); skin.addColorStop(1, '#e3bd9c');
+            const skin = ctx.createLinearGradient(0, h * 0.04, 0, h * 0.28);
+            skin.addColorStop(0, '#f5d5b8'); skin.addColorStop(1, '#e0b888');
             ctx.fillStyle = skin;
             ctx.beginPath();
-            ctx.ellipse(headCX, headCY, w * 0.18, h * 0.12, 0, 0, Math.PI * 2);
+            ctx.ellipse(headCX, headCY, w * 0.22, h * 0.135, 0, 0, Math.PI * 2);
             ctx.fill();
             // hair
             ctx.fillStyle = persona === 'super' ? '#15151c' : '#2a2a33';
             ctx.beginPath();
-            ctx.arc(headCX, headCY - h * 0.01, w * 0.19, Math.PI * 1.05, Math.PI * 1.95);
+            ctx.arc(headCX, headCY - h * 0.01, w * 0.235, Math.PI * 1.06, Math.PI * 1.94);
             ctx.fill();
             // super spit-curl
             if (persona === 'super') {
                 ctx.beginPath();
-                ctx.arc(headCX + w * 0.05, headCY - h * 0.05, w * 0.04, 0, Math.PI * 2);
+                ctx.arc(headCX + w * 0.06, headCY - h * 0.06, w * 0.045, 0, Math.PI * 2);
                 ctx.fill();
             }
             if (persona === 'civilian') {
                 ctx.strokeStyle = '#15171f'; ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.arc(headCX - w * 0.07, headCY, w * 0.055, 0, Math.PI * 2); ctx.stroke();
-                ctx.beginPath(); ctx.arc(headCX + w * 0.07, headCY, w * 0.055, 0, Math.PI * 2); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(headCX - w * 0.015, headCY); ctx.lineTo(headCX + w * 0.015, headCY); ctx.stroke();
+                ctx.beginPath(); ctx.arc(headCX - w * 0.08, headCY + h * 0.01, w * 0.060, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(headCX + w * 0.08, headCY + h * 0.01, w * 0.060, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(headCX - w * 0.02, headCY + h * 0.01); ctx.lineTo(headCX + w * 0.02, headCY + h * 0.01); ctx.stroke();
             }
-            // eyes (glow red while firing laser); forward eye sits toward +x
+            // eyes (glow red while firing laser)
             const laserOn = e.laserTimer > 0;
             ctx.fillStyle = laserOn ? '#ff3020' : '#1a3a6a';
-            ctx.beginPath(); ctx.ellipse(headCX + w * 0.06, headCY, w * 0.032, h * 0.026, 0, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(headCX - w * 0.04, headCY, w * 0.028, h * 0.024, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(headCX + w * 0.07, headCY, w * 0.036, h * 0.028, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(headCX - w * 0.05, headCY, w * 0.032, h * 0.026, 0, 0, Math.PI * 2); ctx.fill();
             if (laserOn) {
                 ctx.shadowColor = '#ff3020'; ctx.shadowBlur = 10;
                 ctx.fillStyle = '#ffd0c0';
-                ctx.beginPath(); ctx.arc(headCX + w * 0.06, headCY, w * 0.018, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(headCX - w * 0.04, headCY, w * 0.016, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(headCX + w * 0.07, headCY, w * 0.020, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(headCX - w * 0.05, headCY, w * 0.018, 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
             }
 
@@ -16225,10 +16219,8 @@
                 hero.y  -= 6;
                 hero.vx  = 0; hero.vy = 0;
                 camera.x = Math.max(0, hero.x - W / 2);
-                // Fade screen to black as hero rises; once fully black, transition
-                if (hero.y < GROUND_Y - 300) {
-                    flyAwayFade = Math.min(1, flyAwayFade + 0.018);
-                }
+                // Fade immediately so the transition is visible right away
+                flyAwayFade = Math.min(1, flyAwayFade + 0.014);
                 if (flyAwayFade >= 1) {
                     flyAwayCutscene = false;
                     flyAwayFade = 0;
