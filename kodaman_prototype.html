@@ -1274,7 +1274,7 @@
             ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
             ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X, gy - 108);
             ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial';
-            ctx.fillText('F — Enter', CONSTRUCTION_X, gy - 112);
+            ctx.fillText(constructionEntryUnlocked ? 'F — Enter Construction Yard' : 'Approaching Construction Site...', CONSTRUCTION_X, gy - 112);
             ctx.restore();
         }
 
@@ -8916,8 +8916,9 @@
             if (scene === 'ruins') drawRuinsInterior();
             if (scene === 'city') {
                 // L1 overlays
-                if (currentLevel === 1 && constructionEntryUnlocked &&
-                    camera.x + W > CONSTRUCTION_X - 400 && camera.x < CONSTRUCTION_X + 400) {
+                if (currentLevel === 1 &&
+                    camera.x + W > CONSTRUCTION_X - 400 && camera.x < CONSTRUCTION_X + 400 &&
+                    (constructionEntryUnlocked || questPhase === 'travel_construction')) {
                     drawConstructionDressing();
                 }
                 if (currentLevel === 1 && lexcorp2Spawned &&
@@ -15904,13 +15905,13 @@
                 }
             }
             if (questPhase === 'lexcorp2_fight') checkLexcorp2Cleared();
-            // Auto-enter construction yard when BOTH hero and Lois car have arrived
+            // Unlock construction yard when BOTH hero and Lois car have arrived — F-key required to enter
             if (questPhase === 'travel_construction' && !constructionEntryUnlocked && !activeDialogue) {
                 const heroNear = Math.abs((hero.x + hero.w/2) - CONSTRUCTION_X) < 400;
                 const loisNear = loisCar.arrived && Math.abs(loisCar.x - CONSTRUCTION_X) < 500;
                 if (heroNear && loisNear) {
                     constructionEntryUnlocked = true;
-                    enterConstruction();
+                    titleCard = { text: 'CONSTRUCTION YARD', sub: 'Press F to enter when ready.', timer: 200 };
                 }
             }
             if (currentLevel === 1 && constructionSpawned) updateYardWorkers();
