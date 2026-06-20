@@ -119,7 +119,7 @@
         <canvas id="game" width="960" height="540"></canvas>
         <div id="hud">
             <div>District: <b id="districtLabel">DOWNTOWN</b></div>
-            <div>Objectives: <b id="objCount">0/7</b> | Orbs: <b id="orbCount">0</b> | Enemies: <b
+            <div>Objectives: <b id="objCount">0/7</b> | Enemies: <b
                     id="enemyCount">24</b></div>
             <div>Case Clues: <b id="clueCount">0/5</b></div>
             <div style="margin-top:5px;"><b>Hound</b>: <b id="p2Mode">AI Companion</b> &nbsp;|&nbsp; Persona: <b
@@ -676,7 +676,7 @@
 
         function updateConstructionLois() {
             if (!constructionLois.active || scene !== 'construction' || activeDialogue) return;
-            const targetX = hero.x + hero.w / 2 - 60;
+            const targetX = hero.x + hero.w / 2 - 130; // stay well behind hero so she doesn't overlap workers
             const dx = targetX - constructionLois.x;
             if (Math.abs(dx) > 20) {
                 constructionLois.x += Math.sign(dx) * 1.4;
@@ -1574,6 +1574,7 @@
             const fd = prisonLois.faceDir;
             const bob = Math.sin(prisonLois.phase * 1.5) * 1.2;
             ctx.save();
+            ctx.translate(lx, fy); ctx.scale(0.8, 0.8); ctx.translate(-lx, -fy);
 
             // Legs — dark slacks
             ctx.fillStyle = '#1a1a2a';
@@ -4024,7 +4025,7 @@
             if (!en.boss && en.frozen <= 0 && en.dodgeCD <= 0 && Math.random() < 0.28) {
                 en.dodgeTimer = 10;
                 en.dodgeCD = 70;                       // can't dodge again for a bit
-                en.dodgeVY = -6;                       // little hop
+                en.dodgeVY = -2;                       // minimal hop — keep enemies near ground
                 en.dodgeDir = attacker ? -attacker.facing : (Math.random() < 0.5 ? -1 : 1);
                 spawnDodgePuff(en.x + en.w / 2, en.y + en.h / 2);
                 return false;                          // attack whiffed
@@ -4663,9 +4664,10 @@
                     en.x += (en.dodgeDir || 1) * 3.2;
                     en.dodgeVY += 0.8;                 // gravity on the hop
                     en.y += en.dodgeVY;
-                    // settle back to ground for non-flyers
-                    if (en.vy === undefined && en.y > GROUND_Y - en.h) {
-                        en.y = GROUND_Y - en.h; en.dodgeVY = 0;
+                    // settle back to ground for non-flyers (use their district floor if available)
+                    if (!en.flying) {
+                        const groundFloor = en.floorY || GROUND_Y;
+                        if (en.y > groundFloor - en.h) { en.y = groundFloor - en.h; en.dodgeVY = 0; }
                     }
                     en.x = Math.max(en.minX - 90, Math.min(en.maxX + 90, en.x));
                     en.phase = (en.phase || 0) + 0.1;
@@ -5077,6 +5079,11 @@
             }
 
             ctx.save();
+            // L3 hero scale boost — hero must be tallest in Amazon setting
+            if (currentLevel === 3 && (scene === 'city' || scene === 'village' || scene === 'ruins')) {
+                const fx = x + w / 2, fy2 = y + h;
+                ctx.translate(fx, fy2); ctx.scale(1.12, 1.12); ctx.translate(-fx, -fy2);
+            }
             if (e.dashing) { ctx.shadowColor = '#7fd3ff'; ctx.shadowBlur = 18; }
             else if (e.flightActive) { ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 14; }
 
@@ -8558,8 +8565,7 @@
             // ---- street-level parks, playgrounds, plazas, dockyards ----
             drawBuildings();
             drawGroundDecor();
-            drawParkedCars();
-            drawTaxis();
+            if (currentLevel !== 3) { drawParkedCars(); drawTaxis(); }
 
             // ---- rescue buildings (The Weekly Planet) ----
             for (const b of rescueBuildings) {
@@ -8925,8 +8931,12 @@
 
             // ---- Level 2 grunge set-pieces + Dark Wing NPC ----
             if (currentLevel === 3 && scene !== 'temple') {
-                // Level 3: draw Wonder Woman
-                drawWonderWomanAt(wonderWoman.x, wonderWoman.y);
+                // Level 3: draw Wonder Woman (scaled to be shorter than hero)
+                ctx.save();
+                { const _wx = wonderWoman.x, _wy = wonderWoman.y;
+                  ctx.translate(_wx, _wy); ctx.scale(0.86, 0.86); ctx.translate(-_wx, -_wy);
+                  drawWonderWomanAt(_wx, _wy); }
+                ctx.restore();
                 // Draw companion allies if selected
                 if (darkWing._l3Active && darkWing.x > -100) {
                     // Minimal DW draw for L3 (reuse silhouette style)
@@ -13205,6 +13215,7 @@
             for (const w of villageWitnesses) {
                 if (!w.active) continue;
                 const wx = w.x; const wy = VILLAGE_INT.floorY;
+                ctx.save(); ctx.translate(wx, wy); ctx.scale(0.78, 0.78); ctx.translate(-wx, -wy);
                 // Bronze-armored Amazon warrior
                 ctx.fillStyle = w.spoken ? '#408040' : '#c87030';
                 ctx.fillRect(wx - 14, wy - 72, 28, 48);   // torso
@@ -13221,10 +13232,12 @@
                     ctx.fillText('E — Speak', sx2, VILLAGE_INT.floorY - camera.y - 112);
                     ctx.restore();
                 }
+                ctx.restore(); // warrior scale
             }
             // Village Elder NPC
             if (villageElderNPC.active) {
                 const ex = villageElderNPC.x; const ey = VILLAGE_INT.floorY;
+                ctx.save(); ctx.translate(ex, ey); ctx.scale(0.80, 0.80); ctx.translate(-ex, -ey);
                 // Elder body — ornate
                 ctx.fillStyle = '#c08040'; ctx.fillRect(ex - 14, ey - 76, 28, 50); // torso
                 ctx.fillStyle = '#e8c080'; ctx.beginPath(); ctx.arc(ex, ey - 90, 15, 0, Math.PI * 2); ctx.fill(); // head
@@ -13247,6 +13260,7 @@
                     ctx.fillText('E — Elder', sx3, VILLAGE_INT.floorY - camera.y - 122);
                     ctx.restore();
                 }
+                ctx.restore(); // elder scale
             }
         }
 
@@ -14697,7 +14711,7 @@
                 (districts.find(d => d.id === currentDistrict) || {}).name || '';
             const alive = enemies.filter(e => e.alive).length;
             document.getElementById('enemyCount').textContent = alive;
-            document.getElementById('orbCount').textContent = orbsCollected + '/' + orbs.length;
+            // orbCount removed — orbs not used in current design
             const civDone = civilians.filter(c => c.rescued).length;
             const emiDone = emitters.filter(e => e.destroyed).length;
             document.getElementById('objCount').textContent =
