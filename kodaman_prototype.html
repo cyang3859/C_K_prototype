@@ -183,7 +183,7 @@
         const FLIGHT_FINE_MULT = 0.4;        // hold to creep precisely (see input)
 
         const PUNCH_CD = 18, PUNCH_EFFECT = 10, PUNCH_RANGE = 48, PUNCH_DMG = 1;
-        const LASER_CD = 60, LASER_EFFECT = 12, LASER_DMG = 2;
+        const LASER_CD = 60, LASER_EFFECT = 12, LASER_DMG = 5;
         const FREEZE_CD = 80, FREEZE_EFFECT = 18, FREEZE_RANGE = 110, FREEZE_DURATION = 150;
 
         // ---------- WORLD (open-zone: 3 connected districts) ----------
@@ -1044,6 +1044,7 @@
         // ── PHASE 6: RETURN TO LEXCORP ────────────────────────────────────────
         let lexcorp2Spawned = false;
         let flyAwayCutscene = false;   // L1 finale: hero carries Lois to Gotham
+        let flyAwayFade = 0;           // 0→1 screen fade during fly-away exit
         let lexcorp2EnemiesSpawned = false;
         let lexcorp2CluesFound = 0;
         const lexcorp2Clues = [
@@ -3300,7 +3301,7 @@
         // ---------- ENTITIES ----------
         function createEntity(x, y, character) {
             return {
-                x, y, w: character === 'dog' ? 64 : 52, h: character === 'dog' ? 44 : 74,
+                x, y, w: character === 'dog' ? 64 : 52, h: character === 'dog' ? 44 : 100,
                 vx: 0, vy: 0,
                 onGround: false,
                 facing: 1,
@@ -4106,11 +4107,14 @@
             const srcX  = e.x + e.w * 0.5;
             const srcY  = e.y + e.h * 0.35;   // eye-level origin
 
-            // ── Maintain existing lock if target still alive and in front ──
+            // ── Maintain existing lock if target still alive and roughly in front ──
+            // 60px tolerance prevents lock loss when enemy strafes slightly sideways
             let hitEn = null;
             if (e._laserTarget && e._laserTarget.alive) {
                 const ltMid = e._laserTarget.x + e._laserTarget.w / 2;
-                if (dir === 1 ? ltMid > srcX : ltMid < srcX) {
+                const LOCK_TOLERANCE = 60;
+                const inFront = dir === 1 ? ltMid > srcX - LOCK_TOLERANCE : ltMid < srcX + LOCK_TOLERANCE;
+                if (inFront) {
                     hitEn = e._laserTarget;
                 } else {
                     e._laserTarget = null;
@@ -4437,8 +4441,20 @@
             if (canAttack && input.punch) { if (e.punchCD === 0) { doPunch(e); e.punchCD = PUNCH_CD; } e.punchTimer = PUNCH_EFFECT; }
             else if (e.punchTimer > 0) e.punchTimer--;
 
-            if (canAttack && input.laser) { if (e.laserCD === 0) { doLaser(e); e.laserCD = LASER_CD; } e.laserTimer = LASER_EFFECT; }
-            else { if (e.laserTimer > 0) e.laserTimer--; e._laserTarget = null; }
+            if (canAttack && input.laser) {
+                if (e.laserCD === 0) { doLaser(e); e.laserCD = LASER_CD; }
+                e.laserTimer = LASER_EFFECT;
+                // Continuous beam: tick damage every 6 frames while locked on a live target
+                if (e._laserTarget && e._laserTarget.alive) {
+                    e._laserTickCD = (e._laserTickCD || 0) - 1;
+                    if (e._laserTickCD <= 0) {
+                        tryHitEnemy(e._laserTarget, LASER_DMG, 0, 'laser', e);
+                        e._laserTickCD = 6;
+                    }
+                } else {
+                    e._laserTickCD = 0;
+                }
+            } else { if (e.laserTimer > 0) e.laserTimer--; e._laserTarget = null; e._laserTickCD = 0; }
 
             if (canAttack && input.freeze) { if (e.freezeCD === 0) { doFreeze(e); e.freezeCD = FREEZE_CD; } e.freezeTimer = FREEZE_EFFECT; }
             else if (e.freezeTimer > 0) e.freezeTimer--;
@@ -4675,12 +4691,15 @@
                     const en = hound._kCarried;
                     if (en) {
                         en._kryptoBite = false; en.grabbed = false;
-                        en.vx = hound.facing * 2; en.vy = 20; en.onGround = false;
-                        tryHitEnemy(en, 5, 0, 'punch', hound);
+                        // Use thrown physics so gravity + landing damage apply automatically
+                        en.thrown = true;
+                        en.throwVX = hound.facing * 1.5;
+                        en.throwVY = 8;       // starts slow — gravity accelerates it to terminal
+                        en.thrownTimer = 240; // generous timer to complete full fall
+                        en.onGround = false;
                         spawnImpact(en.x + en.w / 2, en.y + en.h / 2, 'punch', false);
                     }
                     hound._kCarried = null;
-                    // Land and rest before next grab
                     hound.flightActive = false;
                     hound._kState = 'follow'; hound._kCD = 100;
                     break;
@@ -9407,7 +9426,20 @@
             // enemies + defeat animations (dead enemies fade out with a spinning exit)
             for (const en of enemies) {
                 if (en.alive) {
-                    drawEnemy(en);
+                    if (en._kryptoBite) {
+                        // Draw enemy tucked in Krypto's jaw — scaled down, tilted, at mouth position
+                        const biteX = hound.x + hound.w / 2 + hound.facing * (hound.w * 0.45);
+                        const biteY = hound.y + hound.h * 0.25;
+                        ctx.save();
+                        ctx.translate(biteX, biteY);
+                        ctx.rotate(hound.facing * 0.4);
+                        ctx.scale(0.65, 0.65);
+                        ctx.translate(-en.w / 2, -en.h / 2);
+                        drawEnemy(en);
+                        ctx.restore();
+                    } else {
+                        drawEnemy(en);
+                    }
                 } else if ((en.deathTimer || 0) > 0) {
                     const dt = en.deathTimer / 24;  // 1→0
                     ctx.save();
@@ -10041,7 +10073,7 @@
                     bankScene = null;
                     constructionSpawned = false; workersInterrogated = 0; constructionEntryUnlocked = false; constructionScene = null; constructionLois.active = false;
                     yardWorkers.forEach(w => { w.interrogated = false; w._fleeing = false; w._vx = 0; w.x = w === yardWorkers[3] ? CONSTRUCTION_X - 80 : w.x; });
-                    lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0; flyAwayCutscene = false;
+                    lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0; flyAwayCutscene = false; flyAwayFade = 0;
                     lexcorp2Clues.forEach(c => { c.found = false; });
                     prisonLois.active = false; prisonLois.rescued = false;
                     labLois.active = false;
@@ -11042,7 +11074,7 @@
             templeEntryUnlocked = true;   // quest phase gates entry instead
             factoryEntryUnlocked = false;
             interior.note.read = true;
-            flyAwayCutscene = false;
+            flyAwayCutscene = false; flyAwayFade = 0;
             // Fly-in: hero + hound fall from sky
             hero.hp = hero.maxHp; heroKnockedOut = false;
             hero.x = 220; hero.y = L3_GROUND_Y - 420;
@@ -12494,14 +12526,43 @@
                 const bob = Math.sin(constructionLois.phase) * 1.5;
                 if (lx - camera.x > -60 && lx - camera.x < W + 60) {
                     ctx.save();
-                    ctx.translate(lx, ly); ctx.scale(0.8, 0.8); ctx.translate(-lx, -ly);
-                    ctx.fillStyle = '#1a1a30'; ctx.fillRect(lx-7, ly-22, 6, 22); ctx.fillRect(lx+1, ly-22, 6, 22);
-                    ctx.fillStyle = '#c01820'; ctx.fillRect(lx-8, ly-4, 8, 4); ctx.fillRect(lx+1, ly-4, 8, 4);
-                    ctx.fillStyle = '#b81c2c'; ctx.fillRect(lx-12, ly-58+bob, 24, 36);
-                    ctx.fillStyle = '#f0f0f0'; ctx.fillRect(lx-5, ly-56+bob, 10, 20);
-                    ctx.fillStyle = '#e8b080'; ctx.beginPath(); ctx.arc(lx, ly-64+bob, 9, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = '#1a0a04'; ctx.beginPath(); ctx.arc(lx, ly-66+bob, 10, Math.PI*1.05, Math.PI*1.95); ctx.fill();
-                    ctx.fillStyle = '#f8f8e8'; ctx.fillRect(lx+10, ly-50+bob, 12, 16);
+                    ctx.translate(lx, ly); ctx.scale(0.9, 0.9); ctx.translate(-lx, -ly);
+                    // Soft halo so she reads against dark walls
+                    ctx.fillStyle = 'rgba(255,200,80,0.12)';
+                    ctx.beginPath(); ctx.arc(lx, ly - 38 + bob, 30, 0, Math.PI * 2); ctx.fill();
+                    // Legs — dark navy trousers
+                    ctx.fillStyle = '#1e1a3a'; ctx.fillRect(lx-7, ly-24, 6, 24); ctx.fillRect(lx+1, ly-24, 6, 24);
+                    // Heels — white/cream for contrast
+                    ctx.fillStyle = '#f0e8d0'; ctx.fillRect(lx-9, ly-4, 9, 5); ctx.fillRect(lx+1, ly-4, 9, 5);
+                    // Coat — vivid crimson, clearly different from hi-vis orange workers
+                    ctx.fillStyle = '#e02848'; ctx.fillRect(lx-13, ly-62+bob, 26, 38);
+                    // Teal/turquoise scarf strip — the key visual differentiator
+                    ctx.fillStyle = '#28d4c0'; ctx.fillRect(lx-13, ly-62+bob, 26, 7);
+                    // White blouse collar
+                    ctx.fillStyle = '#f8f4ec'; ctx.fillRect(lx-5, ly-57+bob, 10, 14);
+                    // Coat lapels
+                    ctx.fillStyle = '#b01c38';
+                    ctx.beginPath(); ctx.moveTo(lx-13, ly-55+bob); ctx.lineTo(lx-2, ly-47+bob); ctx.lineTo(lx-13, ly-47+bob); ctx.closePath(); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(lx+13, ly-55+bob); ctx.lineTo(lx+2, ly-47+bob); ctx.lineTo(lx+13, ly-47+bob); ctx.closePath(); ctx.fill();
+                    // Skin — warm tone
+                    ctx.fillStyle = '#e0a870'; ctx.beginPath(); ctx.arc(lx, ly-69+bob, 10, 0, Math.PI*2); ctx.fill();
+                    // Hair — warm chestnut brown with lighter highlight
+                    ctx.fillStyle = '#6b2c0e';
+                    ctx.beginPath(); ctx.ellipse(lx, ly-76+bob, 10, 6, 0, Math.PI, 0); ctx.fill();
+                    ctx.fillRect(lx-10, ly-76+bob, 4, 12);  // left side sweep
+                    ctx.fillStyle = '#a04820';               // highlight streak
+                    ctx.fillRect(lx-2, ly-78+bob, 6, 4);
+                    // Notepad — off-white with ruled lines so it reads as a press notepad
+                    ctx.fillStyle = '#f4f0e0'; ctx.fillRect(lx+11, ly-54+bob, 13, 18);
+                    ctx.strokeStyle = '#c8c0a0'; ctx.lineWidth = 0.8;
+                    for (let r = 0; r < 4; r++) ctx.strokeRect(lx+12, ly-52+bob+r*4, 11, 1);
+                    ctx.restore();
+                    // Name label in screen space
+                    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                    const lsx = lx - camera.x, lsy = ly - 82 - camera.y + bob * 0.9;
+                    ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText('Lois Lane', lsx+1, lsy+1);
+                    ctx.fillStyle = '#ffe090'; ctx.fillText('Lois Lane', lsx, lsy);
                     ctx.restore();
                 }
             }
@@ -16160,12 +16221,17 @@
             }
             // ── L1 fly-away cutscene (hero carries Lois to Gotham) ───────────
             if (flyAwayCutscene && currentLevel === 1) {
-                hero.x  += 5;
-                hero.y  -= 3;
+                hero.x  += 8;
+                hero.y  -= 6;
                 hero.vx  = 0; hero.vy = 0;
                 camera.x = Math.max(0, hero.x - W / 2);
-                if (hero.x > WORLD_WIDTH + 400) {
+                // Fade screen to black as hero rises; once fully black, transition
+                if (hero.y < GROUND_Y - 300) {
+                    flyAwayFade = Math.min(1, flyAwayFade + 0.018);
+                }
+                if (flyAwayFade >= 1) {
                     flyAwayCutscene = false;
+                    flyAwayFade = 0;
                     startLevel2();
                 }
             }
@@ -16178,6 +16244,13 @@
             updateCamera();
             draw();
             if (flyAwayCutscene) drawFlyAwayCutscene();
+            if (flyAwayFade > 0) {
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                ctx.globalAlpha = flyAwayFade;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, W, H);
+                ctx.globalAlpha = 1; ctx.restore();
+            }
             if (caseFileOpen) drawCaseFile();
             if (heroKnockedOut) {
                 ctx.save(); ctx.setTransform(1,0,0,1,0,0);
