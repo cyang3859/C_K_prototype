@@ -11278,14 +11278,20 @@
             }
 
             if (!inCombat) {
-                // Formation follow: stay FORM_OFFSET behind the hero
-                const heroMid = hero.x + hero.w / 2;
-                const wwTarget = heroMid - Math.sign(hero.facing || 1) * FORM_OFFSET;
+                // Independent navigation during travel phases; formation follow otherwise
+                let wwTarget;
+                if (l3QuestPhase === 'travel_village') {
+                    wwTarget = VILLAGE_X - 160;  // glide ahead independently
+                } else if (l3QuestPhase === 'travel_ruins') {
+                    wwTarget = RUINS_X - 160;
+                } else {
+                    const heroMid = hero.x + hero.w / 2;
+                    wwTarget = heroMid - Math.sign(hero.facing || 1) * FORM_OFFSET;
+                    if (Math.abs(heroMid - wonderWoman.x) < 60) wonderWoman.faceDir = heroMid < wonderWoman.x ? -1 : 1;
+                }
                 const dx = wwTarget - wonderWoman.x;
                 if (Math.abs(dx) > 900) wonderWoman.x = wwTarget;
-                else if (Math.abs(dx) > 20) { wonderWoman.x += Math.sign(dx) * 2.0; wonderWoman.faceDir = Math.sign(dx); }
-                // Face the hero when very close
-                if (Math.abs(heroMid - wonderWoman.x) < 60) wonderWoman.faceDir = heroMid < wonderWoman.x ? -1 : 1;
+                else if (Math.abs(dx) > 20) { wonderWoman.x += Math.sign(dx) * 2.2; wonderWoman.faceDir = Math.sign(dx); }
 
                 // Engage nearby enemies passively
                 if (wonderWoman._attackCD <= 0) {
@@ -11554,9 +11560,16 @@
                 }
                 // ── clue-following / formation mode ─────────────────────────
                 if (currentLevel === 3) {
-                    // L3: form up 220px behind hero
-                    const heroMid3 = hero.x + hero.w / 2;
-                    darkWing._targetX = heroMid3 - Math.sign(hero.facing || 1) * 220;
+                    // L3 travel phases: Dark Wing navigates independently to destination
+                    if (l3QuestPhase === 'travel_village') {
+                        darkWing._targetX = VILLAGE_X - 240;
+                    } else if (l3QuestPhase === 'travel_ruins') {
+                        darkWing._targetX = RUINS_X - 240;
+                    } else {
+                        // Formation: 220px behind hero
+                        const heroMid3 = hero.x + hero.w / 2;
+                        darkWing._targetX = heroMid3 - Math.sign(hero.facing || 1) * 220;
+                    }
                 } else {
                     darkWing._targetX = cl ? cl.x - 70 : darkWing._targetX;
                 }
