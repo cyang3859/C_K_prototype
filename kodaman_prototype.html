@@ -1301,8 +1301,8 @@
 
         function checkPrisonCleared() {
             if (questPhase !== 'prison_fight') return;
-            const guardsDead = enemies.filter(e => e._prisonGuard && !e.alive).length;
-            if (guardsDead >= prisonEnemyCount) {
+            const guardsAlive = enemies.filter(e => e._prisonGuard && e.alive).length;
+            if (prisonEnemiesSpawned && guardsAlive === 0) {
                 prisonLois.rescued = true;
                 advanceQuest('prison_rescued');
                 // Brief pause then start Lois dialogue
@@ -2590,7 +2590,7 @@
                     lexEscaped = true;
                     factoryPhase = 'escape';
                     titleCard = { text: 'LEX ESCAPES', sub: '"You won the battle… but not the war." The helicopter lifts off into the night.', timer: 280 };
-                    setTimeout(function() { freePowerGirl(); factoryPhase = 'rescued'; }, 3500);
+                    setTimeout(function() { freePowerGirl(); factoryPhase = 'rescued'; setTimeout(exitFactory, 6000); }, 3500);
                 }
             }
 
