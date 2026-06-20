@@ -5431,10 +5431,11 @@
                 ctx.beginPath(); ctx.arc(w * 0.27, h * 0.68, w * 0.09, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(w * 0.73, h * 0.68, w * 0.09, 0, Math.PI * 2); ctx.fill();
             } else if (flying && !punching) {
-                ctx.fillRect(w * 0.36, h * -0.44, w * 0.28, h * 0.38);
+                // Shaft runs from shoulders (h*0.30) all the way to fist tip — no gap
+                ctx.fillRect(w * 0.36, h * -0.46, w * 0.28, h * 0.76);
                 ctx.fillStyle = fistColor;
-                ctx.beginPath(); ctx.arc(w * 0.43, h * -0.46, w * 0.12, 0, Math.PI * 2); ctx.fill();
-                ctx.beginPath(); ctx.arc(w * 0.64, h * -0.46, w * 0.12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.43, h * -0.48, w * 0.12, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.64, h * -0.48, w * 0.12, 0, Math.PI * 2); ctx.fill();
             } else if (punching) {
                 ctx.fillRect(w * 0.20, h * 0.32, ARM_W, h * 0.28);
                 ctx.fillRect(w * 0.66, h * 0.40, w * 0.44, ARM_W);
@@ -12520,42 +12521,82 @@
                 const bob = Math.sin(constructionLois.phase) * 1.5;
                 if (lx - camera.x > -60 && lx - camera.x < W + 60) {
                     ctx.save();
-                    ctx.translate(lx, ly); ctx.scale(0.9, 0.9); ctx.translate(-lx, -ly);
-                    // Soft halo so she reads against dark walls
-                    ctx.fillStyle = 'rgba(255,200,80,0.12)';
-                    ctx.beginPath(); ctx.arc(lx, ly - 38 + bob, 30, 0, Math.PI * 2); ctx.fill();
+                    // Warm glow halo — makes her pop against dark concrete walls
+                    ctx.fillStyle = 'rgba(255,210,100,0.14)';
+                    ctx.beginPath(); ctx.arc(lx, ly - 50 + bob, 38, 0, Math.PI * 2); ctx.fill();
+                    // Shadow underfoot
+                    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+                    ctx.beginPath(); ctx.ellipse(lx, ly, 15, 4, 0, 0, Math.PI * 2); ctx.fill();
+                    // Shoes — cream heels
+                    ctx.fillStyle = '#f0e0c0';
+                    ctx.fillRect(lx-10, ly-6, 9, 6); ctx.fillRect(lx+1, ly-6, 9, 6);
                     // Legs — dark navy trousers
-                    ctx.fillStyle = '#1e1a3a'; ctx.fillRect(lx-7, ly-24, 6, 24); ctx.fillRect(lx+1, ly-24, 6, 24);
-                    // Heels — white/cream for contrast
-                    ctx.fillStyle = '#f0e8d0'; ctx.fillRect(lx-9, ly-4, 9, 5); ctx.fillRect(lx+1, ly-4, 9, 5);
-                    // Coat — vivid crimson, clearly different from hi-vis orange workers
-                    ctx.fillStyle = '#e02848'; ctx.fillRect(lx-13, ly-62+bob, 26, 38);
-                    // Teal/turquoise scarf strip — the key visual differentiator
-                    ctx.fillStyle = '#28d4c0'; ctx.fillRect(lx-13, ly-62+bob, 26, 7);
-                    // White blouse collar
-                    ctx.fillStyle = '#f8f4ec'; ctx.fillRect(lx-5, ly-57+bob, 10, 14);
+                    ctx.fillStyle = '#1c1830';
+                    ctx.fillRect(lx-9, ly-32, 8, 26); ctx.fillRect(lx+1, ly-32, 8, 26);
+                    // Red coat — wide V-taper for feminine silhouette
+                    ctx.fillStyle = '#e02848';
+                    ctx.beginPath();
+                    ctx.moveTo(lx-18, ly-72+bob);   // left shoulder
+                    ctx.lineTo(lx+18, ly-72+bob);   // right shoulder
+                    ctx.lineTo(lx+14, ly-32);        // right hem
+                    ctx.lineTo(lx-14, ly-32);        // left hem
+                    ctx.closePath(); ctx.fill();
+                    // Coat shading (right side darker)
+                    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+                    ctx.beginPath();
+                    ctx.moveTo(lx+2, ly-72+bob); ctx.lineTo(lx+18, ly-72+bob);
+                    ctx.lineTo(lx+14, ly-32); ctx.lineTo(lx+2, ly-32);
+                    ctx.closePath(); ctx.fill();
+                    // Teal scarf — wraps at collar, reads instantly as distinct
+                    ctx.fillStyle = '#28d4c0';
+                    ctx.beginPath(); ctx.ellipse(lx, ly-72+bob, 10, 5, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillRect(lx-4, ly-70+bob, 8, 12);  // scarf drape down center
                     // Coat lapels
                     ctx.fillStyle = '#b01c38';
-                    ctx.beginPath(); ctx.moveTo(lx-13, ly-55+bob); ctx.lineTo(lx-2, ly-47+bob); ctx.lineTo(lx-13, ly-47+bob); ctx.closePath(); ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(lx+13, ly-55+bob); ctx.lineTo(lx+2, ly-47+bob); ctx.lineTo(lx+13, ly-47+bob); ctx.closePath(); ctx.fill();
-                    // Skin — warm tone
-                    ctx.fillStyle = '#e0a870'; ctx.beginPath(); ctx.arc(lx, ly-69+bob, 10, 0, Math.PI*2); ctx.fill();
-                    // Hair — warm chestnut brown with lighter highlight
+                    ctx.beginPath(); ctx.moveTo(lx-18, ly-68+bob); ctx.lineTo(lx-4, ly-58+bob); ctx.lineTo(lx-18, ly-56+bob); ctx.closePath(); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(lx+18, ly-68+bob); ctx.lineTo(lx+4, ly-58+bob); ctx.lineTo(lx+18, ly-56+bob); ctx.closePath(); ctx.fill();
+                    // White blouse strip
+                    ctx.fillStyle = '#f8f4ec'; ctx.fillRect(lx-5, ly-68+bob, 10, 18);
+                    // Press badge on lanyard
+                    ctx.strokeStyle = '#8898b0'; ctx.lineWidth = 1.2;
+                    ctx.beginPath(); ctx.moveTo(lx-4, ly-75+bob); ctx.lineTo(lx-12, ly-58+bob); ctx.stroke();
+                    ctx.fillStyle = '#dde8f8'; ctx.fillRect(lx-18, ly-60+bob, 8, 6);
+                    ctx.fillStyle = '#2050a0'; ctx.fillRect(lx-17, ly-59+bob, 6, 2);
+                    // Notepad in right hand
+                    ctx.fillStyle = '#f4f0e0'; ctx.fillRect(lx+15, ly-60+bob, 14, 20);
+                    ctx.strokeStyle = '#c8bfa8'; ctx.lineWidth = 0.8;
+                    for (let r = 0; r < 5; r++) ctx.strokeRect(lx+16, ly-58+bob+r*3.5, 12, 1);
+                    ctx.fillStyle = '#3060a0'; ctx.fillRect(lx+29, ly-63+bob, 2, 18); // pen
+                    // Neck
+                    ctx.fillStyle = '#d8a068'; ctx.fillRect(lx-5, ly-80+bob, 10, 10);
+                    // Head — bigger, rounder, clearly feminine
+                    ctx.fillStyle = '#e8b878';
+                    ctx.beginPath(); ctx.arc(lx, ly-90+bob, 13, 0, Math.PI * 2); ctx.fill();
+                    // Face highlight
+                    ctx.fillStyle = '#f5c890';
+                    ctx.beginPath(); ctx.arc(lx-3, ly-93+bob, 7, 0, Math.PI * 2); ctx.fill();
+                    // Eyes
+                    ctx.fillStyle = '#1a1028';
+                    ctx.beginPath(); ctx.ellipse(lx-5, ly-90+bob, 3, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(lx+5, ly-90+bob, 3, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+                    // Eye whites
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.ellipse(lx-5, ly-91+bob, 2, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(lx+5, ly-91+bob, 2, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+                    // Hair — warm chestnut, shoulder-length bob with volume
                     ctx.fillStyle = '#6b2c0e';
-                    ctx.beginPath(); ctx.ellipse(lx, ly-76+bob, 10, 6, 0, Math.PI, 0); ctx.fill();
-                    ctx.fillRect(lx-10, ly-76+bob, 4, 12);  // left side sweep
-                    ctx.fillStyle = '#a04820';               // highlight streak
-                    ctx.fillRect(lx-2, ly-78+bob, 6, 4);
-                    // Notepad — off-white with ruled lines so it reads as a press notepad
-                    ctx.fillStyle = '#f4f0e0'; ctx.fillRect(lx+11, ly-54+bob, 13, 18);
-                    ctx.strokeStyle = '#c8c0a0'; ctx.lineWidth = 0.8;
-                    for (let r = 0; r < 4; r++) ctx.strokeRect(lx+12, ly-52+bob+r*4, 11, 1);
+                    ctx.beginPath(); ctx.ellipse(lx, ly-98+bob, 14, 8, 0, Math.PI, 0); ctx.fill(); // top cap
+                    ctx.beginPath(); ctx.moveTo(lx-14, ly-96+bob); ctx.lineTo(lx-18, ly-78+bob); ctx.lineTo(lx-12, ly-78+bob); ctx.lineTo(lx-8, ly-96+bob); ctx.closePath(); ctx.fill(); // left sweep
+                    ctx.beginPath(); ctx.moveTo(lx+8, ly-96+bob); ctx.lineTo(lx+12, ly-78+bob); ctx.lineTo(lx+18, ly-78+bob); ctx.lineTo(lx+14, ly-96+bob); ctx.closePath(); ctx.fill(); // right sweep
+                    // Hair highlight streak
+                    ctx.fillStyle = '#a04820';
+                    ctx.fillRect(lx-2, ly-100+bob, 8, 5);
                     ctx.restore();
                     // Name label in screen space
                     ctx.save(); ctx.setTransform(1,0,0,1,0,0);
-                    const lsx = lx - camera.x, lsy = ly - 82 - camera.y + bob * 0.9;
+                    const lsx = lx - camera.x, lsy = ly - 108 - camera.y + bob * 0.9;
                     ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-                    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText('Lois Lane', lsx+1, lsy+1);
+                    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText('Lois Lane', lsx+1, lsy+1);
                     ctx.fillStyle = '#ffe090'; ctx.fillText('Lois Lane', lsx, lsy);
                     ctx.restore();
                 }
