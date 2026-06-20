@@ -578,6 +578,8 @@
         let l2QuestPhase = 'idle';
         let l2IntroDone  = false;   // one-shot flag for fly-in landing dialogue
         function advanceL2Quest(p) { l2QuestPhase = p; console.log('[L2]', p); }
+        // Lois companion for L2 exterior (walks alongside hero, same as L1 cityLois pattern)
+        const l2Lois = { x: 0, y: 0, vy: 0, faceDir: 1, phase: 0, active: false, onGround: false };
         // L3 quest phase state machine
         const VILLAGE_X   = 2200;
         const RUINS_X     = 7500;
@@ -649,6 +651,27 @@
             platforms.splice(0, platforms.length, ...L1_PLATFORMS);
             camera.x = Math.max(0, hero.x - W / 2);
             camera.y = 0;
+        }
+
+        function updateL2Lois() {
+            if (!l2Lois.active || scene !== 'city' || currentLevel !== 2) return;
+            // Apply gravity until on ground
+            if (!l2Lois.onGround) {
+                l2Lois.vy += GRAVITY;
+                l2Lois.y += l2Lois.vy;
+                if (l2Lois.y >= GROUND_Y) {
+                    l2Lois.y = GROUND_Y; l2Lois.vy = 0; l2Lois.onGround = true;
+                }
+            }
+            if (activeDialogue) return;
+            // Follow hero at a comfortable distance
+            const targetX = hero.x + hero.w / 2 - 60;
+            const dx = targetX - l2Lois.x;
+            if (Math.abs(dx) > 22) {
+                l2Lois.x += Math.sign(dx) * 1.7;
+                l2Lois.faceDir = Math.sign(dx);
+            }
+            l2Lois.phase += 0.08;
         }
 
         function updateConstructionLois() {
@@ -1700,57 +1723,153 @@
             if (_dlgChar < line.length) _dlgChar = Math.min(_dlgChar + DLG_SPEED, line.length);
         }
 
+        function _getDialogueSpeakerScreenPos() {
+            const sp = activeDialogue ? activeDialogue.speaker : '';
+            const heroSX = hero.x + hero.w / 2 - camera.x;
+            const heroSY = hero.y - camera.y;
+            if (!sp) return { x: W / 2, y: 90 };
+            if (sp === 'CK' || sp === 'hero') return { x: heroSX, y: heroSY };
+            if (sp.includes('Lois')) {
+                if (currentLevel === 2 && l2Lois.active) return { x: l2Lois.x - camera.x, y: l2Lois.y - 80 - camera.y };
+                if (loisWayne.active) return { x: loisWayne.x - camera.x, y: WAYNE_INT.floorY - 80 - camera.y };
+                if (loisArkham.active) return { x: loisArkham.x - camera.x, y: ARKHAM_INT.floorY - 80 - camera.y };
+                return { x: heroSX + 60, y: heroSY };
+            }
+            if (sp === 'Bruce' || sp === 'Bruce Wayne') {
+                if (bruceWayne.active) return { x: bruceWayne.x - camera.x, y: WAYNE_INT.floorY - 100 - camera.y };
+                if (bruceArkham.active) return { x: bruceArkham.x - camera.x, y: ARKHAM_INT.floorY - 100 - camera.y };
+            }
+            if (sp === 'Dark Wing') return { x: darkWing.x - camera.x, y: (darkWing.y || GROUND_Y) - 90 - camera.y };
+            if (sp === 'Wonder Woman') return { x: wonderWoman.x - camera.x, y: (wonderWoman.y || L3_GROUND_Y) - 90 - camera.y };
+            if (sp === 'Village Elder') return { x: villageElderNPC.x - camera.x, y: VILLAGE_INT.floorY - 100 - camera.y };
+            // Generic: center-top fallback
+            return { x: W / 2, y: 100 };
+        }
+
         function drawDialogueBox() {
             if (!activeDialogue) return;
-            const BOX_H = 130;
-            const PAD = 16;
-            const PORTRAIT_W = 90;
-            const by = H - BOX_H;
+            const PAD = 14;
+            const BUBBLE_W = Math.min(460, W - 40);
+            const MAX_TEXT_W = BUBBLE_W - PAD * 2 - 52; // leave room for portrait circle
+            const TAIL_H = 14;
 
-            // semi-transparent dark panel
-            ctx.save();
-            ctx.fillStyle = 'rgba(8,8,18,0.92)';
-            ctx.fillRect(0, by, W, BOX_H);
-            ctx.strokeStyle = '#e0c020'; ctx.lineWidth = 2;
-            ctx.strokeRect(2, by + 2, W - 4, BOX_H - 4);
-
-            // portrait box
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
-            ctx.fillRect(PAD, by + PAD, PORTRAIT_W, BOX_H - PAD * 2);
-            ctx.strokeStyle = 'rgba(200,180,60,0.6)'; ctx.lineWidth = 1.5;
-            ctx.strokeRect(PAD, by + PAD, PORTRAIT_W, BOX_H - PAD * 2);
-
-            // draw portrait figure (simple iconic faces)
-            const px = PAD + PORTRAIT_W / 2;
-            const py = by + PAD + (BOX_H - PAD * 2) / 2;
-            _drawDialoguePortrait(activeDialogue.portrait, px, py);
-
-            // speaker name
-            ctx.fillStyle = '#e0c020'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'left';
-            ctx.fillText(activeDialogue.speaker, PAD + PORTRAIT_W + PAD, by + PAD + 16);
-
-            // typewriter text — wrap at ~55 chars per line
+            // Measure text to determine bubble height
             const text = activeDialogue.lines[_dlgLine].slice(0, _dlgChar);
-            ctx.fillStyle = '#e8f0ff'; ctx.font = '12px Arial';
-            const maxW = W - PAD * 3 - PORTRAIT_W;
+            ctx.save();
+            ctx.font = '12px Arial';
             const words = text.split(' ');
             let row = 0, buf = '';
+            const wrappedLines = [];
             for (const word of words) {
                 const test = buf ? buf + ' ' + word : word;
-                if (ctx.measureText(test).width > maxW && buf) {
-                    ctx.fillText(buf, PAD + PORTRAIT_W + PAD, by + PAD + 36 + row * 18);
-                    buf = word; row++;
+                if (ctx.measureText(test).width > MAX_TEXT_W && buf) {
+                    wrappedLines.push(buf); buf = word; row++;
                 } else { buf = test; }
             }
-            if (buf) ctx.fillText(buf, PAD + PORTRAIT_W + PAD, by + PAD + 36 + row * 18);
+            if (buf) wrappedLines.push(buf);
+            const textRows = Math.max(1, wrappedLines.length);
+            const BUBBLE_H = Math.max(78, 34 + textRows * 17 + PAD);
 
-            // advance prompt
+            // Speaker position
+            const spPos = _getDialogueSpeakerScreenPos();
+            let spx = Math.max(BUBBLE_W / 2 + 10, Math.min(W - BUBBLE_W / 2 - 10, spPos.x));
+            // Position bubble above speaker, clamped to screen
+            let bubbleY = spPos.y - TAIL_H - BUBBLE_H - 10;
+            const tailFlip = bubbleY < 10; // if speaker near top, tail flips down
+            if (tailFlip) bubbleY = spPos.y + TAIL_H + 10;
+            bubbleY = Math.max(8, Math.min(H - BUBBLE_H - TAIL_H - 20, bubbleY));
+            const bx = spx - BUBBLE_W / 2;
+
+            // Speaker accent color
+            const sp = activeDialogue.speaker || '';
+            const accentColor = sp === 'CK' || sp === 'hero' ? '#4080ff'
+                : sp.includes('Lois') ? '#e04080'
+                : sp === 'Bruce' || sp === 'Bruce Wayne' ? '#c8a040'
+                : sp === 'Dark Wing' ? '#6040c0'
+                : sp === 'Wonder Woman' ? '#e04040'
+                : '#708090';
+
+            // Bubble background
+            ctx.fillStyle = 'rgba(6,6,20,0.90)';
+            // Rounded rect
+            const r = 10;
+            ctx.beginPath();
+            ctx.moveTo(bx + r, bubbleY);
+            ctx.lineTo(bx + BUBBLE_W - r, bubbleY);
+            ctx.quadraticCurveTo(bx + BUBBLE_W, bubbleY, bx + BUBBLE_W, bubbleY + r);
+            ctx.lineTo(bx + BUBBLE_W, bubbleY + BUBBLE_H - r);
+            ctx.quadraticCurveTo(bx + BUBBLE_W, bubbleY + BUBBLE_H, bx + BUBBLE_W - r, bubbleY + BUBBLE_H);
+            ctx.lineTo(bx + r, bubbleY + BUBBLE_H);
+            ctx.quadraticCurveTo(bx, bubbleY + BUBBLE_H, bx, bubbleY + BUBBLE_H - r);
+            ctx.lineTo(bx, bubbleY + r);
+            ctx.quadraticCurveTo(bx, bubbleY, bx + r, bubbleY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Accent border
+            ctx.strokeStyle = accentColor; ctx.lineWidth = 1.8; ctx.globalAlpha = 0.75;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            // Tail triangle pointing toward speaker
+            const tailX = Math.max(bx + 20, Math.min(bx + BUBBLE_W - 20, spPos.x));
+            ctx.fillStyle = 'rgba(6,6,20,0.90)';
+            ctx.beginPath();
+            if (!tailFlip) {
+                ctx.moveTo(tailX - 8, bubbleY + BUBBLE_H);
+                ctx.lineTo(tailX + 8, bubbleY + BUBBLE_H);
+                ctx.lineTo(tailX, bubbleY + BUBBLE_H + TAIL_H);
+            } else {
+                ctx.moveTo(tailX - 8, bubbleY);
+                ctx.lineTo(tailX + 8, bubbleY);
+                ctx.lineTo(tailX, bubbleY - TAIL_H);
+            }
+            ctx.closePath(); ctx.fill();
+            // Tail accent border edges
+            ctx.strokeStyle = accentColor; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6;
+            ctx.beginPath();
+            if (!tailFlip) {
+                ctx.moveTo(tailX - 8, bubbleY + BUBBLE_H);
+                ctx.lineTo(tailX, bubbleY + BUBBLE_H + TAIL_H);
+                ctx.lineTo(tailX + 8, bubbleY + BUBBLE_H);
+            } else {
+                ctx.moveTo(tailX - 8, bubbleY);
+                ctx.lineTo(tailX, bubbleY - TAIL_H);
+                ctx.lineTo(tailX + 8, bubbleY);
+            }
+            ctx.stroke(); ctx.globalAlpha = 1;
+
+            // Portrait circle (left side)
+            const portCX = bx + PAD + 18;
+            const portCY = bubbleY + 22;
+            ctx.fillStyle = accentColor;
+            ctx.beginPath(); ctx.arc(portCX, portCY, 20, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.beginPath(); ctx.arc(portCX, portCY, 20, 0, Math.PI * 2); ctx.fill();
+            _drawDialoguePortrait(activeDialogue.portrait, portCX, portCY + 4);
+
+            // Speaker name with accent color
+            ctx.fillStyle = accentColor; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+            ctx.fillText(activeDialogue.speaker, bx + PAD + 44, bubbleY + 14);
+
+            // Divider
+            ctx.strokeStyle = accentColor; ctx.lineWidth = 0.6; ctx.globalAlpha = 0.4;
+            ctx.beginPath(); ctx.moveTo(bx + PAD + 42, bubbleY + 18); ctx.lineTo(bx + BUBBLE_W - PAD, bubbleY + 18); ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            // Dialogue text (typewriter)
+            ctx.fillStyle = '#d8e8ff'; ctx.font = '12px Arial'; ctx.textAlign = 'left';
+            for (let i = 0; i < wrappedLines.length; i++) {
+                ctx.fillText(wrappedLines[i], bx + PAD + 44, bubbleY + 32 + i * 17);
+            }
+
+            // Advance prompt (blinking, at screen bottom)
             if (_dlgChar >= activeDialogue.lines[_dlgLine].length) {
-                const blink = Math.sin(Date.now() * 0.008) > 0;
-                if (blink) {
-                    ctx.fillStyle = '#a0b0ff'; ctx.font = '10px Arial'; ctx.textAlign = 'right';
-                    ctx.fillText('ENTER to continue ▶', W - PAD, by + BOX_H - PAD);
-                }
+                const blink = Math.sin(Date.now() * 0.009) > 0;
+                ctx.globalAlpha = blink ? 0.7 : 0.35;
+                ctx.fillStyle = '#90a8e0'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+                ctx.fillText('E — Continue', W / 2, H - 6);
+                ctx.globalAlpha = 1;
             }
             ctx.restore();
         }
@@ -1913,37 +2032,98 @@
             ctx.save(); ctx.translate(sx, by);
             const isVan    = carType === 'van';
             const isPickup = carType === 'pickup';
-            const bw = isVan ? 56 : 46, bh = isVan ? 22 : 20;
-            const roofW = isVan ? 52 : isPickup ? 30 : 34;
-            const roofOff = isPickup ? -8 : 0;
-            // Body
-            ctx.fillStyle = bodyColor; ctx.fillRect(-bw * fd, -bh, bw * 2, bh);
-            // Roof
-            ctx.fillRect((-roofW / 2 + roofOff) * fd, -bh - 18, roofW, 18);
+            const bw = isVan ? 56 : 46;
+            const bh = isVan ? 24 : 22;
+            const roofW = isVan ? 52 : isPickup ? 28 : 32;
+            const roofOff = isPickup ? -10 : 0;
+            const shade = _shadeColor(bodyColor, -22);
+            const hi    = _shadeColor(bodyColor, 20);
+
+            // Ground shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.beginPath(); ctx.ellipse(0, 2, bw + 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+            // Body — two-tone: lower body darker
+            ctx.fillStyle = shade;
+            ctx.fillRect(-bw, -bh * 0.4, bw * 2, bh * 0.4);
+            ctx.fillStyle = bodyColor;
+            ctx.fillRect(-bw, -bh, bw * 2, bh * 0.6);
+
+            // Chrome side strip
+            ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(-bw + 4, -bh * 0.38); ctx.lineTo(bw - 4, -bh * 0.38); ctx.stroke();
+
+            // Roof with curved top
+            ctx.fillStyle = shade;
+            const rx = (-roofW / 2 + roofOff) * fd;
+            ctx.beginPath();
+            ctx.moveTo(rx, -bh);
+            ctx.quadraticCurveTo(rx + roofW * fd * 0.5, -bh - 22, rx + roofW * fd, -bh);
+            ctx.closePath(); ctx.fill();
+
             // Hood slope
-            ctx.fillStyle = _shadeColor(bodyColor, -20);
-            ctx.beginPath(); ctx.moveTo(roofW / 2 * fd, -bh); ctx.lineTo(bw * fd, -bh);
-            ctx.lineTo(bw * fd, -bh + 10); ctx.lineTo(roofW / 2 * fd, -bh + 4); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = _shadeColor(bodyColor, -30);
+            ctx.beginPath();
+            ctx.moveTo((roofW / 2 + roofOff) * fd, -bh);
+            ctx.lineTo(bw * fd, -bh);
+            ctx.lineTo(bw * fd, -bh + 10);
+            ctx.lineTo((roofW / 2 + roofOff) * fd, -bh + 5);
+            ctx.closePath(); ctx.fill();
+
             if (isPickup) {
-                // Pickup bed
-                ctx.fillStyle = _shadeColor(bodyColor, -30);
-                ctx.fillRect((roofW / 2 - 2) * fd, -bh, (bw - roofW / 2 - 2), bh - 2);
+                ctx.fillStyle = _shadeColor(bodyColor, -35);
+                ctx.fillRect((roofW / 2 + roofOff - 2) * fd, -bh, (bw - roofW / 2 - roofOff - 4), bh - 4);
             }
+
             // Windows
-            ctx.fillStyle = 'rgba(150,210,255,0.45)';
-            ctx.fillRect((roofW / 2 - roofW + 4) * fd, -bh - 16, roofW - 8, 14);
-            // Headlight + taillight
-            ctx.fillStyle = '#ffe88a'; ctx.fillRect((bw - 6) * fd, -bh + 6, 6 * fd, 5);
-            ctx.fillStyle = '#ff3333'; ctx.fillRect(-bw * fd, -bh + 6, -5 * fd, 5);
-            // Wheels
+            ctx.fillStyle = 'rgba(140,200,255,0.42)';
+            const wStart = ((-roofW / 2 + roofOff) + 3) * fd;
+            ctx.fillRect(Math.min(wStart, (roofW / 2 + roofOff - 3) * fd), -bh - 1, roofW - 6, 14);
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 0.8;
+            ctx.strokeRect(Math.min(wStart, (roofW / 2 + roofOff - 3) * fd), -bh - 1, roofW - 6, 14);
+
+            // Door line
+            ctx.strokeStyle = _shadeColor(bodyColor, -35); ctx.lineWidth = 0.8;
+            ctx.beginPath(); ctx.moveTo(2 * fd, -bh); ctx.lineTo(2 * fd, 0); ctx.stroke();
+
+            // Headlights (front)
+            ctx.fillStyle = '#ffe88a';
+            ctx.fillRect((bw - 6) * fd, -bh + 5, 6 * fd, 6);
+            ctx.shadowColor = '#ffe88a'; ctx.shadowBlur = 6;
+            ctx.fillRect((bw - 4) * fd, -bh + 6, 4 * fd, 4);
+            ctx.shadowBlur = 0;
+            // Taillights (rear)
+            ctx.fillStyle = '#ff3a3a';
+            ctx.fillRect(-bw * fd, -bh + 5, -5 * fd, 6);
+            ctx.fillStyle = '#ff7777';
+            ctx.fillRect((-bw + 1) * fd, -bh + 6, -3 * fd, 4);
+
+            // Front bumper
+            ctx.fillStyle = _shadeColor(bodyColor, -40);
+            ctx.fillRect((bw - 2) * fd, -bh + 14, 2 * fd, 6);
+            // Rear bumper
+            ctx.fillRect(-bw * fd, -bh + 14, -2 * fd, 6);
+
+            // Wheels with hubcaps
             for (const wx2 of [-bw + 12, bw - 12]) {
-                ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(wx2 * fd, 0, 9, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(wx2 * fd, 0, 9, 0, Math.PI * 2); ctx.stroke();
-                ctx.strokeStyle = '#666'; ctx.lineWidth = 1;
-                for (let sp = 0; sp < 4; sp++) {
-                    const a = (wheelPhase || 0) * fd + sp * Math.PI / 2;
-                    ctx.beginPath(); ctx.moveTo(wx2 * fd + Math.cos(a) * 3, Math.sin(a) * 3);
-                    ctx.lineTo(wx2 * fd + Math.cos(a) * 8, Math.sin(a) * 8); ctx.stroke();
+                ctx.fillStyle = '#111111';
+                ctx.beginPath(); ctx.arc(wx2 * fd, 0, 10, 0, Math.PI * 2); ctx.fill();
+                // tire texture
+                ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(wx2 * fd, 0, 10, 0, Math.PI * 2); ctx.stroke();
+                // hubcap
+                ctx.fillStyle = '#888';
+                ctx.beginPath(); ctx.arc(wx2 * fd, 0, 5.5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#aaa';
+                ctx.beginPath(); ctx.arc(wx2 * fd, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+                // spokes
+                ctx.strokeStyle = '#777'; ctx.lineWidth = 1;
+                for (let sp = 0; sp < 5; sp++) {
+                    const a = (wheelPhase || 0) * fd + sp * Math.PI * 2 / 5;
+                    ctx.beginPath();
+                    ctx.moveTo(wx2 * fd + Math.cos(a) * 2.5, Math.sin(a) * 2.5);
+                    ctx.lineTo(wx2 * fd + Math.cos(a) * 5, Math.sin(a) * 5);
+                    ctx.stroke();
                 }
             }
             ctx.restore();
@@ -1971,11 +2151,21 @@
                 const sx = t.x - camera.x;
                 if (sx < -120 || sx > W + 120) continue;
                 _drawCarShape(sx, GROUND_Y, t.dir, t.color, 'sedan', t.phase);
-                // TAXI sign on roof
-                const roofSx = sx - 14 * t.dir;
-                ctx.fillStyle = '#333'; ctx.fillRect(roofSx - 14, GROUND_Y - 40, 28, 9);
-                ctx.fillStyle = '#ffe000'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('TAXI', roofSx, GROUND_Y - 33);
+                // Checkered stripe along door sill
+                for (let ci = 0; ci < 10; ci++) {
+                    if (ci % 2 === 0) {
+                        ctx.fillStyle = '#111';
+                        ctx.fillRect(sx - 44 + ci * 9, GROUND_Y - 22, 9, 4);
+                    }
+                }
+                // Roof light box
+                const roofSx = sx - 6 * t.dir;
+                ctx.fillStyle = '#222';
+                ctx.fillRect(roofSx - 16, GROUND_Y - 46, 32, 12);
+                ctx.fillStyle = '#ffe000';
+                ctx.fillRect(roofSx - 14, GROUND_Y - 44, 28, 8);
+                ctx.fillStyle = '#111'; ctx.font = 'bold 6px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('TAXI', roofSx, GROUND_Y - 38);
             }
         }
 
@@ -1985,57 +2175,135 @@
             const by = loisCar.y;
             const fd = loisCar.faceDir;
             const sx = cx - camera.x;
-            if (sx < -150 || sx > W + 150) return;
+            if (sx < -160 || sx > W + 160) return;
 
             ctx.save();
-            // Translate to ground level then raise 10px so wheel bottoms rest on ground
             ctx.translate(cx, by - 10);
-            // Mirror horizontally for direction — all coords below assume facing right
-            ctx.scale(fd, 1);
+            ctx.scale(fd, 1);  // mirror for direction; all coords assume facing right
 
-            // Wheels (axle at local y=0 = GROUND_Y-10; radius 10 → bottom at GROUND_Y)
+            // Ground shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.22)';
+            ctx.beginPath(); ctx.ellipse(0, 2, 48, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+            // Wheels
             const wheelAng = loisCar.phase * fd;
-            for (const wx of [-28, 28]) {
-                ctx.fillStyle = '#1a1a1a';
-                ctx.beginPath(); ctx.arc(wx, 0, 10, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(wx, 0, 10, 0, Math.PI * 2); ctx.stroke();
-                ctx.strokeStyle = '#777'; ctx.lineWidth = 1.5;
-                for (let s = 0; s < 4; s++) {
-                    const a = wheelAng + s * Math.PI / 2;
+            for (const wx of [-30, 30]) {
+                // tire
+                ctx.fillStyle = '#111';
+                ctx.beginPath(); ctx.arc(wx, 0, 11, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#2e2e2e'; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.arc(wx, 0, 11, 0, Math.PI * 2); ctx.stroke();
+                // hubcap
+                ctx.fillStyle = '#c02850';
+                ctx.beginPath(); ctx.arc(wx, 0, 6, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#e03860';
+                ctx.beginPath(); ctx.arc(wx, 0, 3, 0, Math.PI * 2); ctx.fill();
+                // spokes
+                ctx.strokeStyle = '#901a3a'; ctx.lineWidth = 1.2;
+                for (let s = 0; s < 5; s++) {
+                    const a = wheelAng + s * Math.PI * 2 / 5;
                     ctx.beginPath();
                     ctx.moveTo(wx + Math.cos(a) * 3, Math.sin(a) * 3);
-                    ctx.lineTo(wx + Math.cos(a) * 9, Math.sin(a) * 9);
+                    ctx.lineTo(wx + Math.cos(a) * 5.5, Math.sin(a) * 5.5);
                     ctx.stroke();
                 }
             }
-            // Main body (sits above axle)
-            ctx.fillStyle = '#8b2252';
-            ctx.fillRect(-44, -32, 88, 22);
-            // Roof cabin
-            ctx.fillRect(-26, -50, 52, 18);
-            // Hood slope (front-right)
-            ctx.fillStyle = '#701a40';
+
+            // Lower body (darker) — sill line
+            ctx.fillStyle = '#4a0f20';
+            ctx.fillRect(-46, -18, 92, 8);
+
+            // Main body — deep burgundy
+            const bodyGrad = ctx.createLinearGradient(-46, -38, 46, -18);
+            bodyGrad.addColorStop(0, '#8c1e3a'); bodyGrad.addColorStop(0.4, '#b82850'); bodyGrad.addColorStop(1, '#7a1430');
+            ctx.fillStyle = bodyGrad;
+            ctx.fillRect(-46, -38, 92, 20);
+
+            // Accent stripe along sill
+            ctx.strokeStyle = '#d03060'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(-44, -19); ctx.lineTo(44, -19); ctx.stroke();
+
+            // Roof — smooth quadratic curve top
+            ctx.fillStyle = '#6a1228';
             ctx.beginPath();
-            ctx.moveTo(26, -32); ctx.lineTo(44, -32);
-            ctx.lineTo(44, -22); ctx.lineTo(26, -26);
+            ctx.moveTo(-28, -38);
+            ctx.quadraticCurveTo(-30, -57, -14, -60);
+            ctx.lineTo(14, -60);
+            ctx.quadraticCurveTo(30, -57, 28, -38);
             ctx.closePath(); ctx.fill();
+
+            // Hood slope (front)
+            ctx.fillStyle = '#7a1430';
+            ctx.beginPath();
+            ctx.moveTo(28, -38); ctx.lineTo(46, -38); ctx.lineTo(46, -28); ctx.lineTo(28, -32);
+            ctx.closePath(); ctx.fill();
+
+            // Trunk slope (rear)
+            ctx.fillStyle = '#5a0e1e';
+            ctx.beginPath();
+            ctx.moveTo(-28, -38); ctx.lineTo(-46, -38); ctx.lineTo(-46, -28); ctx.lineTo(-28, -32);
+            ctx.closePath(); ctx.fill();
+
+            // Front bumper
+            ctx.fillStyle = '#c8a080';
+            ctx.fillRect(42, -26, 4, 10);
+            ctx.fillRect(38, -28, 4, 3);
+            // Rear bumper
+            ctx.fillStyle = '#c8a080';
+            ctx.fillRect(-46, -26, 4, 10);
+            ctx.fillRect(-42, -28, 4, 3);
+
             // Windshield
-            ctx.fillStyle = 'rgba(160,220,255,0.55)';
-            ctx.fillRect(10, -50, 16, 16);
+            ctx.fillStyle = 'rgba(140,210,255,0.50)';
+            ctx.beginPath();
+            ctx.moveTo(12, -38); ctx.lineTo(28, -38); ctx.lineTo(26, -54); ctx.lineTo(14, -56);
+            ctx.closePath(); ctx.fill();
+            // Windshield glare
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(14, -40); ctx.lineTo(26, -52); ctx.stroke();
+
             // Rear window
-            ctx.fillRect(-26, -50, 14, 14);
-            // Headlight
-            ctx.fillStyle = '#ffe88a';
-            ctx.fillRect(38, -28, 6, 6);
-            // Tail-light
-            ctx.fillStyle = '#ff4444';
-            ctx.fillRect(-44, -28, 6, 6);
-            // Lois portrait (driver seat)
-            ctx.fillStyle = '#e3bd9c';
-            ctx.beginPath(); ctx.arc(2, -40, 6, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#3a2010';
-            ctx.beginPath(); ctx.arc(2, -42, 7, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+            ctx.fillStyle = 'rgba(120,190,240,0.45)';
+            ctx.beginPath();
+            ctx.moveTo(-12, -38); ctx.lineTo(-28, -38); ctx.lineTo(-26, -54); ctx.lineTo(-14, -56);
+            ctx.closePath(); ctx.fill();
+
+            // Side window strip (visible side)
+            ctx.fillStyle = 'rgba(140,210,255,0.35)';
+            ctx.fillRect(-11, -56, 22, 16);
+            // Window pillar
+            ctx.fillStyle = '#6a1228';
+            ctx.fillRect(-1, -56, 2, 16);
+
+            // Door seam
+            ctx.strokeStyle = '#4a0f20'; ctx.lineWidth = 0.8;
+            ctx.beginPath(); ctx.moveTo(4, -38); ctx.lineTo(4, -18); ctx.stroke();
+
+            // Headlights (front)
+            ctx.fillStyle = '#fff6c0';
+            ctx.fillRect(40, -36, 6, 8);
+            ctx.shadowColor = '#ffe080'; ctx.shadowBlur = 8;
+            ctx.fillRect(41, -35, 4, 6);
+            ctx.shadowBlur = 0;
+            // Headlight detail line
+            ctx.strokeStyle = '#c8a020'; ctx.lineWidth = 0.6;
+            ctx.beginPath(); ctx.moveTo(40, -33); ctx.lineTo(46, -33); ctx.stroke();
+
+            // Taillights (rear)
+            ctx.fillStyle = '#cc2020';
+            ctx.fillRect(-46, -36, 6, 8);
+            ctx.fillStyle = '#ff5555';
+            ctx.fillRect(-45, -35, 4, 6);
+
+            // Lois in driver seat
+            ctx.fillStyle = '#d4956a';
+            ctx.beginPath(); ctx.arc(6, -47, 5.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#3a1808';
+            ctx.beginPath(); ctx.arc(6, -49, 6, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+            // tiny eyes
+            ctx.fillStyle = '#1a0a04';
+            ctx.fillRect(3, -48, 2, 1.5);
+            ctx.fillRect(7, -48, 2, 1.5);
 
             ctx.restore();
         }
@@ -3258,9 +3526,9 @@
                         enterFactory(); e.preventDefault();
                     }
                 }
-                if (scene === 'city' && templeEntryUnlocked) {
+                if (scene === 'city' && templeEntryUnlocked && l3QuestPhase === 'travel_temple') {
                     const TEMPLE_DOOR_X = 14810;
-                    if (Math.abs((hero.x + hero.w / 2) - TEMPLE_DOOR_X) < 120 && (hero.y + hero.h) >= L3_GROUND_Y - 50) {
+                    if (Math.abs((hero.x + hero.w / 2) - TEMPLE_DOOR_X) < 180) {
                         enterTemple(); e.preventDefault();
                     }
                 }
@@ -3368,6 +3636,10 @@
             // Construction yard exit
             if (e.code === 'KeyF' && scene === 'construction') {
                 if (hero.x < 160) { exitConstruction(); e.preventDefault(); }
+            }
+            // Wayne Enterprises entry (F key)
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 2 && l2QuestPhase === 'travel_wayne' && !wayneScene && !activeDialogue) {
+                if (Math.abs((hero.x + hero.w / 2) - WAYNE_X) < 180) { enterWayne(); e.preventDefault(); }
             }
             // F: exit Wayne Enterprises
             if (e.code === 'KeyF' && scene === 'wayne') {
@@ -8169,11 +8441,11 @@
             } else if (scene === 'temple') {
                 ctx.fillStyle = '#120a06';
                 ctx.fillRect(0, 0, W, H);
-            } else if (currentLevel === 3) {
+            } else if (currentLevel === 3 && scene === 'city') {
                 drawJungle();
-            } else if (currentLevel === 2) {
+            } else if (currentLevel === 2 && scene === 'city') {
                 drawGrungeCity();
-            } else {
+            } else if (currentLevel !== 2 && currentLevel !== 3) {
                 drawManhattan();
             }
 
@@ -8383,6 +8655,51 @@
                     ctx.fillStyle = 'rgba(255,200,210,0.6)'; ctx.font = '9px Arial'; ctx.textAlign = 'center';
                     ctx.fillText('Lois', lx, GROUND_Y - 84 + bob);
                 }
+                ctx.restore();
+            }
+            // ---- LOIS LANE in L2 city — walks alongside hero ----
+            if (currentLevel === 2 && l2Lois.active && scene === 'city') {
+                const lx = l2Lois.x;
+                const bob = Math.sin(l2Lois.phase) * 1.2;
+                const isWalking = Math.abs(hero.vx) > 0.5;
+                const sw = isWalking ? Math.sin(l2Lois.phase * 3) * 4 : 0;
+                ctx.save();
+                ctx.translate(lx, GROUND_Y); ctx.scale(0.8, 0.8); ctx.translate(-lx, -GROUND_Y);
+                // legs
+                ctx.fillStyle = '#1a1a30';
+                ctx.fillRect(lx - 7, GROUND_Y - 20 - Math.max(0, sw), 6, 20);
+                ctx.fillRect(lx + 1, GROUND_Y - 20 - Math.max(0, -sw), 6, 20);
+                // heels
+                ctx.fillStyle = '#8b1a3a';
+                ctx.fillRect(lx - 9, GROUND_Y - 3, 5, 3);
+                ctx.fillRect(lx - 1, GROUND_Y - 3, 5, 3);
+                // skirt / body
+                ctx.fillStyle = '#8b1a3a';
+                ctx.fillRect(lx - 9, GROUND_Y - 38, 18, 18);
+                // jacket
+                ctx.fillStyle = '#2a1a3a';
+                ctx.fillRect(lx - 10, GROUND_Y - 56, 20, 20);
+                // lapels
+                ctx.fillStyle = '#8b1a3a';
+                ctx.fillRect(lx - 7, GROUND_Y - 56, 5, 10);
+                ctx.fillRect(lx + 2, GROUND_Y - 56, 5, 10);
+                // neck
+                ctx.fillStyle = '#d4956a';
+                ctx.fillRect(lx - 3, GROUND_Y - 62, 6, 7);
+                // head
+                ctx.fillStyle = '#d4956a';
+                ctx.beginPath(); ctx.ellipse(lx, GROUND_Y - 71 + bob, 9, 10, 0, 0, Math.PI * 2); ctx.fill();
+                // hair
+                ctx.fillStyle = '#3a1a08';
+                ctx.beginPath(); ctx.ellipse(lx, GROUND_Y - 78 + bob, 9, 5, 0, 0, Math.PI); ctx.fill();
+                ctx.fillRect(lx - 9, GROUND_Y - 79 + bob, 5, 12);
+                // eyes
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(lx - 5, GROUND_Y - 73 + bob, 3, 2);
+                ctx.fillRect(lx + 2, GROUND_Y - 73 + bob, 3, 2);
+                ctx.fillStyle = '#2a1a0a';
+                ctx.fillRect(lx - 4, GROUND_Y - 73 + bob, 2, 2);
+                ctx.fillRect(lx + 3, GROUND_Y - 73 + bob, 2, 2);
                 ctx.restore();
             }
             drawLoisCar();
@@ -9943,11 +10260,15 @@
             bossDefeated = false;
             factoryEntryUnlocked = false;
             interior.note.read = true;
+            flyAwayCutscene = false;
             // hero + hound fly in from above — gravity brings them to ground
             hero.x = 300; hero.y = GROUND_Y - 420; hero.vx = 0; hero.vy = 9;
             hero.flightActive = false; hero.onGround = false; hero.facing = 1;
             hound.x = 180; hound.y = GROUND_Y - 320; hound.vx = 0; hound.vy = 7;
             hound.flightActive = false; hound.onGround = false;
+            // Lois lands alongside hero
+            l2Lois.x = 400; l2Lois.y = GROUND_Y - 380; l2Lois.vy = 8;
+            l2Lois.active = true; l2Lois.faceDir = 1; l2Lois.onGround = false; l2Lois.phase = 0;
             camera.x = 0; camera.y = 0;
             currentDistrict = 'ruins';
             scene = 'city';
@@ -10198,6 +10519,7 @@
 
         // ── enterTemple / exitTemple ──────────────────────────────────────
         function enterTemple() {
+            if (templeScene) return;
             templeScene = {
                 saved: {
                     hx: hero.x, hy: hero.y, hvx: hero.vx, hvy: hero.vy,
@@ -10599,6 +10921,7 @@
             templeEntryUnlocked = true;   // quest phase gates entry instead
             factoryEntryUnlocked = false;
             interior.note.read = true;
+            flyAwayCutscene = false;
             // Fly-in: hero + hound fall from sky
             hero.x = 220; hero.y = L3_GROUND_Y - 420;
             hero.vx = 0; hero.vy = 9; hero.flightActive = false; hero.onGround = false;
@@ -12179,6 +12502,7 @@
             hound.x = 220; hound.y = WAYNE_INT.floorY - hound.h;
             hound.vx = 0; hound.vy = 0; hound.onGround = true;
             scene = 'wayne';
+            l2Lois.active = false;
             platforms.splice(0, platforms.length);
             camera.x = 0; camera.y = Math.max(0, WAYNE_INT.floorY + 80 - H);
             bruceWayne.x = 2400; bruceWayne.active = true; wayneDialogueDone = false;
@@ -12198,6 +12522,7 @@
             hero.vx = 0; hero.vy = 0; hero.facing = wayneScene.saved.hf; hero.flightActive = false; hero.onGround = true;
             scene = 'city'; wayneScene = null;
             bruceWayne.active = false; loisWayne.active = false;
+            l2Lois.x = WAYNE_X + 30; l2Lois.y = GROUND_Y; l2Lois.onGround = true; l2Lois.active = true;
             platforms.splice(0, platforms.length, ...L2_PLATFORMS);
             camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
             // Lois car departs toward Arkham
@@ -12225,6 +12550,7 @@
             hound.x = 230; hound.y = ARKHAM_INT.floorY - hound.h;
             hound.vx = 0; hound.vy = 0; hound.onGround = true;
             scene = 'arkham';
+            l2Lois.active = false;
             platforms.splice(0, platforms.length);
             camera.x = 0; camera.y = Math.max(0, ARKHAM_INT.floorY + 80 - H);
             loisArkham.x = 280; loisArkham.active = true; loisArkham.faceDir = 1;
@@ -12249,6 +12575,7 @@
             hero.vx = 0; hero.vy = 0; hero.facing = 1; hero.flightActive = false; hero.onGround = true;
             scene = 'city'; arkhamScene = null;
             loisArkham.active = false; bruceArkham.active = false;
+            l2Lois.x = ARKHAM_X + 40; l2Lois.y = GROUND_Y; l2Lois.onGround = true; l2Lois.active = true;
             platforms.splice(0, platforms.length, ...L2_PLATFORMS);
             camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
             loisCar.x = ARKHAM_X + 80; loisCar.y = GROUND_Y; loisCar.active = true; loisCar.faceDir = 1;
@@ -12415,8 +12742,8 @@
             const fd = bruceWayne.faceDir;
             if (bx - camera.x < -80 || bx - camera.x > W + 80) return;
             ctx.save();
-            // Scale Bruce slightly larger (confident stature)
-            ctx.translate(bx, by); ctx.scale(1.08, 1.08); ctx.translate(-bx, -by);
+            // Scale Bruce shorter than hero (hero h=74 is the tallest)
+            ctx.translate(bx, by); ctx.scale(0.84, 0.84); ctx.translate(-bx, -by);
             // Legs — navy trousers
             ctx.fillStyle = '#0e1e40'; ctx.fillRect(bx - 9, by - 32, 8, 32); ctx.fillRect(bx + 1, by - 32, 8, 32);
             // Shoes — black oxford
@@ -12642,7 +12969,7 @@
                 bruceArkham.x = Math.max(80, Math.min(ARKHAM_INT.w - 80, bruceArkham.x));
             }
             ctx.save();
-            ctx.translate(bx, by); ctx.scale(1.08, 1.08); ctx.translate(-bx, -by);
+            ctx.translate(bx, by); ctx.scale(0.84, 0.84); ctx.translate(-bx, -by);
             // Guard uniform (undercover)
             ctx.fillStyle = '#1a1a2a'; ctx.fillRect(bx - 8, by - 28, 7, 28); ctx.fillRect(bx + 1, by - 28, 7, 28);
             ctx.fillStyle = '#080812'; ctx.fillRect(bx - 10, by - 4, 10, 4); ctx.fillRect(bx + 1, by - 4, 10, 4);
@@ -13995,6 +14322,8 @@
             const fy  = wy;   // feet Y
 
             ctx.save();
+            // Scale Power Girl slightly shorter than hero (hero h=74 is tallest)
+            ctx.translate(cx, fy); ctx.scale(0.88, 0.88); ctx.translate(-cx, -fy);
 
             // Cape — red, behind body
             ctx.fillStyle = '#cc1a1a';
@@ -15417,6 +15746,7 @@
             updateAmbientNPCs();
             updateTaxis();
             updateCityLois();
+            updateL2Lois();
             updatePrisonLois();
             updateLoisCar();
             // Unlock lab entry when both loisCar has arrived AND hero is within 400px
@@ -15474,10 +15804,7 @@
                         })
                     });
                 }
-                // Auto-enter Wayne Enterprises when hero arrives
-                if (l2QuestPhase === 'travel_wayne' && !wayneScene && !activeDialogue) {
-                    if (Math.abs((hero.x + hero.w/2) - WAYNE_X) < 200) enterWayne();
-                }
+                // Wayne entry is F-key only (handled in keydown listener)
                 // Auto-enter Arkham when both hero and Lois car arrive
                 if (l2QuestPhase === 'travel_arkham' && !arkhamScene && !activeDialogue) {
                     const heroNear = Math.abs((hero.x + hero.w/2) - ARKHAM_X) < 300;
