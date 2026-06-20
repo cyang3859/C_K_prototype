@@ -3660,8 +3660,12 @@
                 if (hero.x < 200) { exitArkham(); e.preventDefault(); }
             }
             // F: enter Amazonian Village (L3)
-            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 3 && l3QuestPhase === 'travel_village') {
-                if (Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 220) { enterVillage(); e.preventDefault(); }
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 3 && villageEntryUnlocked && !villageScene && !activeDialogue) {
+                if (Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 300) { enterVillage(); e.preventDefault(); }
+            }
+            // F: exit Amazonian Village
+            if (e.code === 'KeyF' && scene === 'village') {
+                if (hero.x < 180) { exitVillage(); e.preventDefault(); }
             }
             // F: exit Amazonian Village
             if (e.code === 'KeyF' && scene === 'village') {
@@ -3762,7 +3766,7 @@
                 }
             }
             // E: interact (talk to quest NPCs / ambient role NPCs) or drop carried civilians
-            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank' || scene === 'construction' || scene === 'arkham' || scene === 'wayne') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
+            if (e.code === 'KeyE' && (scene === 'city' || scene === 'bank' || scene === 'construction' || scene === 'arkham' || scene === 'wayne' || scene === 'village' || scene === 'ruins') && (tryInteract() || tryTalkAmbientNPC())) { e.preventDefault(); }
             if (e.code === 'KeyE' && scene === 'city' && carriedCivilians.length > 0) {
                 for (const c of carriedCivilians) {
                     c.carried = false;
@@ -11049,7 +11053,7 @@
             // Quest state
             l3QuestPhase = 'l3_intro';
             l3IntroDone  = false;
-            villageScene = null; ruinsScene = null;
+            villageScene = null; ruinsScene = null; villageEntryUnlocked = false;
             witnessesSpoken = 0;
             villageWitnesses.forEach(w => { w.spoken = false; w.active = false; });
             villageElderNPC.active = false;
@@ -12508,6 +12512,7 @@
         // ── L3 Village NPC objects ────────────────────────────────────────────
         let villageScene = null;
         let ruinsScene   = null;
+        let villageEntryUnlocked = false;
         let witnessesSpoken = 0;
         let ruinsCultistsDefeated = 0;
         let wwAltarExamined = false;
@@ -13312,12 +13317,14 @@
             ctx.quadraticCurveTo(bfx, baseY - 35 - flicker * 2, bfx + 12, baseY);
             ctx.closePath(); ctx.fill();
             // F-key prompt
-            if (l3QuestPhase === 'travel_village' && Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 220) {
+            if (l3QuestPhase === 'travel_village' && Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 300) {
                 ctx.save(); ctx.setTransform(1,0,0,1,0,0);
                 const sx = VILLAGE_X - camera.x;
-                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx - 90, L3_GROUND_Y - camera.y - 140, 180, 30);
-                ctx.fillStyle = '#ffe080'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
-                ctx.fillText('F — Enter Village', sx, L3_GROUND_Y - camera.y - 120);
+                const canEnter = villageEntryUnlocked;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(sx - 110, L3_GROUND_Y - camera.y - 140, 220, 30);
+                ctx.fillStyle = canEnter ? '#ffe080' : '#aaaaaa';
+                ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+                ctx.fillText(canEnter ? 'F — Enter Village' : 'Approaching Village...', sx, L3_GROUND_Y - camera.y - 120);
                 ctx.restore();
             }
         }
@@ -13486,6 +13493,13 @@
                     ctx.restore();
                 }
                 ctx.restore(); // elder scale
+            }
+            // Exit prompt near entrance
+            if (hero.x < 180) {
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                ctx.fillStyle = '#ffe080'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('F — Exit Village', 90, VILLAGE_INT.floorY - camera.y - 100);
+                ctx.restore();
             }
         }
 
@@ -16084,9 +16098,12 @@
                         })
                     });
                 }
-                // Auto-enter Amazonian Village
+                // Village entry is F-key only (see keydown handler line ~3664)
                 if (l3QuestPhase === 'travel_village' && !villageScene && !activeDialogue) {
-                    if (Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 200) enterVillage();
+                    if (Math.abs((hero.x + hero.w/2) - VILLAGE_X) < 300 && !villageEntryUnlocked) {
+                        villageEntryUnlocked = true;
+                        titleCard = { text: 'AMAZONIAN VILLAGE', sub: 'Press F to enter when ready.', timer: 200 };
+                    }
                 }
                 // Auto-enter Ancient Ruins
                 if (l3QuestPhase === 'travel_ruins' && !ruinsScene && !activeDialogue) {
