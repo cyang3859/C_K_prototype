@@ -3667,10 +3667,6 @@
             if (e.code === 'KeyF' && scene === 'village') {
                 if (hero.x < 180) { exitVillage(); e.preventDefault(); }
             }
-            // F: exit Amazonian Village
-            if (e.code === 'KeyF' && scene === 'village') {
-                if (hero.x < 160) { exitVillage(); e.preventDefault(); }
-            }
             // F: enter Ancient Ruins (L3)
             if (e.code === 'KeyF' && scene === 'city' && currentLevel === 3 && l3QuestPhase === 'travel_ruins') {
                 if (Math.abs((hero.x + hero.w/2) - RUINS_X) < 220) { enterRuins(); e.preventDefault(); }
@@ -10534,6 +10530,7 @@
             hound.x = s.dx; hound.y = s.dy; hound.vx = 0; hound.vy = 0;
             hound.facing = s.df; hound.flightActive = false; hound.onGround = true;
             scene = 'city';
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = 0;
             platforms.splice(0, platforms.length, ...L3_PLATFORMS);
             templeScene = null; templePhase = 'idle';
             wonderWoman.fightMode = false; wonderWoman.zoneCombat = false;
