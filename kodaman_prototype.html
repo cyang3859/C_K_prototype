@@ -3607,10 +3607,8 @@
                         e.preventDefault(); break;
                     }
                 }
-                // Exit door — once labExitReady any F press leaves; before that only the door area works
-                if (labExitReady) {
-                    exitLexlab(); e.preventDefault();
-                } else if (hero.x < 160) {
+                // Exit door — near entrance (x<260) or after all clues found
+                if (labExitReady || hero.x < 260 || labCluesFound >= 3) {
                     exitLexlab(); e.preventDefault();
                 }
             }
@@ -10518,6 +10516,19 @@
                     '— Dr. Chen, Head of Advanced Research'
                 ]
             },
+            {
+                // Glowing terminal at the far server rack — Room 3 (Gotham lead)
+                x: 3620, y: LAB.floorY - 58, w: 48, h: 52,
+                found: false, foundBy: null,
+                label: 'ENCRYPTED TERMINAL',
+                icon: '🖥',
+                lines: [
+                    'ENCRYPTED COMM — LexCorp Black Channel',
+                    'Lex has a contact in Gotham. Goes by "The Knight." Former vigilante, now a power broker.',
+                    'Real name: Bruce Wayne. Wayne Tower, Gotham. He\'s been tracking Luthor independently.',
+                    'If anyone knows where Lex is hiding — it\'s Wayne. We need to get to Gotham now.'
+                ]
+            },
         ];
         let labCluesFound = 0;
         let labExitReady = false;  // true after bank dialogue — player must walk to exit
@@ -13930,7 +13941,7 @@
                 ctx.save(); ctx.globalAlpha = doorGlow;
                 ctx.fillStyle = '#00ff88'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
                 ctx.fillText('F — EXIT', 66, LAB.floorY - 96); ctx.fillText('▼', 66, LAB.floorY - 107); ctx.restore();
-            } else if (hero.x < 160) {
+            } else if (hero.x < 260) {
                 ctx.fillStyle = '#8ab8e8'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
                 ctx.fillText('F — Exit', 66, LAB.floorY - 92);
             }
