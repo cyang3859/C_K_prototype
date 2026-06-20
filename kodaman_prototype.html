@@ -743,68 +743,276 @@
 
         function drawYardWorkers() {
             if (!constructionSpawned || scene !== 'construction' || currentLevel !== 1) return;
-            const t = Date.now() * 0.001;
             for (const w of yardWorkers) {
-                const sx = w.x;          // world coords — camera transform is active
+                const sx = w.x;
                 if (sx - camera.x < -80 || sx - camera.x > W + 80) continue;
-                const fy = w.y;          // world coords
-                const bob = Math.sin(w.phase) * 1.0;
+                const fy = w.y;
+                const bob = Math.sin(w.phase) * 1.2;
                 const fd = w.faceDir;
                 const done = w.interrogated;
+                const isH = w.isHenchman;
                 ctx.save();
-                // Hard hat
-                ctx.fillStyle = w.isHenchman ? '#ff6600' : '#ffcc00';
-                ctx.beginPath();
-                ctx.ellipse(sx, fy - 84 + bob, 13, 7, 0, Math.PI, 0);
-                ctx.fill();
-                ctx.fillRect(sx - 14, fy - 84 + bob, 28, 4);
-                // Head
-                ctx.fillStyle = '#d4a070';
-                ctx.beginPath(); ctx.arc(sx, fy - 76 + bob, 10, 0, Math.PI * 2); ctx.fill();
-                // Eyes
-                ctx.fillStyle = '#333';
-                ctx.fillRect(sx - 4 + fd, fy - 78 + bob, 3, 2);
-                ctx.fillRect(sx + 1 + fd, fy - 78 + bob, 3, 2);
-                // Body — orange hi-vis vest
-                ctx.fillStyle = '#e05a00';
-                ctx.fillRect(sx - 12, fy - 64 + bob, 24, 32);
-                // Vest stripes
-                ctx.fillStyle = 'rgba(255,255,80,0.6)';
-                ctx.fillRect(sx - 12, fy - 60 + bob, 24, 3);
-                ctx.fillRect(sx - 12, fy - 50 + bob, 24, 3);
-                // Legs
-                ctx.fillStyle = '#334';
-                ctx.fillRect(sx - 8, fy - 32, 7, 32);
-                ctx.fillRect(sx + 1, fy - 32, 7, 32);
-                // Boots
-                ctx.fillStyle = '#8b5a1a';
-                ctx.fillRect(sx - 10, fy - 4, 10, 4);
-                ctx.fillRect(sx + 1, fy - 4, 10, 4);
-                // Tool (shovel or wrench) — held in leading hand
-                if (!w._fleeing) {
-                    ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.moveTo(sx + fd * 12, fy - 56 + bob);
-                    ctx.lineTo(sx + fd * 22, fy - 16 + bob);
-                    ctx.stroke();
-                    ctx.fillStyle = '#aaa';
-                    ctx.fillRect(sx + fd * 18, fy - 62 + bob, fd > 0 ? 8 : -8, 6);
+
+                // ── LEGS ─────────────────────────────────────────────────────
+                // Thigh — dark navy work trousers
+                ctx.fillStyle = '#2a2e4a';
+                ctx.fillRect(sx - 9,  fy - 40 + bob, 8,  24);
+                ctx.fillRect(sx + 1,  fy - 40 + bob, 8,  24);
+                // Knee crease highlight
+                ctx.fillStyle = '#3a3e5a';
+                ctx.fillRect(sx - 9,  fy - 26 + bob, 8, 3);
+                ctx.fillRect(sx + 1,  fy - 26 + bob, 8, 3);
+                // Boots — heavy steel-toe
+                ctx.fillStyle = '#1a1208';
+                ctx.fillRect(sx - 11, fy - 16 + bob, 12, 16);  // left
+                ctx.fillRect(sx + 1,  fy - 16 + bob, 12, 16);  // right
+                // Boot toe cap (steel toe highlight)
+                ctx.fillStyle = '#5a5040';
+                ctx.fillRect(sx - 11, fy - 3 + bob,  7, 3);
+                ctx.fillRect(sx + 5,  fy - 3 + bob,  7, 3);
+                // Boot sole
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(sx - 12, fy + bob, 13, 3);
+                ctx.fillRect(sx,      fy + bob, 13, 3);
+
+                // ── BODY — hi-vis vest over dark shirt ───────────────────────
+                // Base shirt (dark navy/grey under vest)
+                ctx.fillStyle = isH ? '#1a1a1a' : '#252830';
+                ctx.fillRect(sx - 13, fy - 72 + bob, 26, 34);
+                // Arms
+                ctx.fillStyle = isH ? '#111' : '#202428';
+                ctx.fillRect(sx - 20 + (fd < 0 ? 1 : 0), fy - 70 + bob, 8, 26);  // left arm
+                ctx.fillRect(sx + 12 + (fd > 0 ? 1 : 0), fy - 70 + bob, 8, 26);  // right arm
+                // Gloves on hands
+                ctx.fillStyle = '#2a2218';
+                ctx.fillRect(sx - 21, fy - 45 + bob, 9, 7);
+                ctx.fillRect(sx + 12, fy - 45 + bob, 9, 7);
+
+                // Hi-vis vest
+                const vestColor = isH ? '#cc3300' : '#e86000';
+                const vestDark  = isH ? '#881800' : '#b04000';
+                ctx.fillStyle = vestColor;
+                ctx.fillRect(sx - 13, fy - 72 + bob, 26, 34);
+                // Vest side cutouts (makes it look like a proper vest, not a shirt)
+                ctx.fillStyle = isH ? '#1a1a1a' : '#202428';
+                ctx.fillRect(sx - 20, fy - 68 + bob, 8, 30);  // left shoulder gap
+                ctx.fillRect(sx + 12, fy - 68 + bob, 8, 30);  // right shoulder gap
+                // Reflective safety stripes
+                ctx.fillStyle = 'rgba(255,255,120,0.85)';
+                ctx.fillRect(sx - 13, fy - 62 + bob, 26, 3);  // upper stripe
+                ctx.fillRect(sx - 13, fy - 50 + bob, 26, 3);  // lower stripe
+                // Vest pocket
+                ctx.fillStyle = vestDark;
+                ctx.fillRect(sx - 10, fy - 69 + bob, 8, 6);
+                // Vest zipper line
+                ctx.fillStyle = '#c8b040';
+                ctx.fillRect(sx - 1, fy - 72 + bob, 2, 32);
+                // LexCorp logo on chest (small "L" for regular, skull for henchman)
+                if (isH) {
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
+                    ctx.fillText('☠', sx + 6, fy - 57 + bob);
+                } else {
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+                    ctx.fillText('LC', sx + 6, fy - 57 + bob);
                 }
-                // Name label and interaction prompt
+
+                // ── NECK ─────────────────────────────────────────────────────
+                ctx.fillStyle = '#c89060';
+                ctx.fillRect(sx - 4, fy - 76 + bob, 8, 6);
+
+                // ── HEAD ─────────────────────────────────────────────────────
+                const skinTone = isH ? '#b87848' : ['#d4a870', '#c8906a', '#b07848', '#e0b890'][w.phase % 4 | 0];
+                ctx.fillStyle = skinTone;
+                ctx.fillRect(sx - 11, fy - 98 + bob, 22, 24);  // head rectangle
+                // Ear
+                ctx.fillRect(sx - 14, fy - 94 + bob, 4, 8);
+                ctx.fillRect(sx + 10, fy - 94 + bob, 4, 8);
+                // Round corners (chin/forehead)
+                ctx.beginPath(); ctx.arc(sx - 8,  fy - 97 + bob, 4, Math.PI, Math.PI * 1.5); ctx.fill();
+                ctx.beginPath(); ctx.arc(sx + 8,  fy - 97 + bob, 4, Math.PI * 1.5, 0); ctx.fill();
+                ctx.beginPath(); ctx.arc(sx - 8,  fy - 75 + bob, 4, Math.PI * 0.5, Math.PI); ctx.fill();
+                ctx.beginPath(); ctx.arc(sx + 8,  fy - 75 + bob, 4, 0, Math.PI * 0.5); ctx.fill();
+
+                // Eyes — proper whites + iris
+                const eyeOff = fd * 2;
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(sx - 8 + eyeOff, fy - 92 + bob, 6, 5);
+                ctx.fillRect(sx + 2 + eyeOff, fy - 92 + bob, 6, 5);
+                ctx.fillStyle = done ? '#204080' : (isH ? '#801010' : '#1a1a40');
+                ctx.fillRect(sx - 6 + eyeOff, fy - 91 + bob, 3, 3);
+                ctx.fillRect(sx + 3 + eyeOff, fy - 91 + bob, 3, 3);
+                // Pupils
+                ctx.fillStyle = '#000';
+                ctx.fillRect(sx - 5 + eyeOff + (fd > 0 ? 1 : 0), fy - 90 + bob, 1, 2);
+                ctx.fillRect(sx + 4 + eyeOff + (fd > 0 ? 1 : 0), fy - 90 + bob, 1, 2);
+                // Eyebrow
+                ctx.fillStyle = isH ? '#1a0808' : '#5a3818';
+                ctx.fillRect(sx - 8 + eyeOff, fy - 95 + bob, 6, 2);
+                ctx.fillRect(sx + 2 + eyeOff, fy - 95 + bob, 6, 2);
+                // Nose
+                ctx.fillStyle = '#b07848';
+                ctx.fillRect(sx - 1 + fd, fy - 86 + bob, 3, 4);
+                // Mouth
+                ctx.fillStyle = done ? '#c06040' : '#7a4028';
+                ctx.fillRect(sx - 5, fy - 79 + bob, 10, 2);
+                if (done) {  // slight smile when questioned
+                    ctx.fillStyle = '#c06040';
+                    ctx.fillRect(sx - 5, fy - 79 + bob, 2, 3);
+                    ctx.fillRect(sx + 3, fy - 79 + bob, 2, 3);
+                }
+
+                // ── HARD HAT ─────────────────────────────────────────────────
+                const hatColor = isH ? '#cc2200' : (done ? '#c8c820' : '#f0c020');
+                const hatDark  = isH ? '#881400' : '#b09010';
+                // Brim
+                ctx.fillStyle = hatDark;
+                ctx.fillRect(sx - 16, fy - 101 + bob, 32, 5);
+                // Dome
+                ctx.fillStyle = hatColor;
+                ctx.beginPath();
+                ctx.ellipse(sx, fy - 104 + bob, 14, 10, 0, Math.PI, 0);
+                ctx.fill();
+                // Dome shade (top)
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.beginPath();
+                ctx.ellipse(sx - 3, fy - 110 + bob, 7, 5, -0.3, Math.PI, 0);
+                ctx.fill();
+                // Safety badge on hat
+                ctx.fillStyle = '#fff';
+                ctx.font = '6px sans-serif'; ctx.textAlign = 'center';
+                ctx.fillText(isH ? '✕' : '♦', sx, fy - 103 + bob);
+
+                // ── TOOL ─────────────────────────────────────────────────────
+                if (!w._fleeing) {
+                    if (isH) {
+                        // Henchman holds a crowbar
+                        ctx.strokeStyle = '#707070'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(sx + fd * 14, fy - 60 + bob);
+                        ctx.lineTo(sx + fd * 26, fy - 20 + bob);
+                        ctx.stroke();
+                        ctx.strokeStyle = '#909090'; ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(sx + fd * 22, fy - 26 + bob);
+                        ctx.lineTo(sx + fd * 30, fy - 18 + bob);
+                        ctx.stroke();
+                    } else {
+                        // Worker holds a clipboard or wrench alternating by index
+                        const toolType = yardWorkers.indexOf(w) % 2;
+                        if (toolType === 0) {
+                            // Clipboard
+                            ctx.fillStyle = '#e8d4a0'; ctx.fillRect(sx + fd * 14, fy - 64 + bob, fd * 12, 18);
+                            ctx.strokeStyle = '#8a6830'; ctx.lineWidth = 1;
+                            ctx.strokeRect(sx + fd * 14, fy - 64 + bob, fd * 12, 18);
+                            ctx.fillStyle = '#8a6830';
+                            ctx.fillRect(sx + fd * 16, fy - 62 + bob, fd * 8, 2);
+                            ctx.fillRect(sx + fd * 16, fy - 57 + bob, fd * 6, 2);
+                            ctx.fillRect(sx + fd * 16, fy - 52 + bob, fd * 8, 2);
+                        } else {
+                            // Wrench
+                            ctx.strokeStyle = '#909090'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+                            ctx.beginPath();
+                            ctx.moveTo(sx + fd * 14, fy - 58 + bob);
+                            ctx.lineTo(sx + fd * 26, fy - 22 + bob);
+                            ctx.stroke();
+                            ctx.fillStyle = '#b0b0b0';
+                            ctx.fillRect(sx + fd * 22, fy - 62 + bob, fd > 0 ? 8 : -8, 6);
+                            ctx.fillRect(sx + fd * 22, fy - 58 + bob, fd > 0 ? 8 : -8, 6);
+                        }
+                    }
+                } else {
+                    // Fleeing — arms up
+                    ctx.fillStyle = isH ? '#1a1a1a' : '#202428';
+                    ctx.fillRect(sx - 22, fy - 76 + bob, 8, 14);  // left arm raised
+                    ctx.fillRect(sx + 14, fy - 76 + bob, 8, 14);  // right arm raised
+                }
+
+                // ── PROMPT LABEL ─────────────────────────────────────────────
                 const heroDist = Math.abs((hero.x + hero.w/2) - w.x);
-                ctx.font = '9px Arial'; ctx.textAlign = 'center';
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                const screenX = sx - camera.x;
+                const screenY = fy - camera.y - 110 + bob;
                 if (done) {
-                    ctx.fillStyle = 'rgba(80,200,80,0.7)'; ctx.fillText('✓ Questioned', sx, fy - 95 + bob);
-                } else if (heroDist < 70 && !w._fleeing && questPhase === 'construction_interrogate') {
-                    ctx.fillStyle = '#ffe040';
-                    ctx.fillText('E — Question', sx, fy - 95 + bob);
+                    ctx.fillStyle = 'rgba(20,60,20,0.75)';
+                    ctx.fillRect(screenX - 46, screenY - 14, 92, 18);
+                    ctx.fillStyle = '#70e870'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+                    ctx.fillText('✓ Questioned', screenX, screenY);
+                } else if (heroDist < 80 && !w._fleeing && questPhase === 'construction_interrogate') {
+                    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                    ctx.fillRect(screenX - 46, screenY - 14, 92, 18);
+                    ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+                    ctx.fillText(isH ? 'E — Catch!' : 'E — Question', screenX, screenY);
                 }
                 ctx.restore();
+                ctx.restore();
             }
+
+            // ── CONSTRUCTION LOIS ─────────────────────────────────────────────
+            if (!constructionLois.active) return;
+            const lx = constructionLois.x;
+            if (lx - camera.x < -80 || lx - camera.x > W + 80) return;
+            const lfy = CONSTRUCTION_INT.floorY;
+            const lfd = constructionLois.faceDir;
+            const lt = Date.now() * 0.001;
+            ctx.save();
+            // Scale Lois to 80% anchored at feet
+            ctx.translate(lx, lfy); ctx.scale(0.8, 0.8); ctx.translate(-lx, -lfy);
+            // Legs
+            ctx.fillStyle = '#2a2040';
+            ctx.fillRect(lx - 8,  lfy - 36, 7, 36);
+            ctx.fillRect(lx + 1,  lfy - 36, 7, 36);
+            // Heels
+            ctx.fillStyle = '#c04060'; ctx.fillRect(lx - 9,  lfy - 4, 10, 4); ctx.fillRect(lx + 1, lfy - 4, 10, 4);
+            // Skirt
+            ctx.fillStyle = '#c02858';
+            ctx.beginPath(); ctx.moveTo(lx - 12, lfy - 38); ctx.lineTo(lx + 12, lfy - 38);
+            ctx.lineTo(lx + 14, lfy - 56); ctx.lineTo(lx - 14, lfy - 56); ctx.closePath(); ctx.fill();
+            // Jacket
+            ctx.fillStyle = '#283880';
+            ctx.fillRect(lx - 13, lfy - 80, 26, 26);
+            // Lapels
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.moveTo(lx - 2, lfy - 80); ctx.lineTo(lx - 12, lfy - 70); ctx.lineTo(lx - 6, lfy - 56); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(lx + 2, lfy - 80); ctx.lineTo(lx + 12, lfy - 70); ctx.lineTo(lx + 6, lfy - 56); ctx.closePath(); ctx.fill();
+            // Arms
+            ctx.fillStyle = '#283880';
+            ctx.fillRect(lx - 20, lfy - 78, 8, 22); ctx.fillRect(lx + 12, lfy - 78, 8, 22);
+            // Neck
+            ctx.fillStyle = '#d4a070'; ctx.fillRect(lx - 4, lfy - 84, 8, 6);
+            // Head
+            ctx.fillStyle = '#d4a070';
+            ctx.fillRect(lx - 10, lfy - 108, 20, 24);
+            ctx.beginPath(); ctx.arc(lx - 7, lfy - 107, 4, Math.PI, Math.PI * 1.5); ctx.fill();
+            ctx.beginPath(); ctx.arc(lx + 7, lfy - 107, 4, Math.PI * 1.5, 0); ctx.fill();
+            ctx.beginPath(); ctx.arc(lx - 7, lfy - 85, 4, Math.PI * 0.5, Math.PI); ctx.fill();
+            ctx.beginPath(); ctx.arc(lx + 7, lfy - 85, 4, 0, Math.PI * 0.5); ctx.fill();
+            // Ears
+            ctx.fillRect(lx - 13, lfy - 102, 4, 8); ctx.fillRect(lx + 9, lfy - 102, 4, 8);
+            // Eyes
+            ctx.fillStyle = '#fff'; ctx.fillRect(lx - 7 + lfd, lfy - 100, 5, 4); ctx.fillRect(lx + 2 + lfd, lfy - 100, 5, 4);
+            ctx.fillStyle = '#284070'; ctx.fillRect(lx - 5 + lfd, lfy - 99, 3, 3); ctx.fillRect(lx + 3 + lfd, lfy - 99, 3, 3);
+            ctx.fillStyle = '#000'; ctx.fillRect(lx - 4 + lfd + (lfd > 0 ? 1 : 0), lfy - 98, 1, 2); ctx.fillRect(lx + 4 + lfd + (lfd > 0 ? 1 : 0), lfy - 98, 1, 2);
+            ctx.fillStyle = '#5a2810'; ctx.fillRect(lx - 7 + lfd, lfy - 103, 5, 2); ctx.fillRect(lx + 2 + lfd, lfy - 103, 5, 2);
+            ctx.fillStyle = '#9a4828'; ctx.fillRect(lx - 1, lfy - 93, 2, 3);  // nose
+            ctx.fillStyle = '#c05068'; ctx.fillRect(lx - 5, lfy - 88, 10, 2);  // mouth
+            // Hair (brown, styled)
+            ctx.fillStyle = '#6a3818';
+            ctx.beginPath(); ctx.ellipse(lx, lfy - 112, 12, 8, 0, Math.PI, 0); ctx.fill();
+            ctx.fillRect(lx - 12, lfy - 112, 4, 28);  // left side hair
+            ctx.beginPath(); ctx.arc(lx - 10, lfy - 90, 5, Math.PI * 0.5, Math.PI * 1.2); ctx.fill();
+            // Notepad in hand
+            ctx.fillStyle = '#e8d4a0'; ctx.fillRect(lx + lfd * 14, lfy - 72, lfd * 11, 14);
+            ctx.strokeStyle = '#8a6030'; ctx.lineWidth = 1; ctx.strokeRect(lx + lfd * 14, lfy - 72, lfd * 11, 14);
+            ctx.fillStyle = '#8a6030';
+            ctx.fillRect(lx + lfd * 16, lfy - 70, lfd * 7, 2);
+            ctx.fillRect(lx + lfd * 16, lfy - 66, lfd * 5, 2);
+            ctx.fillRect(lx + lfd * 16, lfy - 62, lfd * 7, 2);
+            ctx.restore();
         }
 
         // ── PHASE 6: RETURN TO LEXCORP ────────────────────────────────────────
         let lexcorp2Spawned = false;
+        let flyAwayCutscene = false;   // L1 finale: hero carries Lois to Gotham
         let lexcorp2EnemiesSpawned = false;
         let lexcorp2CluesFound = 0;
         const lexcorp2Clues = [
@@ -882,42 +1090,120 @@
                 speaker: 'Lois Lane', portrait: 'lois',
                 lines: [
                     'Lex Luthor is in Gotham. He\'s been playing the long game all along.',
-                    'This is bigger than Metropolis — it\'s going to take everything you\'ve got.',
-                    'I\'ll publish everything we found. The world needs to know.'
+                    'This is bigger than Metropolis — it\'s going to take everything you\'ve got.'
                 ],
-                onDone: () => {
-                    startDialogue({
-                        speaker: 'CK', portrait: 'hero',
-                        lines: [
-                            'Go, Lois. Get the story out. I\'ll handle Luthor.',
-                            'Whatever he\'s building in Gotham — I\'ll bring it down.'
-                        ],
-                        onDone: () => {
-                            advanceQuest('lois_departs');
-                            titleCard = { text: 'LOIS LANE — DEPARTING', sub: 'Lois returns to the Daily Planet. The trail leads to Gotham...', timer: 260 };
-                            // Drive Lois back to the interior (Weekly Planet)
-                            loisCar.x = LEXLAB_X + 40;
-                            loisCar.y = GROUND_Y;
-                            driveLoisCar(820, () => {
-                                // Lois arrives at the office — add her to the interior NPCs
-                                const loisAlready = interior.npcs.find(n => n.lois);
-                                if (!loisAlready) {
-                                    const deskX = 1380;
-                                    interior.desks.push({ x: deskX, y: 410 });
-                                    interior.npcs.push({
-                                        x: deskX, baseX: deskX, type: 'sit',
-                                        name: 'Lois Lane', lois: true,
-                                        phase: 0, greeting: 0, standTimer: 0
-                                    });
-                                    interior.w = Math.max(interior.w, deskX + 280);
-                                }
-                                advanceQuest('level1_complete');
-                                titleCard = { text: 'LEVEL 1 COMPLETE', sub: 'Lois is back at the Daily Planet. Gotham awaits.', timer: 320 };
-                            }, 2.4);
-                        }
-                    });
-                }
+                onDone: () => startDialogue({
+                    speaker: 'CK', portrait: 'hero',
+                    lines: ['Then we go together. I\'m not leaving you behind — not with Luthor still out there.'],
+                    onDone: () => startDialogue({
+                        speaker: 'Lois Lane', portrait: 'lois',
+                        lines: ['You\'re serious. You\'re actually going to fly us to Gotham right now.'],
+                        onDone: () => startDialogue({
+                            speaker: 'CK', portrait: 'hero',
+                            lines: ['Hold on tight.'],
+                            onDone: () => {
+                                advanceQuest('lois_departs');
+                                titleCard = { text: 'GOTHAM CITY', sub: 'CK carries Lois across the night sky...', timer: 280 };
+                                // Kick off the fly-away cutscene
+                                flyAwayCutscene = true;
+                                loisCar.active = false;
+                                hero.flightActive = true;
+                                hero.vy = -6;
+                            }
+                        })
+                    })
+                })
             });
+        }
+
+        function drawFlyAwayCutscene() {
+            // Drawn in screen coords (no camera transform) over the city scene
+            const hx = hero.x - camera.x;
+            const hy = hero.y - camera.y;
+            const t  = Date.now() * 0.001;
+
+            // Cape streaming behind hero (world → screen)
+            ctx.save();
+            ctx.strokeStyle = 'rgba(180,20,20,0.85)'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(hx + hero.w / 2, hy + 10);
+            ctx.quadraticCurveTo(hx - 20 + Math.sin(t * 6) * 6, hy + 22, hx - 40, hy + 18 + Math.sin(t * 5) * 8);
+            ctx.stroke();
+            ctx.restore();
+
+            // Lois held in hero's arms — drawn slightly ahead/below hero
+            const lx = hx + hero.w / 2 + 4;
+            const ly = hy + hero.h * 0.55;
+            ctx.save();
+            ctx.translate(lx, ly); ctx.rotate(-0.28);  // slightly tilted for carried pose
+            // Lois body (simplified held pose)
+            // Legs trailing behind
+            ctx.fillStyle = '#2a2040';
+            ctx.fillRect(-4, 8, 7, 18);   // leg 1
+            ctx.fillRect(4,  10, 7, 16);  // leg 2
+            // Heels
+            ctx.fillStyle = '#c04060';
+            ctx.fillRect(-5, 26, 8, 4); ctx.fillRect(4, 25, 8, 4);
+            // Skirt
+            ctx.fillStyle = '#c02858';
+            ctx.beginPath(); ctx.moveTo(-12, -2); ctx.lineTo(12, -2); ctx.lineTo(14, 8); ctx.lineTo(-14, 10); ctx.closePath(); ctx.fill();
+            // Jacket torso
+            ctx.fillStyle = '#283880';
+            ctx.fillRect(-12, -22, 24, 22);
+            // Left arm wrapped around (hero's neck area)
+            ctx.fillStyle = '#283880';
+            ctx.fillRect(-18, -18, 8, 14);
+            // Right arm hanging
+            ctx.fillRect(10, -16, 8, 18);
+            // Lapels
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.moveTo(-2, -22); ctx.lineTo(-11, -14); ctx.lineTo(-6, -2); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(2,  -22); ctx.lineTo(11,  -14); ctx.lineTo(6,  -2); ctx.closePath(); ctx.fill();
+            // Neck
+            ctx.fillStyle = '#d4a070'; ctx.fillRect(-4, -26, 8, 6);
+            // Head (turned upward, looking at CK)
+            ctx.fillStyle = '#d4a070';
+            ctx.fillRect(-9, -44, 18, 20);
+            ctx.beginPath(); ctx.arc(-6, -43, 4, Math.PI, Math.PI*1.5); ctx.fill();
+            ctx.beginPath(); ctx.arc(6,  -43, 4, Math.PI*1.5, 0); ctx.fill();
+            ctx.beginPath(); ctx.arc(-6, -25, 4, Math.PI*0.5, Math.PI); ctx.fill();
+            ctx.beginPath(); ctx.arc(6,  -25, 4, 0, Math.PI*0.5); ctx.fill();
+            // Eyes (looking up)
+            ctx.fillStyle = '#fff'; ctx.fillRect(-7, -38, 5, 4); ctx.fillRect(2, -38, 5, 4);
+            ctx.fillStyle = '#284070'; ctx.fillRect(-5, -37, 3, 3); ctx.fillRect(3, -37, 3, 3);
+            ctx.fillStyle = '#9a4828'; ctx.fillRect(-1, -33, 2, 3);
+            ctx.fillStyle = '#c05068'; ctx.fillRect(-4, -28, 8, 2);
+            // Hair
+            ctx.fillStyle = '#6a3818';
+            ctx.beginPath(); ctx.ellipse(0, -46, 11, 7, 0, Math.PI, 0); ctx.fill();
+            ctx.fillRect(-11, -46, 4, 22);
+            ctx.restore();
+
+            // Wind-streak lines behind both (speed effect)
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1.5;
+            for (let i = 0; i < 6; i++) {
+                const ly2 = hy + 5 + i * 9 + Math.sin(t * 4 + i) * 3;
+                const len = 30 + Math.sin(t * 3 + i * 0.8) * 12;
+                ctx.beginPath();
+                ctx.moveTo(hx - 10, ly2);
+                ctx.lineTo(hx - 10 - len, ly2);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // "GOTHAM CITY" destination title (fades in)
+            ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+            const fade = Math.min(1, (hero.x - LEXLAB_X) / 800);
+            ctx.globalAlpha = fade * 0.9;
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(W / 2 - 200, H - 80, 400, 48);
+            ctx.fillStyle = '#c8d0ff';
+            ctx.font = 'bold 20px serif'; ctx.textAlign = 'center';
+            ctx.fillText('GOTHAM CITY', W / 2, H - 52);
+            ctx.fillStyle = '#8898cc'; ctx.font = '13px serif';
+            ctx.fillText('The chase continues across the night sky...', W / 2, H - 36);
+            ctx.globalAlpha = 1; ctx.restore();
         }
 
         function drawConstructionDressing() {
@@ -9334,7 +9620,7 @@
                     bankScene = null;
                     constructionSpawned = false; workersInterrogated = 0; constructionEntryUnlocked = false; constructionScene = null; constructionLois.active = false;
                     yardWorkers.forEach(w => { w.interrogated = false; w._fleeing = false; w._vx = 0; w.x = w === yardWorkers[3] ? CONSTRUCTION_X - 80 : w.x; });
-                    lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0;
+                    lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0; flyAwayCutscene = false;
                     lexcorp2Clues.forEach(c => { c.found = false; });
                     prisonLois.active = false; prisonLois.rescued = false;
                     labLois.active = false;
@@ -15239,6 +15525,17 @@
                     if (Math.abs((hero.x + hero.w/2) - 14810) < 300) enterTemple();
                 }
             }
+            // ── L1 fly-away cutscene (hero carries Lois to Gotham) ───────────
+            if (flyAwayCutscene && currentLevel === 1) {
+                hero.x  += 5;
+                hero.y  -= 3;
+                hero.vx  = 0; hero.vy = 0;
+                camera.x = Math.max(0, hero.x - W / 2);
+                if (hero.x > WORLD_WIDTH + 400) {
+                    flyAwayCutscene = false;
+                    startLevel2();
+                }
+            }
             tickDialogue();
             updateDarkWing();
             updatePowerGirl();
@@ -15247,6 +15544,7 @@
             updateHitFX();
             updateCamera();
             draw();
+            if (flyAwayCutscene) drawFlyAwayCutscene();
             if (caseFileOpen) drawCaseFile();
             updateHUD();
             requestAnimationFrame(loop);
