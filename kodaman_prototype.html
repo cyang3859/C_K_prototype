@@ -12838,7 +12838,7 @@
             // Draw servants
             drawWayneServants();
             // Draw Lois companion inside WE
-            if (loisWayne.active) drawInteriorLois(loisWayne, WI.floorY, true);
+            if (loisWayne.active) drawInteriorLois(loisWayne, WI.floorY, false);
             // Draw Bruce Wayne
             if (bruceWayne.active) drawBruceWayne();
         }
@@ -13125,11 +13125,20 @@
 
         function updateWayneNPCs() {
             if (scene !== 'wayne') return;
-            // Lois follow is handled inside drawInteriorLois
             // Bruce faces the hero
             if (bruceWayne.active) {
                 const dx = (hero.x + hero.w/2) - bruceWayne.x;
                 bruceWayne.faceDir = dx < 0 ? -1 : 1;
+            }
+            // Lois walks toward Bruce until dialogue is done, then holds position
+            if (loisWayne.active && !activeDialogue) {
+                const targetX = wayneDialogueDone ? loisWayne.x : Math.min(bruceWayne.x - 120, 1800);
+                const dx = targetX - loisWayne.x;
+                if (Math.abs(dx) > 25) {
+                    loisWayne.x += Math.sign(dx) * 1.4;
+                    loisWayne.faceDir = Math.sign(dx);
+                }
+                loisWayne.x = Math.max(80, Math.min(WAYNE_INT.w - 80, loisWayne.x));
             }
         }
 
