@@ -5099,6 +5099,7 @@
             }
             if (e.dashing) { ctx.shadowColor = '#7fd3ff'; ctx.shadowBlur = 18; }
             else if (e.flightActive) { ctx.shadowColor = '#ffd84d'; ctx.shadowBlur = 14; }
+            else { ctx.shadowBlur = 0; }
 
             // IMPROVED POSE DETECTION
             const flying = e.flightActive;
@@ -9313,121 +9314,6 @@
             if (scene === 'factory' || scene === 'temple') {
                 // ── DARK WING — Dark Knight Rises style ──────────────────────
                 drawDarkWingCharacter(darkWing.x, darkWing.y);
-                if (false) { // dead code stub — function defined at drawDarkWingCharacter
-                  ctx.save();
-
-                  // CAPE — drawn first (behind body), scalloped bottom
-                  const capeW = moving ? 42 : 30;
-                  const capeTop = gy - 66;
-                  const capeBot = gy - 6;
-                  ctx.fillStyle = '#0a0814';
-                  ctx.beginPath();
-                  ctx.moveTo(lx - fd * 6, capeTop);
-                  ctx.lineTo(lx - fd * capeW, capeBot);
-                  // scalloped bottom: 5 triangular cut-outs
-                  const scW = (capeW * 2) / 6;
-                  for (let sc = 0; sc < 5; sc++) {
-                      const sx = lx - fd * capeW + fd * scW * (sc + 0.5);
-                      const sy = capeBot - 10;
-                      ctx.lineTo(sx, sy);
-                      ctx.lineTo(lx - fd * capeW + fd * scW * (sc + 1), capeBot);
-                  }
-                  ctx.lineTo(lx + fd * 6, capeTop);
-                  ctx.closePath(); ctx.fill();
-
-                  // ARMORED LEGS — thigh plates over dark trousers
-                  ctx.fillStyle = '#12121e';
-                  ctx.fillRect(lx - 9, gy - 30, 8, 30); ctx.fillRect(lx + 1, gy - 30, 8, 30);
-                  // thigh armor plates (slightly raised rect on outer leg)
-                  ctx.fillStyle = '#1c1c30';
-                  ctx.fillRect(lx - 11, gy - 30, 5, 14); ctx.fillRect(lx + 6, gy - 30, 5, 14);
-                  // heavy boots with platform sole
-                  ctx.fillStyle = '#0a0a14';
-                  ctx.fillRect(lx - 12, gy - 10, 12, 10); ctx.fillRect(lx + 1, gy - 10, 12, 10);
-                  ctx.fillStyle = '#080810';
-                  ctx.fillRect(lx - 13, gy - 3, 13, 3); ctx.fillRect(lx + 1, gy - 3, 13, 3);
-
-                  // TORSO ARMOR — layered plates
-                  // Main chest block
-                  ctx.fillStyle = '#0e0e1e';
-                  ctx.fillRect(lx - 13, gy - 66 + bob, 26, 36);
-                  // Pectoral armor plates (angled)
-                  ctx.fillStyle = '#161628';
-                  ctx.beginPath(); ctx.moveTo(lx - 13, gy - 66 + bob); ctx.lineTo(lx - 1, gy - 60 + bob); ctx.lineTo(lx - 1, gy - 48 + bob); ctx.lineTo(lx - 13, gy - 50 + bob); ctx.closePath(); ctx.fill();
-                  ctx.beginPath(); ctx.moveTo(lx + 13, gy - 66 + bob); ctx.lineTo(lx + 1, gy - 60 + bob); ctx.lineTo(lx + 1, gy - 48 + bob); ctx.lineTo(lx + 13, gy - 50 + bob); ctx.closePath(); ctx.fill();
-                  // Bat symbol on chest
-                  ctx.fillStyle = '#9090b0';
-                  ctx.beginPath();
-                  ctx.moveTo(lx,      gy - 56 + bob);
-                  ctx.lineTo(lx - 10, gy - 60 + bob); ctx.lineTo(lx - 7, gy - 54 + bob);
-                  ctx.lineTo(lx - 13, gy - 52 + bob); ctx.lineTo(lx - 6,  gy - 48 + bob);
-                  ctx.lineTo(lx,      gy - 50 + bob);
-                  ctx.lineTo(lx + 6,  gy - 48 + bob); ctx.lineTo(lx + 13, gy - 52 + bob);
-                  ctx.lineTo(lx + 7,  gy - 54 + bob); ctx.lineTo(lx + 10, gy - 60 + bob);
-                  ctx.closePath(); ctx.fill();
-                  // Side torso plates (darker)
-                  ctx.fillStyle = '#0a0a18';
-                  ctx.fillRect(lx - 13, gy - 46 + bob, 5, 16); ctx.fillRect(lx + 8, gy - 46 + bob, 5, 16);
-
-                  // UTILITY BELT — 8 pouches across waist
-                  ctx.fillStyle = '#1a1a2c';
-                  ctx.fillRect(lx - 13, gy - 31, 26, 7); // belt strap
-                  const pouchW = 5, pouchH = 5;
-                  for (let pi = 0; pi < 8; pi++) {
-                      const px3 = lx - 13 + pi * 3.5;
-                      ctx.fillStyle = '#101020';
-                      ctx.fillRect(px3, gy - 32, pouchW, pouchH);
-                      ctx.fillStyle = '#6060a0'; // clasp
-                      ctx.fillRect(px3 + 1, gy - 31, 2, 1);
-                  }
-                  // Belt buckle center
-                  ctx.fillStyle = '#8080b0'; ctx.fillRect(lx - 3, gy - 33, 6, 7);
-
-                  // ARMORED GAUNTLETS — wide forearms with fin details
-                  // Left arm
-                  ctx.fillStyle = '#0e0e1e';
-                  ctx.fillRect(lx - fd * 13 - (fd > 0 ? 6 : 0), gy - 60 + bob, 8, 22);
-                  ctx.fillRect(lx + fd * 5, gy - 58 + bob, 8, 20);
-                  // Fin triangles on outer gauntlet
-                  ctx.fillStyle = '#181828';
-                  for (let fi = 0; fi < 3; fi++) {
-                      const fy3 = gy - 58 + bob + fi * 6;
-                      ctx.beginPath(); ctx.moveTo(lx - fd * 14, fy3); ctx.lineTo(lx - fd * 20, fy3 + 4); ctx.lineTo(lx - fd * 14, fy3 + 5); ctx.closePath(); ctx.fill();
-                  }
-
-                  // COWL — angular trapezoid (not round)
-                  ctx.fillStyle = '#06060e';
-                  ctx.beginPath();
-                  ctx.moveTo(lx - 11, gy - 68 + bob);  // bottom-left
-                  ctx.lineTo(lx - 8,  gy - 80 + bob);  // top-left
-                  ctx.lineTo(lx + 8,  gy - 80 + bob);  // top-right
-                  ctx.lineTo(lx + 11, gy - 68 + bob);  // bottom-right
-                  ctx.closePath(); ctx.fill();
-                  // Jaw/chin plate (slightly lighter)
-                  ctx.fillStyle = '#10101e';
-                  ctx.beginPath();
-                  ctx.moveTo(lx - 9, gy - 68 + bob); ctx.lineTo(lx - 5, gy - 64 + bob);
-                  ctx.lineTo(lx + 5, gy - 64 + bob); ctx.lineTo(lx + 9, gy - 68 + bob);
-                  ctx.closePath(); ctx.fill();
-                  // Bat ears — two sharp angular triangles
-                  ctx.fillStyle = '#06060e';
-                  ctx.beginPath(); ctx.moveTo(lx - 9, gy - 80 + bob); ctx.lineTo(lx - 14, gy - 100 + bob); ctx.lineTo(lx - 4, gy - 80 + bob); ctx.closePath(); ctx.fill();
-                  ctx.beginPath(); ctx.moveTo(lx + 4, gy - 80 + bob); ctx.lineTo(lx + 14, gy - 100 + bob); ctx.lineTo(lx + 9, gy - 80 + bob); ctx.closePath(); ctx.fill();
-                  // Eye lenses — narrow white slits with blue-white glow
-                  ctx.save();
-                  ctx.shadowColor = '#aaccff'; ctx.shadowBlur = 6;
-                  ctx.fillStyle = '#d0e4ff';
-                  ctx.beginPath(); ctx.ellipse(lx - 4 + fd, gy - 75 + bob, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
-                  ctx.beginPath(); ctx.ellipse(lx + 4 + fd, gy - 75 + bob, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
-                  ctx.restore();
-
-                  // HP bar
-                  if (darkWing.hp < darkWing.maxHp) {
-                      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(lx - 18, gy - 108 + bob, 36, 5);
-                      ctx.fillStyle = '#4cf'; ctx.fillRect(lx - 18, gy - 108 + bob, 36 * darkWing.hp / darkWing.maxHp, 5);
-                  }
-                  ctx.restore();
-                }
                 // Power Girl
                 if (powerGirl.active && !powerGirl.captured) {
                     drawPowerGirlAt(powerGirl.x, powerGirl.y, false);
@@ -13079,7 +12965,7 @@
                 }
             }
             // Concrete floor — large height to eliminate camera-Y gaps
-            ctx.fillStyle = '#1a1a24'; ctx.fillRect(0, AI.floorY, AI.w, 600);
+            ctx.fillStyle = '#1a1a24'; ctx.fillRect(0, AI.floorY, AI.w, 200);
             ctx.strokeStyle = '#c8a820'; ctx.lineWidth = 2.5; ctx.setLineDash([30, 15]);
             ctx.beginPath(); ctx.moveTo(0, AI.floorY + 18); ctx.lineTo(AI.w, AI.floorY + 18); ctx.stroke();
             ctx.setLineDash([]);
@@ -16001,8 +15887,7 @@
             updateCityLois();
             updateL2Lois();
             updatePrisonLois();
-            updateLoisArkham();
-            updateBruceArkham();
+            if (scene === 'arkham') { updateLoisArkham(); updateBruceArkham(); }
             updateLoisCar();
             // Unlock lab entry when both loisCar has arrived AND hero is within 400px
             if (questPhase === 'lab_explore' && !lexlabEntryUnlocked && loisCar.arrived) {
