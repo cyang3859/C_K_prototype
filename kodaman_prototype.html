@@ -3651,9 +3651,13 @@
             if (e.code === 'KeyF' && scene === 'wayne') {
                 if (hero.x < 160) { exitWayne(); e.preventDefault(); }
             }
-            // F: exit Arkham Asylum (auto-triggered by dialogue, but allow manual)
-            if (e.code === 'KeyF' && scene === 'arkham' && l2QuestPhase === 'arkham_exit') {
-                if (hero.x < 160) { exitArkham(); e.preventDefault(); }
+            // F: enter Arkham Asylum
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 2 && arkhamEntryUnlocked && !arkhamScene && !activeDialogue) {
+                if (Math.abs((hero.x + hero.w / 2) - ARKHAM_X) < 300) { enterArkham(); e.preventDefault(); }
+            }
+            // F: exit Arkham Asylum (any time, or when near exit)
+            if (e.code === 'KeyF' && scene === 'arkham') {
+                if (hero.x < 200) { exitArkham(); e.preventDefault(); }
             }
             // F: enter Amazonian Village (L3)
             if (e.code === 'KeyF' && scene === 'city' && currentLevel === 3 && l3QuestPhase === 'travel_village') {
@@ -12519,11 +12523,11 @@
                 ctx.beginPath(); ctx.arc(gsx, gy - wallH - 28, 6, 0, Math.PI * 2); ctx.fill();
             }
             // F-prompt
-            if (l2QuestPhase === 'travel_arkham' && Math.abs((hero.x + hero.w/2) - ax) < 300) {
-                const waiting = !(loisCar.arrived && Math.abs(loisCar.x - ax) < 500);
-                ctx.fillStyle = waiting ? '#aaaaaa' : '#ffe040';
+            if (l2QuestPhase === 'travel_arkham' && Math.abs((hero.x + hero.w/2) - ax) < 350) {
+                const canEnter = arkhamEntryUnlocked;
+                ctx.fillStyle = canEnter ? '#ffe040' : '#aaaaaa';
                 ctx.font = 'bold 11px Arial'; ctx.textAlign = 'center';
-                ctx.fillText(waiting ? 'Waiting for Lois...' : 'Entering Arkham...', ax, gy - wallH - 30);
+                ctx.fillText(canEnter ? 'F — Enter Arkham Asylum' : 'Approaching Arkham...', ax, gy - wallH - 30);
             }
             ctx.restore();
         }
@@ -15847,11 +15851,13 @@
                     } // end else (delay expired)
                 }
                 // Wayne entry is F-key only (handled in keydown listener)
-                // Auto-enter Arkham when both hero and Lois car arrive
-                if (l2QuestPhase === 'travel_arkham' && !arkhamScene && !activeDialogue) {
-                    const heroNear = Math.abs((hero.x + hero.w/2) - ARKHAM_X) < 300;
-                    const loisNear = loisCar.arrived && Math.abs(loisCar.x - ARKHAM_X) < 500;
-                    if (heroNear && loisNear) enterArkham();
+                // Unlock Arkham entry when hero arrives — F-key only (no auto-enter)
+                if (l2QuestPhase === 'travel_arkham' && !arkhamScene && !arkhamEntryUnlocked) {
+                    const heroNear = Math.abs((hero.x + hero.w/2) - ARKHAM_X) < 350;
+                    if (heroNear) {
+                        arkhamEntryUnlocked = true;
+                        titleCard = { text: 'ARKHAM ASYLUM', sub: 'Press F to enter when ready.', timer: 200 };
+                    }
                 }
             }
             // ── L3 quest phase logic ──────────────────────────────────────────
