@@ -3494,15 +3494,30 @@
                     } else titleSelectedLevel = Math.min(3, titleSelectedLevel + 1);
                     e.preventDefault();
                 }
-                if (e.code === 'Enter' || e.code === 'Space') { gameScreen = 'howto'; e.preventDefault(); }
+                if (e.code === 'Enter' || e.code === 'Space') {
+                    if (titleSelectedLevel === 1) { titleQuestIndex = 0; gameScreen = 'questselect'; }
+                    else gameScreen = 'howto';
+                    e.preventDefault();
+                }
+                return;
+            }
+            if (gameScreen === 'questselect') {
+                if (e.code === 'ArrowUp')   { titleQuestIndex = (titleQuestIndex - 1 + L1_QUESTS.length) % L1_QUESTS.length; e.preventDefault(); }
+                if (e.code === 'ArrowDown') { titleQuestIndex = (titleQuestIndex + 1) % L1_QUESTS.length; e.preventDefault(); }
+                if (e.code === 'Escape')    { gameScreen = 'title'; e.preventDefault(); }
+                if (e.code === 'Enter' || e.code === 'Space') {
+                    gameScreen = 'howto';
+                    e.preventDefault();
+                }
                 return;
             }
             if (gameScreen === 'howto') {
+                if (e.code === 'Escape') { gameScreen = titleSelectedLevel === 1 ? 'questselect' : 'title'; e.preventDefault(); return; }
                 if (e.code === 'Enter' || e.code === 'Space') {
                     gameScreen = 'playing'; startMusic();
                     if (titleSelectedLevel === 3) startLevel3();
                     else if (titleSelectedLevel === 2) startLevel2();
-                    else { questPhase = 'intro'; }  // Level 1 — start quest state machine
+                    else { startL1FromQuest(titleQuestIndex); }
                     e.preventDefault();
                 }
                 return;
@@ -3841,7 +3856,7 @@
                 const totalW2 = btnW2 * 3 + btnGap2 * 2;
                 const btn1x2 = W/2 - totalW2/2, btn2x2 = btn1x2 + btnW2 + btnGap2, btn3x2 = btn2x2 + btnW2 + btnGap2;
                 const btnY2 = H * 0.61;
-                if (mx >= btn1x2 && mx <= btn1x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 1; gameScreen = 'howto'; }
+                if (mx >= btn1x2 && mx <= btn1x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 1; titleQuestIndex = 0; gameScreen = 'questselect'; }
                 else if (mx >= btn2x2 && mx <= btn2x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 2; gameScreen = 'howto'; }
                 else if (mx >= btn3x2 && mx <= btn3x2 + btnW2 && my >= btnY2 && my <= btnY2 + btnH2) { titleSelectedLevel = 3; gameScreen = 'howto'; }
                 else if (titleSelectedLevel === 3) {
@@ -3856,10 +3871,22 @@
                         else if (mx >= cp3x2 && mx <= cp3x2 + cpBtnW2) l3Companion = 'both';
                     } else gameScreen = 'howto';
                 } else gameScreen = 'howto';
+            } else if (gameScreen === 'questselect') {
+                // Click a quest row
+                const itemH = 68, startY = 90, padX = W * 0.18;
+                for (let i = 0; i < L1_QUESTS.length; i++) {
+                    const ry = startY + i * itemH;
+                    if (mx >= padX && mx <= W - padX && my >= ry && my <= ry + itemH - 8) {
+                        titleQuestIndex = i;
+                        gameScreen = 'howto';
+                        break;
+                    }
+                }
             } else if (gameScreen === 'howto') {
                 gameScreen = 'playing'; startMusic();
                 if (titleSelectedLevel === 3) startLevel3();
                 else if (titleSelectedLevel === 2) startLevel2();
+                else { startL1FromQuest(titleQuestIndex); }
             }
         });
 
@@ -15122,6 +15149,100 @@
         // ============================================================
         let titlePulse = 0;
         let titleSelectedLevel = 1;   // 1, 2, or 3
+        let titleQuestIndex = 0;      // selected quest on the L1 quest-select screen
+
+        const L1_QUESTS = [
+            { label: 'The Beginning',         sub: 'Start from the very first scene',              phase: 'intro' },
+            { label: 'Construction Site',      sub: 'Interrogate workers — find the henchman',     phase: 'construction' },
+            { label: 'First National Bank',    sub: 'The heist is in progress — stop it',          phase: 'bank' },
+            { label: 'Prison Break',           sub: 'Lois is being held at Stonegate',             phase: 'prison' },
+            { label: 'LexCorp Research Lab',   sub: 'Search the lab for evidence',                 phase: 'lab' },
+            { label: 'LexCorp Showdown',       sub: 'Final enemy wave outside the lab',            phase: 'lexcorp2' },
+            { label: 'Final Scene',            sub: 'The fly-away to Gotham City',                 phase: 'finale' },
+        ];
+
+        function startL1FromQuest(idx) {
+            const q = L1_QUESTS[idx];
+            scene = 'city'; currentLevel = 1;
+            flyAwayCutscene = false; flyAwayFade = 0;
+            enemies.splice(0);
+            activeDialogue = null;
+            // Reset all phase flags to clean slate
+            bankEntryUnlocked = false; constructionEntryUnlocked = false;
+            lexlabEntryUnlocked = false;
+            lexcorp2Spawned = false; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 0;
+            lexcorp2Clues.forEach(c => { c.found = false; });
+            loisCar.active = false; loisCar.arrived = false;
+            interior.note.read = false;
+
+            if (q.phase === 'intro') {
+                hero.x = 400; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = 300; hound.y = GROUND_Y - hound.h;
+                camera.x = 0;
+                advanceQuest('intro');
+
+            } else if (q.phase === 'construction') {
+                hero.x = CONSTRUCTION_X - 250; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = CONSTRUCTION_X - 350; hound.y = GROUND_Y - hound.h;
+                camera.x = Math.max(0, hero.x - W / 2);
+                constructionSpawned = true;
+                workers.forEach(w => { w.interrogated = false; w._fleeing = false; });
+                workersInterrogated = 0;
+                advanceQuest('construction_interrogate');
+                titleCard = { text: 'CONSTRUCTION SITE', sub: 'Question the workers — find the henchman. Press E near workers.', timer: 240 };
+
+            } else if (q.phase === 'bank') {
+                hero.x = BANK_X - 100; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = BANK_X - 200; hound.y = GROUND_Y - hound.h;
+                camera.x = Math.max(0, hero.x - W / 2);
+                bankEntryUnlocked = true;
+                advanceQuest('bank_interrogate');
+                titleCard = { text: 'FIRST NATIONAL BANK', sub: 'The robbery is underway — press F to enter.', timer: 240 };
+
+            } else if (q.phase === 'prison') {
+                hero.x = PRISON_X - 350; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = PRISON_X - 450; hound.y = GROUND_Y - hound.h;
+                camera.x = Math.max(0, hero.x - W / 2);
+                advanceQuest('travel_prison');
+                titleCard = { text: 'STONEGATE PENITENTIARY', sub: 'Lois is being held inside. Find a way in.', timer: 240 };
+
+            } else if (q.phase === 'lab') {
+                hero.x = LEXLAB_X - 220; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = LEXLAB_X - 320; hound.y = GROUND_Y - hound.h;
+                camera.x = Math.max(0, hero.x - W / 2);
+                interior.note.read = true; lexlabEntryUnlocked = true;
+                loisCar.x = LEXLAB_X - 50; loisCar.y = GROUND_Y;
+                loisCar.active = true; loisCar.arrived = true; loisCar.targetX = LEXLAB_X - 50; loisCar.faceDir = -1;
+                advanceQuest('lab_explore');
+                titleCard = { text: 'LEXCORP RESEARCH LAB', sub: 'Press F near the door to enter the lab.', timer: 240 };
+
+            } else if (q.phase === 'lexcorp2') {
+                hero.x = LEXLAB_X - 250; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = LEXLAB_X - 350; hound.y = GROUND_Y - hound.h;
+                camera.x = Math.max(0, hero.x - W / 2);
+                interior.note.read = true; lexlabEntryUnlocked = true;
+                loisCar.x = LEXLAB_X - 60; loisCar.y = GROUND_Y;
+                loisCar.active = true; loisCar.arrived = true; loisCar.targetX = LEXLAB_X - 60; loisCar.faceDir = -1;
+                initLexcorp2();
+                advanceQuest('lexcorp2_fight');
+                titleCard = { text: 'LEXCORP — GUARDS REMAIN', sub: 'Clear the remaining guards, then search for evidence!', timer: 240 };
+
+            } else if (q.phase === 'finale') {
+                hero.x = LEXLAB_X - 80; hero.y = GROUND_Y - hero.h; hero.facing = 1;
+                hound.x = LEXLAB_X - 160; hound.y = GROUND_Y - hound.h;
+                camera.x = Math.max(0, hero.x - W / 2);
+                interior.note.read = true; lexlabEntryUnlocked = true;
+                loisCar.x = LEXLAB_X - 60; loisCar.y = GROUND_Y;
+                loisCar.active = true; loisCar.arrived = true; loisCar.targetX = LEXLAB_X - 60; loisCar.faceDir = -1;
+                lexcorp2Spawned = true; lexcorp2EnemiesSpawned = false; lexcorp2CluesFound = 1;
+                lexcorp2Clues.forEach((c, i) => { c.found = (i === 0); });
+                advanceQuest('lexcorp2_clues');
+                triggerFinalDialogue();
+            }
+
+            hero.vx = 0; hero.vy = 0; hero.onGround = true; hero.flightActive = false;
+            hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.flightActive = false;
+        }
         let l3Companion = 'darkwing';   // 'darkwing' | 'powergirl' | 'both'
 
         function drawTitleScreen() {
@@ -15257,6 +15378,62 @@
             ctx.fillStyle = '#4a5a6c';
             ctx.font = '12px Arial';
             ctx.fillText('Prototype build  ·  best with a keyboard', W/2, H*0.94);
+            ctx.restore();
+        }
+
+        function drawQuestSelectScreen() {
+            drawManhattan();
+            ctx.fillStyle = 'rgba(6,8,16,0.86)';
+            ctx.fillRect(0, 0, W, H);
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#7fb0ff';
+            ctx.font = 'bold 26px Arial Black, Arial';
+            ctx.fillText('LEVEL 1 — SELECT STARTING QUEST', W / 2, 46);
+
+            const itemH = 68, startY = 90, padX = W * 0.18;
+            L1_QUESTS.forEach((q, i) => {
+                const y = startY + i * itemH;
+                const selected = i === titleQuestIndex;
+                // bg card
+                ctx.fillStyle = selected ? 'rgba(127,176,255,0.18)' : 'rgba(255,255,255,0.04)';
+                ctx.strokeStyle = selected ? '#7fb0ff' : 'rgba(127,176,255,0.25)';
+                ctx.lineWidth = selected ? 2 : 1;
+                ctx.beginPath(); ctx.roundRect(padX, y, W - padX * 2, itemH - 8, 6); ctx.fill(); ctx.stroke();
+
+                // quest number
+                ctx.textAlign = 'left';
+                ctx.fillStyle = selected ? '#ffd84d' : '#7a8ca8';
+                ctx.font = 'bold 13px Consolas, monospace';
+                ctx.fillText(`${i + 1}.`, padX + 18, y + 26);
+
+                // quest label
+                ctx.fillStyle = selected ? '#ffffff' : '#b8c8e8';
+                ctx.font = `bold ${selected ? 18 : 16}px Arial`;
+                ctx.fillText(q.label, padX + 48, y + 26);
+
+                // sub-text
+                ctx.fillStyle = selected ? '#9fb6d8' : '#5a6a80';
+                ctx.font = '13px Arial';
+                ctx.fillText(q.sub, padX + 48, y + 46);
+
+                // arrow indicator
+                if (selected) {
+                    ctx.fillStyle = '#ffd84d';
+                    ctx.font = 'bold 18px Arial';
+                    ctx.textAlign = 'right';
+                    ctx.fillText('▶', padX - 8, y + 32);
+                }
+            });
+
+            ctx.textAlign = 'center';
+            titlePulse += 0.05;
+            ctx.globalAlpha = 0.55 + Math.sin(titlePulse) * 0.45;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText('↑ / ↓ to choose   •   ENTER to start   •   ESC to go back', W / 2, H - 18);
+            ctx.globalAlpha = 1;
             ctx.restore();
         }
 
@@ -15908,6 +16085,7 @@
                 document.getElementById('ctrlHint').style.display = 'none';
                 document.getElementById('controls').style.display = 'none';
                 if (gameScreen === 'title') drawTitleScreen();
+                else if (gameScreen === 'questselect') drawQuestSelectScreen();
                 else drawHowToScreen();
                 requestAnimationFrame(loop);
                 return;
