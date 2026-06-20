@@ -626,7 +626,7 @@
             constructionLois.x = 280; constructionLois.y = CONSTRUCTION_INT.floorY; constructionLois.active = true; constructionLois.faceDir = 1;
             scene = 'construction';
             platforms.splice(0, platforms.length);
-            camera.x = 0; camera.y = Math.max(0, CONSTRUCTION_INT.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, CONSTRUCTION_INT.floorY + 80 - H);
             initConstructionYard();
             advanceQuest('construction_interrogate');
             startDialogue({
@@ -2531,7 +2531,7 @@
             factoryPhase = 'intro'; factoryIntroStep = 0; factoryIntroTimer = 220;
             lexEscaped = false;
             platforms.splice(0, platforms.length, ...FACTORY_PLATFORMS);
-            camera.x = 0; camera.y = Math.max(0, FACTORY.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, FACTORY.floorY + 80 - H);
             darkWing.x = 70; darkWing._targetX = 70;
             darkWing.y = FACTORY.floorY; darkWing._onGround = true; darkWing.vy = 0;
             darkWing._swinging = false; darkWing._gliding = false;
@@ -10516,7 +10516,7 @@
             scene = 'temple';
             templePhase = 'intro'; templeIntroStep = 0; templeIntroTimer = 220;
             platforms.splice(0, platforms.length, ...TEMPLE_PLATFORMS);
-            camera.x = 0; camera.y = Math.max(0, TEMPLE_SCENE.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, TEMPLE_SCENE.floorY + 80 - H);
             wonderWoman.x = 70; wonderWoman._targetX = 70;
             wonderWoman.y = TEMPLE_SCENE.floorY; wonderWoman._onGround = true; wonderWoman.vy = 0;
             wonderWoman._swinging = false; wonderWoman._gliding = false;
@@ -10555,7 +10555,7 @@
             hound.vx = 0; hound.vy = 0; hound.onGround = true; hound.facing = 1;
             scene = 'lab';
             platforms.splice(0, platforms.length, ...LAB_PLATFORMS);
-            camera.x = 0; camera.y = Math.max(0, LAB.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, LAB.floorY + 80 - H);
             // Lois starts at the entrance too
             labLois.x = 80; labLois.y = LAB.floorY; labLois.active = true;
             labLois._targetX = labClues[0].x;
@@ -10594,7 +10594,7 @@
             bankLois.x = 260; bankLois.y = BANK_INT.floorY; bankLois.active = true; bankLois.faceDir = 1;
             scene = 'bank';
             platforms.splice(0, platforms.length, ...BANK_INT_PLATFORMS);
-            camera.x = 0; camera.y = Math.max(0, BANK_INT.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, BANK_INT.floorY + 80 - H);
             bankInterrogated = 0;
             advanceQuest('bank_interrogate');
             startDialogue({
@@ -12602,7 +12602,7 @@
             scene = 'wayne';
             l2Lois.active = false;
             platforms.splice(0, platforms.length);
-            camera.x = 0; camera.y = Math.max(0, WAYNE_INT.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, WAYNE_INT.floorY + 80 - H);
             bruceWayne.x = 2400; bruceWayne.active = true; wayneDialogueDone = false;
             loisWayne.x = 500; loisWayne.active = true; loisWayne.faceDir = 1;
             wayneServants.forEach((s, i) => { s.x = [700, 1400, 2000][i]; });
@@ -12651,7 +12651,7 @@
             scene = 'arkham';
             l2Lois.active = false;
             platforms.splice(0, platforms.length);
-            camera.x = 0; camera.y = Math.max(0, ARKHAM_INT.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, ARKHAM_INT.floorY + 80 - H);
             loisArkham.x = 280; loisArkham.active = true; loisArkham.faceDir = 1;
             bruceArkham.x = 380; bruceArkham.active = true; bruceArkham.faceDir = 1;
             arkhamPrisoners.forEach((p, i) => { p.x = [750, 1550, 2600][i]; p.interrogated = false; });
@@ -13224,7 +13224,7 @@
             hound.x = 200; hound.y = VILLAGE_INT.floorY - hound.h;
             scene = 'village';
             platforms.splice(0, platforms.length);
-            camera.x = 0; camera.y = Math.max(0, VILLAGE_INT.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, VILLAGE_INT.floorY + 80 - H);
             advanceL3Quest('village_interior');
             villageElderNPC.x = 2200; villageElderNPC.active = true;
             villageWitnesses.forEach((w, i) => { w.x = 500 + i * 500; w.active = true; w.spoken = false; });
@@ -13481,7 +13481,7 @@
             hound.x = 200; hound.y = RUINS_INT.floorY - hound.h;
             scene = 'ruins';
             platforms.splice(0, platforms.length);
-            camera.x = 0; camera.y = Math.max(0, RUINS_INT.floorY + 80 - H);
+            camera.x = Math.max(0, hero.x - W / 2); camera.y = Math.max(0, RUINS_INT.floorY + 80 - H);
             advanceL3Quest('ruins_interior');
             ruinsCultists.forEach((c, i) => { c.x = 600 + i * 700; c.active = true; c.defeated = false; });
             ruinsCultistsDefeated = 0;
