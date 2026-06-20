@@ -1271,11 +1271,12 @@
             ctx.fillStyle = '#666'; ctx.beginPath();
             ctx.arc(CONSTRUCTION_X + 240, gy - 30, 22, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#888'; ctx.fillRect(CONSTRUCTION_X + 218, gy - 60, 44, 30);
-            // Caution sign + F prompt
-            ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-            ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X, gy - 108);
+            // Zone sign painted on the gate face
+            ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('⚠ CONSTRUCTION ZONE', CONSTRUCTION_X, gy - 82);
+            // F-key / approach prompt floats above the whole structure
             ctx.fillStyle = '#ffe040'; ctx.font = 'bold 11px Arial';
-            ctx.fillText(constructionEntryUnlocked ? 'F — Enter Construction Yard' : 'Approaching Construction Site...', CONSTRUCTION_X, gy - 112);
+            ctx.fillText(constructionEntryUnlocked ? 'F — Enter Construction Yard' : 'Approaching Construction Site...', CONSTRUCTION_X, gy - 135);
             ctx.restore();
         }
 
@@ -3645,7 +3646,7 @@
                 }
             }
             // Construction yard entry
-            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 1 &&
+            if (e.code === 'KeyF' && scene === 'city' && currentLevel === 1 && !activeDialogue &&
                 (constructionEntryUnlocked || questPhase === 'travel_construction')) {
                 if (Math.abs((hero.x + hero.w / 2) - CONSTRUCTION_X) < 300 && (hero.y + hero.h) >= GROUND_Y - 50) {
                     constructionEntryUnlocked = true;
@@ -8739,6 +8740,12 @@
                 ctx.fillRect(lx + 3, GROUND_Y - 73 + bob, 2, 2);
                 ctx.restore();
             }
+            // Construction dressing drawn before the car so the gate doesn't cover parked vehicles
+            if (scene === 'city' && currentLevel === 1 &&
+                camera.x + W > CONSTRUCTION_X - 400 && camera.x < CONSTRUCTION_X + 400 &&
+                (constructionEntryUnlocked || questPhase === 'travel_construction')) {
+                drawConstructionDressing();
+            }
             drawLoisCar();
             drawPrisonLois();
             // Lois waits outside LexCorp when lexlabEntryUnlocked
@@ -8933,11 +8940,6 @@
             if (scene === 'ruins') drawRuinsInterior();
             if (scene === 'city') {
                 // L1 overlays
-                if (currentLevel === 1 &&
-                    camera.x + W > CONSTRUCTION_X - 400 && camera.x < CONSTRUCTION_X + 400 &&
-                    (constructionEntryUnlocked || questPhase === 'travel_construction')) {
-                    drawConstructionDressing();
-                }
                 if (currentLevel === 1 && lexcorp2Spawned &&
                     camera.x + W > LEXLAB_X - 200 && camera.x < LEXLAB_X + 600) {
                     drawLexcorp2Clues();
