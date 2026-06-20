@@ -387,6 +387,7 @@
         let currentDistrict = 'downtown';
         let titleCard = { text: '', sub: '', timer: 0 };
         let bossDefeated = false;
+        let heroKnockedOut = false;
         let currentLevel = 1;
 
         // ---------- STORY MODE: case-file clues about the escaped inmate ----------
@@ -3316,6 +3317,7 @@
         }
 
         const hero = createEntity(60, GROUND_Y - 74, 'hero');
+        hero.hp = 10; hero.maxHp = 10;
         const hound = createEntity(160, GROUND_Y - 44, 'dog');
 
         // Place hero & hound in their office (interior positions — declared after createEntity)
@@ -3519,7 +3521,17 @@
             keys[e.code] = true;
             if (e.code === 'KeyQ') hero.persona = hero.persona === 'super' ? 'civilian' : 'super';
             if (e.code === 'KeyT') p2Mode = (p2Mode === 'ai') ? 'coop' : 'ai';
-            if (e.code === 'KeyR') { hound.forceLand = true; hound.flightActive = false; }
+            if (e.code === 'KeyR') {
+                if (heroKnockedOut) {
+                    heroKnockedOut = false;
+                    if (currentLevel === 1) activatePauseItem(2);
+                    else if (currentLevel === 2) startLevel2();
+                    else startLevel3();
+                    e.preventDefault();
+                } else {
+                    hound.forceLand = true; hound.flightActive = false;
+                }
+            }
             if (e.code === 'KeyM') mapOpen = !mapOpen;
             if (e.code === 'KeyN' && interior.note.read) caseFileOpen = !caseFileOpen;
             // P: talk to Lois from anywhere (interior or city), or F near her in interior
@@ -4872,6 +4884,7 @@
                 en.phase = (en.phase || 0) + 0.1;
             }
         }
+        if (hero.hp <= 0 && !heroKnockedOut) { heroKnockedOut = true; hero.hp = 0; }
 
         // Civilians pace nervously within a small range near their spawn (homeX),
         // unless they're being carried or already rescued.
@@ -9909,6 +9922,7 @@
                     enemies.splice(0); civilians.splice(0); carriedCivilians = [];
                     gaps.splice(0, gaps.length, ...L1_GAPS);
                     platforms.splice(0, platforms.length, ...L1_PLATFORMS);
+                    hero.hp = hero.maxHp; heroKnockedOut = false;
                     hero.x = 800; hero.y = GROUND_Y - hero.h;
                     hero.vx = 0; hero.vy = 0; hero.flightActive = false;
                     camera.x = 0; camera.y = 0;
@@ -10226,6 +10240,7 @@
             interior.note.read = true;
             flyAwayCutscene = false;
             // hero + hound fly in from above — gravity brings them to ground
+            hero.hp = hero.maxHp; heroKnockedOut = false;
             hero.x = 300; hero.y = GROUND_Y - 420; hero.vx = 0; hero.vy = 9;
             hero.flightActive = false; hero.onGround = false; hero.facing = 1;
             hound.x = 180; hound.y = GROUND_Y - 320; hound.vx = 0; hound.vy = 7;
@@ -10902,6 +10917,7 @@
             interior.note.read = true;
             flyAwayCutscene = false;
             // Fly-in: hero + hound fall from sky
+            hero.hp = hero.maxHp; heroKnockedOut = false;
             hero.x = 220; hero.y = L3_GROUND_Y - 420;
             hero.vx = 0; hero.vy = 9; hero.flightActive = false; hero.onGround = false;
             hound.x = 130; hound.y = L3_GROUND_Y - 320;
@@ -15685,7 +15701,7 @@
             if (scene === 'factory') {
                 const pin = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 updateEnemies();
                 updateDarkWing();
@@ -15694,6 +15710,15 @@
                 updateCamera();
 
                 draw(); // draw() detects scene==='factory' and handles background/floor swap
+                if (heroKnockedOut) {
+                    ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                    ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, W, H);
+                    ctx.fillStyle = '#cc2222'; ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText('YOU HAVE FALLEN', W/2, H/2 - 30);
+                    ctx.fillStyle = '#ffffff'; ctx.font = '22px Arial';
+                    ctx.fillText('Press R to try again', W/2, H/2 + 20);
+                    ctx.restore();
+                }
                 updateHUD();
                 requestAnimationFrame(loop);
                 return;
@@ -15703,7 +15728,7 @@
             if (scene === 'temple') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 updateEnemies();
                 updateWonderWoman();
@@ -15721,7 +15746,7 @@
             if (scene === 'lab') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > LAB.floorY) { hero.y = LAB.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > LAB.floorY) { hound.y = LAB.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15739,7 +15764,7 @@
             if (scene === 'construction') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > CONSTRUCTION_INT.floorY) { hero.y = CONSTRUCTION_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > CONSTRUCTION_INT.floorY) { hound.y = CONSTRUCTION_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15759,7 +15784,7 @@
             if (scene === 'village') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > VILLAGE_INT.floorY) { hero.y = VILLAGE_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > VILLAGE_INT.floorY) { hound.y = VILLAGE_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15777,7 +15802,7 @@
             if (scene === 'ruins') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > RUINS_INT.floorY) { hero.y = RUINS_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > RUINS_INT.floorY) { hound.y = RUINS_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15794,7 +15819,7 @@
             if (scene === 'wayne') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > WAYNE_INT.floorY) { hero.y = WAYNE_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > WAYNE_INT.floorY) { hound.y = WAYNE_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15812,7 +15837,7 @@
             if (scene === 'arkham') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > ARKHAM_INT.floorY) { hero.y = ARKHAM_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > ARKHAM_INT.floorY) { hound.y = ARKHAM_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15830,7 +15855,7 @@
             if (scene === 'bank') {
                 const pin  = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 if (hero.y + hero.h > BANK_INT.floorY) { hero.y = BANK_INT.floorY - hero.h; hero.vy = 0; hero.onGround = true; }
                 if (hound.y + hound.h > BANK_INT.floorY) { hound.y = BANK_INT.floorY - hound.h; hound.vy = 0; hound.onGround = true; }
@@ -15848,7 +15873,7 @@
             if (diningScene) {
                 const pin = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInputInterior() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 updateDiningScene();
                 updateHitFX();
@@ -15862,7 +15887,7 @@
             if (scene === 'interior') {
                 const pin = computeP1Input();
                 const p2in = (p2Mode === 'ai') ? computeAIInputInterior() : computeCoopInput();
-                updateEntity(hero, pin);
+                if (!heroKnockedOut) updateEntity(hero, pin);
                 updateEntity(hound, p2in);
                 updateInterior();
                 updateHitFX();
@@ -15876,7 +15901,7 @@
 
             const p1 = computeP1Input();
             const p2 = (p2Mode === 'ai') ? computeAIInput() : computeCoopInput();
-            updateEntity(hero, p1);
+            if (!heroKnockedOut) updateEntity(hero, p1);
             updateEntity(hound, p2);
             updateEnemies();
             updateCivilians();
@@ -16018,6 +16043,15 @@
             draw();
             if (flyAwayCutscene) drawFlyAwayCutscene();
             if (caseFileOpen) drawCaseFile();
+            if (heroKnockedOut) {
+                ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+                ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#cc2222'; ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('YOU HAVE FALLEN', W/2, H/2 - 30);
+                ctx.fillStyle = '#ffffff'; ctx.font = '22px Arial';
+                ctx.fillText('Press R to try again', W/2, H/2 + 20);
+                ctx.restore();
+            }
             updateHUD();
             requestAnimationFrame(loop);
         }
