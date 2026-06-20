@@ -2541,6 +2541,7 @@
             powerGirl.active = false; powerGirl.captured = true;
             powerGirl.hp = 20; powerGirl.vx = 0; powerGirl.vy = 0;
             titleCard = { text: 'LEXCORP CENTRAL — RESTRICTED', sub: 'Entering the heart of LexCorp…', timer: 200 };
+            advanceL2Quest('factory_enter');
         }
 
         function exitFactory() {
@@ -9748,6 +9749,7 @@
             'travel_wayne':   { worldX: WAYNE_X,  label: 'WAYNE ENTERPRISES', color: '#c8a840' },
             'wayne_interior': { worldX: WAYNE_X,  label: 'WAYNE ENTERPRISES', color: '#c8a840' },
             'travel_arkham':  { worldX: ARKHAM_X, label: 'ARKHAM ASYLUM',     color: '#8844cc' },
+            'travel_falcone': { worldX: 15580,    label: 'FALCONE WAREHOUSE', color: '#cc3333' },
         };
         function getL2Destination() {
             if (currentLevel !== 2 || scene !== 'city') return null;
