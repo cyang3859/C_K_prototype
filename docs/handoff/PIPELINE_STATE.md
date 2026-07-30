@@ -15,6 +15,8 @@ truth for where the 3D migration pipeline stopped and what to do next.
 | 2 | Migration strategy | **New 3D build, port content forward.** `kodaman_prototype.html` stays untouched and playable as spec/reference. |
 | 3 | LA realism | **Recognizable landmarks, invented streets.** No OpenStreetMap geodata import. |
 | 4 | Delivery | **Feature branch + PR against `dev`.** No agent pushes `main`. No deploy target exists. |
+| 5 | Trademark handling | **Rename in the 3D build ONLY.** `kodaman3d/` uses original, legally-distinct names from day one. `kodaman_prototype.html` keeps its current names and is NOT edited. |
+| 6 | Naming authority | **Agents propose, user approves.** Research delivers the old->new mapping table with rationale. No agent applies a rename before user sign-off. |
 
 ## Model assignment
 
@@ -93,9 +95,23 @@ strings.
 
 Character *designs* are already legally distinct. **Only the names are the problem.**
 
-**Not blocking Phase 1** — the vertical slice is hero + street block + camera and needs no
-named characters. It blocks Phase 2+ content porting and any public push.
-**No agent renames anything unilaterally.** Awaiting user sign-off on the mapping table.
+**The repo is ALREADY PUBLIC** — `github.com/cyang3859/C_K_prototype`, public since
+2026-06-14. All ~900 references are already published. Calibration: non-commercial fan
+prototypes are ubiquitous on GitHub and enforcement against one is unlikely. This is a real
+decision, not an emergency.
+
+### RESOLVED — user decision 2026-07-30
+
+- **Scope: rename in the 3D build only.** `kodaman3d/` uses original names from day one.
+  `kodaman_prototype.html` is NOT edited — it stays a working design reference with its
+  current names. This avoids regression risk in 16.5k lines where `Lois` (345 refs) and the
+  Diana/Themyscira Level 3 arc are load-bearing in quest state and dialogue trees.
+- **Authority: agents propose, user approves.** Research produces the mapping table with
+  rationale. **No agent applies any rename before explicit user sign-off on the list.**
+- Rename cost is paid once, during Phase 2+ porting, when that code is being rewritten anyway.
+
+**Not blocking Phase 1** — the vertical slice is hero + street block + camera, no named
+characters. The mapping table is needed before Phase 2 content porting begins.
 
 ---
 
