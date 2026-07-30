@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3D Open World — Phase 1 Vertical Slice</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #10141a;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      /* The canvas is sized entirely from JS (Renderer.js) against window
+         innerWidth/innerHeight; CSS only guarantees it fills the viewport and
+         does not introduce an inline-element baseline gap. */
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #app canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      /* Click-to-lock hint. Hidden by DebugHud once pointer lock is acquired. */
+      #lock-hint {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        padding: 14px 22px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.72);
+        color: #dfe6ef;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+        user-select: none;
+        z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="lock-hint">click to capture mouse &middot; WASD move &middot; W/Space fly &middot; G land &middot; F1 debug</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
