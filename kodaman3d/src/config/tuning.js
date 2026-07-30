@@ -129,9 +129,38 @@ export const TUNING = {
   LANDING_DESCENT_ACCEL: 27.18,
   /** m/s — descent cap during `landing`, deliberately distinct from the 6.1 flying cap. */
   LANDING_MAX_DOWN_SPEED: 6.8,
-  /** m/s — constant forced climb rate for the whole scripted takeoff. */
-  TAKEOFF_CLIMB_SPEED: 4.8,
-  /** fixed steps — takeoff duration: 12 × 1/60 s = 0.2 s. */
+  /**
+   * m/s — constant forced climb rate for the whole scripted takeoff.
+   *
+   * RAISED 4.8 -> 9.6 to fix B2 ("tap-W flight ends too low"). How the number
+   * was chosen, so the next person can re-derive it instead of guessing:
+   *
+   * A tap gains altitude in TWO parts, and only the first is obvious.
+   *   1. The scripted climb: TAKEOFF_CLIMB_SPEED × TAKEOFF_STEPS × (1/60 s).
+   *   2. A coast. On entering `flying` with W released, the hover half-life
+   *      decay bleeds the residual climb speed off over ~0.4 s before
+   *      HOVER_SNAP_SPEED zeroes it, and gravity is never applied in flight, so
+   *      every metre of that coast is KEPT. It is worth ~0.085 m per m/s of
+   *      TAKEOFF_CLIMB_SPEED.
+   * At 4.8 that was 0.96 m scripted + 0.40 m coast = a 1.36 m apex — under the
+   * hero's own 1.85 m height, which is why a tap read as a hop. At 9.6 it is
+   * 1.92 m + 0.81 m = a 2.73 m apex, mid-band of the 2.5-3 m target.
+   *
+   * TAKEOFF_STEPS was deliberately LEFT AT 12. Speed is the lever the QA writeup
+   * prefers (it keeps the burst punchy), and holding the takeoff duration at
+   * 0.2 s means the FSM timeline that criterion 14's camera pull-back and
+   * criterion 24's 0.6 s cross-fade were judged against does not move at all.
+   * Extending the takeoff is the thing that could desync those; changing how
+   * fast it climbs is not.
+   *
+   * Exceeding MAX_FLIGHT_UP_SPEED (7.5) for these 12 steps is intentional — a
+   * burst is meant to out-run the sustained climb cap. Holding W through the
+   * transition is safe: `flying` eases the velocity back down to the cap with
+   * the ordinary `approach()` curve rather than clamping it.
+   */
+  TAKEOFF_CLIMB_SPEED: 9.6,
+  /** fixed steps — takeoff duration: 12 × 1/60 s = 0.2 s. See the note above
+   *  before changing this: criteria 14 and 24 were judged against this timeline. */
   TAKEOFF_STEPS: 12,
   /** unitless — multiplies BOTH vertical thrust/caps AND horizontal accel/caps
    *  while J/K/L is held, for precision aiming. No ability logic attached. */
