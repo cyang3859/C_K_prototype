@@ -104,7 +104,7 @@ constant. Execution is the Engineer's, and the boundary is what keeps the Design
 | Draw calls | **45 measured, 60 ceiling.** Every added call is spent from 15. |
 | Renderer | **WebGL**, not WebGPU. Locked (flag F1). Classic materials, not TSL. |
 | Frame budget | 60 fps at 1920×1080, currently passing. Non-negotiable. |
-| Phase 1 assets | **Primitives only.** No imported meshes, no texture pipeline, no external art. Realism must come from proportion, material, palette, and geometry the code can build. |
+| Phase 1 assets | **No imported meshes and no external art files.** Geometry is primitives. **Procedural `CanvasTexture` is available and already in use** — `StreetBlock.js:311-362` builds every facade material by drawing a window grid to a 2D canvas. This is the cheapest realism lever in the project: detail costs texture memory, not draw calls. Use it. |
 | Street dimensions | **Exact and locked.** Do not redesign. |
 | Curb height | 3–7 cm, a known deliberate compromise pending Phase 2 step-up collision. **Not a design defect. Do not "fix" it.** |
 | Character IP | Legally distinct. Archetype, never a specific protected costume. |
@@ -136,8 +136,10 @@ Use this when spawning, with the subject line filled in:
 > are your decision and not the Engineer's.
 >
 > **Budget reality: 45 draw calls measured against a 60 ceiling.** Fifteen calls of headroom for
-> the entire realism pass. Spend them where they show. Phase 1 is primitives only — no imported
-> meshes, no textures. Realism comes from proportion, material, palette, and geometry.
+> the entire realism pass. Spend them where they show — and note that **material and texture
+> changes are free in draw-call terms.** Buildings already share three facade materials built
+> from procedural canvas textures; richer textures on those same materials cost nothing from the
+> budget, while a new mesh costs a call. Prefer the free lever.
 >
 > **You do not write code.** Specification only.
 >
