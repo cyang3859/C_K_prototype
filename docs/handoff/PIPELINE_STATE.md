@@ -75,35 +75,40 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Research — architecture/characters/constraints | Sonnet | **done** | `RESEARCH_FINDINGS.md` (920 lines, A1–A13 / C1–C4 / D1–D4, no gaps) |
 | Review — flags | Sonnet | **done** | `REVIEW_FLAGS.md` (355 lines) |
 | Review — implementation plan | Sonnet | **done** | `IMPLEMENTATION_PLAN.md` (594 lines) |
-| Review — engineer brief | Sonnet | **NOT WRITTEN — resume here** | `ENGINEER_BRIEF.md` |
-| Review — summary | Sonnet | **not written** | `REVIEW_SUMMARY.md` |
-| Engineer | **Opus** | not started | `kodaman3d/` vertical slice |
-| QA | Sonnet | not started | `QA_REPORT.md` or PR |
+| Review — engineer brief | Sonnet | **done** | `ENGINEER_BRIEF.md` (917 lines, 28 tagged acceptance criteria) |
+| Review — summary | Sonnet | **not written** (low value now; the brief superseded it) | `REVIEW_SUMMARY.md` |
+| Engineer — Phase 1 | **Opus** | **done** | `kodaman3d/` — 25 files, 6,691 lines, 4 commits |
+| QA | Sonnet | **NOT STARTED — resume here** | `QA_REPORT.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
-Total research + planning corpus on disk: **3,215 lines across 6 documents.**
+Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
 
 ---
 
 ## >>> RESUME HERE <<<
 
-The Review agent was stopped mid-task, immediately after finishing `IMPLEMENTATION_PLAN.md`
-and just as it began `ENGINEER_BRIEF.md`. Nothing was lost — it wrote incrementally.
+**Phase 1 is BUILT and independently verified. QA has not run yet.**
 
-**Next action:** spawn a **Sonnet** agent to write `docs/handoff/ENGINEER_BRIEF.md`. Do NOT
-resume the old agent from its transcript — replaying that context is expensive (a comparable
-resume cost ~138k tokens). A fresh agent is cheaper because every input it needs is already
-committed to disk.
+**Next action:** spawn a **Sonnet** QA agent. Its brief:
+- Read `docs/handoff/ENGINEER_SUMMARY.md` and `docs/handoff/ENGINEER_BRIEF.md` §12
+  (28 acceptance criteria, each tagged `[VITEST]` / `[HEADLESS]` / `[HUMAN]`).
+- Re-verify the 16 criteria the Engineer verified; do not take its word for them.
+- The 12 `[HUMAN]` criteria need a browser and a GPU. **A headless agent cannot verify these
+  and must not claim to.** They are for the user at the keyboard.
+- Review code quality against the brief's flexibility/comment requirements.
+- Produce `docs/handoff/QA_REPORT.md`. If bugs are found, it goes back to the Engineer. If
+  clean, open a PR against `dev` — **never push `main`.**
 
-That brief must be the single, self-contained, ambiguity-free Phase 1 build order: exact
-pinned dependencies, exact file list with per-module responsibility, data structures, game
-loop shape, camera math, input mapping (WASD move, W-tap flight toggle, Q persona toggle,
-J/K/L abilities, Shift dash), the resolved WebGL renderer decision, and precise acceptance
-criteria. It must fold in the F7 damping correction below. The Engineer should never need a
-second document.
+Then: **Overview (Sonnet)** assembles `KNOWLEDGE_BASE.md` and the build wireframe.
 
-Then, in order: **Engineer (Opus)** builds the slice -> **QA (Sonnet)** tests -> **Overview
-(Sonnet)** assembles the knowledge base.
+### Independent verification already performed by the orchestrator
+
+Do not redo these — they are confirmed:
+- `npm test` -> **60/60 passing** (collision 22, locomotion 38)
+- `npm run build` -> clean, `585.44 kB` / `151.37 kB` gzipped, 25 modules, ~900 ms
+- `node_modules/` and `dist/` correctly gitignored
+- **`kodaman_prototype.html` has a zero diff** — the 2D game is untouched
+- 4 Engineer commits, nothing pushed
 
 ---
 
@@ -149,10 +154,13 @@ The first Opus research agent's spend before it died is not reported.
 | Agent | Tokens |
 |---|---|
 | `ENGINEER_BRIEF.md` writer (Sonnet) | 131,281 |
-| Engineer — Phase 1 build (Opus) | running |
+| Engineer — Phase 1 build (Opus) | 187,269 |
+| **Session 3 total** | **318,550** |
 
-Running session-3 total: **131,281.** Prep to pause near 400k; do not pause until the user
-says so.
+**Approaching the 400k prep-to-pause mark.** A QA agent would likely add 100–150k and cross
+it. Slowing down; awaiting the user's call on whether to run QA now or pause first.
+
+Cross-session observable total: **~771,000.**
 
 Report raw subagent token counts only. Never a percentage of a ceiling — no tool exposes
 account usage, and the user has asked that it not be attempted.
