@@ -6,6 +6,7 @@ import {
   createBoundaryBoxes,
   raycastBoxes,
   resolveCapsule,
+  spherecastBoxes,
 } from '../src/world/Collision.js';
 import { HERO_HEIGHT_M, HERO_RADIUS_M } from '../src/core/Scale.js';
 
@@ -264,5 +265,91 @@ describe('raycastBoxes — camera arm obstruction', () => {
     const world = new CollisionWorld({ halfExtent: 150 });
     const d = world.raycast(p(0, 2, 0), p(1, 0, 0), 400);
     expect(d).toBe(400);
+  });
+});
+
+describe('spherecastBoxes — B3, the camera arm vs its own near plane', () => {
+  // The regression this suite pins down: a zero-radius ray reports the arm
+  // clear while the camera's near plane — which has area — is already through
+  // the wall. Every case below is written as "the ray says clear, the sphere
+  // says blocked", because that difference IS the bug.
+
+  /** Near-plane half-diagonal at CAM_NEAR = 0.1, FOV 60°, 16:9. */
+  const R_NEAR = Math.hypot(0.1, 0.1 * Math.tan(Math.PI / 6) * (16 / 9), 0.1 * Math.tan(Math.PI / 6));
+
+  it('degrades to an exact raycast at radius 0', () => {
+    const boxes = [tower()];
+    const ray = raycastBoxes(p(20, 1, 0), p(-1, 0, 0), 100, boxes);
+    expect(spherecastBoxes(p(20, 1, 0), p(-1, 0, 0), 100, 0, boxes)).toBe(ray);
+    // A negative radius must not secretly SHRINK the colliders.
+    expect(spherecastBoxes(p(20, 1, 0), p(-1, 0, 0), 100, -1, boxes)).toBe(ray);
+  });
+
+  it('stops a sphere one radius short of a flat face', () => {
+    const boxes = [tower()];
+    const d = spherecastBoxes(p(20, 1, 0), p(-1, 0, 0), 100, 0.5, boxes);
+    expect(d).toBeCloseTo(14.5, 6); // face at x = 5, contact at x = 5.5
+  });
+
+  it('catches a grazing pass a ray misses entirely', () => {
+    // An arm running parallel to the +X face, offset by less than the near-plane
+    // half-diagonal. The centre line never touches the box; the near plane does.
+    const boxes = [tower()];
+    const origin = p(5 + R_NEAR * 0.5, 1, 20);
+    const dir = p(0, 0, -1);
+
+    expect(raycastBoxes(origin, dir, 100, boxes)).toBe(100); // ray: "all clear"
+    expect(spherecastBoxes(origin, dir, 100, R_NEAR, boxes)).toBeLessThan(100);
+  });
+
+  it('catches the building corner a ray slips past', () => {
+    // The corner case, built so the ray genuinely misses. A ray aimed diagonally
+    // AT a corner always enters the box eventually; one travelling ALONG the
+    // outward diagonal past it never does. This line runs on heading
+    // (-1, 0, +1)/√2 through (5, 5 + delta), so it clears the (5, 5) corner by
+    // delta/√2 = 0.141 m — under the 0.155 m near-plane radius, which is
+    // precisely the band where the arm looks clear and the near plane is not.
+    const boxes = [tower()];
+    const delta = 0.2;
+    const dir = p(-1, 0, 1).normalize();
+    const origin = p(12, 1, 5 + delta - 7); // on the line z = -x + 10 + delta
+
+    expect(Math.abs(-origin.x + 10 + delta - origin.z)).toBeLessThan(1e-9); // on the line
+    expect(raycastBoxes(origin, dir, 100, boxes)).toBe(100); // ray: "all clear"
+    expect(spherecastBoxes(origin, dir, 100, R_NEAR, boxes)).toBeLessThan(100);
+  });
+
+  it('never reports a hit BEYOND what the ray reports', () => {
+    // Monotonicity: inflating a box can only bring contact nearer, never push it
+    // further out. A violation here would mean the camera pops OUT into geometry.
+    const boxes = [tower(), new THREE.Box3(p(20, 0, -8), p(28, 40, 8))];
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      const origin = p(Math.cos(a) * 30, 1 + (i % 5), Math.sin(a) * 30);
+      const dir = p(-Math.cos(a), 0, -Math.sin(a));
+      const ray = raycastBoxes(origin, dir, 100, boxes);
+      const sphere = spherecastBoxes(origin, dir, 100, R_NEAR, boxes);
+      expect(sphere).toBeLessThanOrEqual(ray + 1e-9);
+    }
+  });
+
+  it('skips a box whose inflated volume already contains the origin', () => {
+    // Guard branch: returning 0 here would collapse the arm and slam the camera
+    // into the hero's head, which is worse than the clip. Unreachable in Phase 1
+    // (HERO_RADIUS_M = 0.35 > the ~0.2 m near-plane radius) but pinned anyway.
+    const boxes = [tower()];
+    const d = spherecastBoxes(p(5.05, 1, 0), p(1, 0, 0), 100, 0.5, boxes);
+    expect(d).toBe(100);
+  });
+
+  it('CollisionWorld.spherecast ignores the invisible boundary walls', () => {
+    const world = new CollisionWorld({ halfExtent: 150 });
+    expect(world.spherecast(p(0, 2, 0), p(1, 0, 0), 400, R_NEAR)).toBe(400);
+  });
+
+  it('CollisionWorld.spherecast sees a registered building', () => {
+    const world = new CollisionWorld({ halfExtent: 150 });
+    world.addBuilding(tower());
+    expect(world.spherecast(p(20, 1, 0), p(-1, 0, 0), 100, 0.5)).toBeCloseTo(14.5, 6);
   });
 });

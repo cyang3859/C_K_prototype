@@ -8,7 +8,8 @@ import { clamp } from '../world/Collision.js';
  *
  * Three.js has no native SpringArm object, so this is built from parts: a pivot
  * above the hero, a spherical offset driven by mouse yaw/pitch, an obstruction
- * raycast, and a ground↔flight parameter cross-fade.
+ * sphere-cast sized to the camera's own near plane, and a ground↔flight
+ * parameter cross-fade.
  *
  * UPDATE ORDER IS LOAD-BEARING (brief §5). This rig MUST run AFTER the
  * locomotion controller within the SAME fixed step, reading the hero's final
@@ -186,19 +187,42 @@ export class CameraRig {
     this._updatePivot();
     this._computeDesired(this.currentDistance);
 
-    // Ray from the pivot toward where the camera wants to be. A PLAIN RAYCAST,
-    // not a sphere-cast, is the deliberate Phase 1 choice: this block is large
-    // flat-faced building AABBs with no thin or sharp obstacles, and the 0.2 m
-    // padding already absorbs most of what a sphere-cast would buy at
-    // near = 0.1. NAMED FALLBACK, not a silent gap — if QA finds visible
-    // near-plane clipping at building corners, upgrade THIS ONE raycast to a
-    // sphere-cast then. Do not preemptively build it.
+    // Sphere-cast from the pivot toward where the camera wants to be.
+    //
+    // THIS IS THE NAMED FALLBACK BEING TAKEN. Phase 1 shipped a plain raycast
+    // here with a note saying to upgrade it to a sphere-cast if QA found visible
+    // near-plane clipping at building corners. Human QA found exactly that — a
+    // Shift-dash into a facade rendered the building's interior (bug B3) — so
+    // the upgrade is now in. Do not revert it to a ray to save the arithmetic;
+    // the ray is a point query and the thing that clips has area.
+    //
+    // WHY THE RADIUS IS DERIVED AND NOT TUNED: it is the distance from the
+    // camera's position to a corner of its own near plane, so the swept sphere
+    // provably encloses every point the near plane occupies. Computing it from
+    // the live FOV and aspect means it tracks the dash FOV surge and any window
+    // resize for free, where a hand-picked constant would quietly go stale — and
+    // it makes the Phase 2 plan to raise CAM_NEAR to 0.3-0.5 a no-op here.
+    //
+    // `currentFov` rather than `camera.fov`: the camera's own field is not
+    // written until the end of this method, so reading it here would use the
+    // PREVIOUS step's value and lag the surge by a frame.
+    const halfFovY = (this.currentFov * Math.PI) / 360; // degrees -> half-angle in rad
+    const nearHalfH = this.camera.near * Math.tan(halfFovY);
+    const nearHalfW = nearHalfH * this.camera.aspect;
+    const armRadius = Math.hypot(this.camera.near, nearHalfW, nearHalfH);
+
     this._dir.copy(this._desired).sub(this.pivot);
     const wanted = this._dir.length();
     let armLength = wanted;
     if (wanted > 1e-5) {
       this._dir.divideScalar(wanted);
-      const hit = this.collision.raycast(this.pivot, this._dir, wanted);
+      // CAM_COLLISION_PADDING still applies ON TOP of the radius, and both are
+      // doing distinct jobs: the sphere covers the near plane's LATERAL extent,
+      // the padding keeps a margin ALONG the arm so a grazing contact does not
+      // leave the plane flush against the surface. Do not fold one into the
+      // other — and do not raise the padding to chase a clip, which is what this
+      // sphere-cast exists to stop anyone needing to do.
+      const hit = this.collision.spherecast(this.pivot, this._dir, wanted, armRadius);
       if (hit < wanted) {
         armLength = Math.max(hit - t.CAM_COLLISION_PADDING, 0.1);
       }

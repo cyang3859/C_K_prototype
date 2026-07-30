@@ -247,41 +247,128 @@ export function raycastBoxes(origin, dir, maxDistance, boxes) {
   let nearest = maxDistance;
 
   for (const b of boxes) {
-    let tMin = 0;
-    let tMax = nearest;
-
-    // One slab per axis. A zero direction component means the ray is parallel to
-    // that pair of planes: it either misses entirely or imposes no constraint.
-    for (const axis of AXES) {
-      const o = origin[axis];
-      const d = dir[axis];
-      if (Math.abs(d) < 1e-8) {
-        if (o < b.min[axis] || o > b.max[axis]) {
-          tMin = Infinity;
-          break;
-        }
-        continue;
-      }
-      const inv = 1 / d;
-      let t1 = (b.min[axis] - o) * inv;
-      let t2 = (b.max[axis] - o) * inv;
-      if (t1 > t2) {
-        const tmp = t1;
-        t1 = t2;
-        t2 = tmp;
-      }
-      if (t1 > tMin) tMin = t1;
-      if (t2 < tMax) tMax = t2;
-      if (tMin > tMax) {
-        tMin = Infinity;
-        break;
-      }
-    }
-
-    if (tMin < nearest) nearest = tMin;
+    const t = slabEntry(origin, dir, b, 0, nearest);
+    if (t < nearest) nearest = t;
   }
 
   return nearest;
+}
+
+/**
+ * SPHERE vs AABB set — the camera arm's obstruction test.
+ *
+ * WHY THIS EXISTS (bug B3). `raycastBoxes` above answers "is the arm's centre
+ * LINE clear?", but the thing that visibly clips through a facade is the
+ * camera's NEAR PLANE: a rectangle roughly 0.2 m across at near = 0.1 m. An arm
+ * that passes within a near-plane half-diagonal of a building corner leaves the
+ * ray reporting clearance while a corner of the near plane is already inside the
+ * wall, and the renderer happily draws the building's interior. Human QA hit
+ * exactly that by Shift-dashing into a wall.
+ *
+ * Note that CAM_COLLISION_PADDING cannot fix this: it shortens the arm ALONG the
+ * ray, and the uncovered extent here is LATERAL to it. Raising the padding buys
+ * a camera jammed into the hero's back in every corridor and still clips at a
+ * grazing angle. Sweeping a sphere the size of the near plane is the fix that
+ * matches the geometry of the problem.
+ *
+ * METHOD. Sweeping a sphere of radius `r` against a box is a plain ray cast
+ * against the box's Minkowski sum with that sphere. That sum is the box inflated
+ * by `r` with ROUNDED corners and edges; this function uses the inflated box
+ * with SQUARE corners, which is the standard conservative approximation.
+ * Consequence, stated so nobody rediscovers it as a bug: within `r` of a corner
+ * the cast reports contact up to r·(√3 − 1) ≈ 0.73·r early on a pure diagonal
+ * approach — about 0.13 m at Phase 1's radius. It errs by pulling the camera IN
+ * slightly sooner at corners, which is the safe direction for this defect. If a
+ * later phase needs exactness there, replace the corner case with a
+ * ray-vs-sphere test on the eight corner spheres and edge capsules; the
+ * near-plane radius is small enough that Phase 1 does not need it.
+ *
+ * @param {{x:number,y:number,z:number}} origin sphere centre at t = 0
+ * @param {{x:number,y:number,z:number}} dir MUST be normalised
+ * @param {number} maxDistance
+ * @param {number} radius swept sphere radius, metres
+ * @param {Array<{min:object,max:object}>} boxes
+ * @returns {number} distance travelled before the sphere touches a box, or
+ *   `maxDistance` if none is touched.
+ */
+export function spherecastBoxes(origin, dir, maxDistance, radius, boxes) {
+  // A zero/negative radius is exactly the ray case; do not silently inflate by
+  // a negative amount and shrink the world's colliders.
+  if (!(radius > 0)) return raycastBoxes(origin, dir, maxDistance, boxes);
+
+  let nearest = maxDistance;
+
+  for (const b of boxes) {
+    // Origin already overlapping the inflated box: SKIP IT rather than return 0.
+    //
+    // Returning 0 would collapse the camera arm to its floor and slam the camera
+    // into the hero's head — strictly worse than the clip it is avoiding, and it
+    // would happen while the player is merely standing near a wall. This is
+    // unreachable in Phase 1 (the pivot sits above the hero's capsule centre,
+    // which the horizontal push-out keeps HERO_RADIUS_M = 0.35 m clear of every
+    // footprint, and the near-plane radius is ~0.2 m at the widest dash FOV), so
+    // the branch is a guard for a future `near`/FOV change, not live behaviour.
+    if (
+      origin.x > b.min.x - radius &&
+      origin.x < b.max.x + radius &&
+      origin.y > b.min.y - radius &&
+      origin.y < b.max.y + radius &&
+      origin.z > b.min.z - radius &&
+      origin.z < b.max.z + radius
+    ) {
+      continue;
+    }
+
+    const t = slabEntry(origin, dir, b, radius, nearest);
+    if (t < nearest) nearest = t;
+  }
+
+  return nearest;
+}
+
+/**
+ * Slab-method entry distance for one ray against one (optionally inflated) AABB.
+ *
+ * Shared by `raycastBoxes` and `spherecastBoxes` so there is exactly ONE
+ * intersection routine in the project — the same reason both live in this file
+ * rather than in CameraRig.js.
+ *
+ * @param {{x:number,y:number,z:number}} origin
+ * @param {{x:number,y:number,z:number}} dir normalised
+ * @param {{min:object,max:object}} box
+ * @param {number} inflate metres added to the box on every axis (0 for a ray)
+ * @param {number} tCap current best hit; slabs beyond it can exit early
+ * @returns {number} entry distance, or Infinity for a miss
+ */
+function slabEntry(origin, dir, box, inflate, tCap) {
+  let tMin = 0;
+  let tMax = tCap;
+
+  // One slab per axis. A zero direction component means the ray is parallel to
+  // that pair of planes: it either misses entirely or imposes no constraint.
+  for (const axis of AXES) {
+    const o = origin[axis];
+    const d = dir[axis];
+    const lo = box.min[axis] - inflate;
+    const hi = box.max[axis] + inflate;
+    if (Math.abs(d) < 1e-8) {
+      if (o < lo || o > hi) return Infinity;
+      continue;
+    }
+    const inv = 1 / d;
+    let t1 = (lo - o) * inv;
+    let t2 = (hi - o) * inv;
+    if (t1 > t2) {
+      const tmp = t1;
+      t1 = t2;
+      t2 = tmp;
+    }
+    if (t1 > tMin) tMin = t1;
+    if (t2 < tMax) tMax = t2;
+    if (tMin > tMax) return Infinity;
+  }
+
+  return tMin;
 }
 
 const AXES = ['x', 'y', 'z'];
@@ -348,12 +435,32 @@ export class CollisionWorld {
   }
 
   /**
-   * Camera-arm raycast. Boundary walls are excluded on purpose (see class doc).
+   * Zero-radius camera-arm raycast. Boundary walls are excluded on purpose (see
+   * class doc).
+   *
+   * The rig itself uses `spherecast` below — this stays as the primitive, and
+   * because a point query is still the right tool anywhere the caller genuinely
+   * has no volume to protect.
+   *
    * @param {{x:number,y:number,z:number}} origin
    * @param {{x:number,y:number,z:number}} dir normalised
    * @param {number} maxDistance
    */
   raycast(origin, dir, maxDistance) {
     return raycastBoxes(origin, dir, maxDistance, this.buildings);
+  }
+
+  /**
+   * Camera-arm sphere-cast — what CameraRig actually calls. Boundary walls are
+   * excluded for the same reason as `raycast`: they are invisible, so colliding
+   * with them would yank the camera in for no visible cause at the map edge.
+   *
+   * @param {{x:number,y:number,z:number}} origin
+   * @param {{x:number,y:number,z:number}} dir normalised
+   * @param {number} maxDistance
+   * @param {number} radius swept sphere radius, metres
+   */
+  spherecast(origin, dir, maxDistance, radius) {
+    return spherecastBoxes(origin, dir, maxDistance, radius, this.buildings);
   }
 }
