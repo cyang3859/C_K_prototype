@@ -11,6 +11,7 @@ import {
 } from '../src/controllers/LocomotionController.js';
 import { damp, smoothingWeight } from '../src/controllers/CameraRig.js';
 import { CollisionWorld } from '../src/world/Collision.js';
+import { Input } from '../src/core/Input.js';
 import { TUNING, resetTuning } from '../src/config/tuning.js';
 
 /**
@@ -510,6 +511,66 @@ describe('movement basis', () => {
     expect(Math.hypot(hero.velocity.x, hero.velocity.z)).toBeLessThanOrEqual(
       TUNING.MAX_SPEED + 1e-6,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Input hygiene — criterion 27's key-state half
+// ---------------------------------------------------------------------------
+
+describe('input state after a window blur', () => {
+  // Criterion 27 is tagged [HEADLESS], but the stuck-key bug it guards against
+  // is a LOCOMOTION failure (alt-tab while holding W and the hero flies upward
+  // forever on return), and Input.js runs headlessly with no DOM when given a
+  // null event target. Verifying the key-state half here is cheap; the
+  // "no velocity spike on refocus" half still needs a browser.
+  it('clears every held key and pending delta on blur, and the hero stops climbing', () => {
+    const input = new Input({ element: null, target: null });
+    const ev = (code) => ({ code, repeat: false, preventDefault() {} });
+
+    input._onKeyDown(ev('KeyW'));
+    input._onKeyDown(ev('ShiftLeft'));
+    input.look.dx = 250;
+    input.wheel = 3;
+    input.beginStep();
+    expect(input.jumpDown).toBe(true);
+    expect(input.dash).toBe(true);
+
+    // The browser delivers keydown but never keyup across an alt-tab.
+    input._onBlur();
+
+    expect(input.jumpDown).toBe(false);
+    expect(input.dash).toBe(false);
+    expect(input.jumpPressed).toBe(false);
+    expect(input.forward).toBe(false);
+    expect(input.look.dx).toBe(0);
+    expect(input.wheel).toBe(0);
+    for (const k of input.keys.values()) {
+      expect(k.down).toBe(false);
+      expect(k.pressed).toBe(false);
+    }
+
+    // And the FSM stops climbing once the cleared snapshot is fed to it.
+    const { hero, controller } = makeRig();
+    forceFlying(hero, 40);
+    step(controller, mkInput({ jumpDown: true }), 30);
+    expect(hero.velocity.y).toBeGreaterThan(0);
+    step(controller, input, 60); // the post-blur snapshot: everything false
+    expect(hero.velocity.y).toBe(0);
+  });
+
+  it('does not re-fire the press edge on browser key auto-repeat', () => {
+    const input = new Input({ element: null, target: null });
+    input._onKeyDown({ code: 'KeyW', repeat: false, preventDefault() {} });
+    input.beginStep();
+    expect(input.jumpPressed).toBe(true);
+
+    input.endStep();
+    input._onKeyDown({ code: 'KeyW', repeat: true, preventDefault() {} });
+    input.beginStep();
+    // Still held, but the takeoff edge must not fire again.
+    expect(input.jumpDown).toBe(true);
+    expect(input.jumpPressed).toBe(false);
   });
 });
 
