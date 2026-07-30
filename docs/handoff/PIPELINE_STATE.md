@@ -148,9 +148,11 @@ The first Opus research agent's spend before it died is not reported.
 
 | Agent | Tokens |
 |---|---|
-| `ENGINEER_BRIEF.md` writer (Sonnet) | running |
+| `ENGINEER_BRIEF.md` writer (Sonnet) | 131,281 |
+| Engineer — Phase 1 build (Opus) | running |
 
-Running session-3 total: **0 reported so far.** Prep to pause near 400k.
+Running session-3 total: **131,281.** Prep to pause near 400k; do not pause until the user
+says so.
 
 Report raw subagent token counts only. Never a percentage of a ceiling — no tool exposes
 account usage, and the user has asked that it not be attempted.
