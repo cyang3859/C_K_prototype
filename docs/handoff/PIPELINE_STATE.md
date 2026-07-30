@@ -89,8 +89,9 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Engineer — Phase 1 | **Opus** | **done** | `kodaman3d/` — 25 files, 6,691 lines, 4 commits |
 | QA — headless agent | Sonnet | **never run** (superseded for the 13 `[HUMAN]` criteria) | `QA_REPORT.md` |
 | QA — human test pass | user | **done** | `QA_HUMAN_RESULTS.md` — 10 pass, 1 pass-with-defect, 1 fail |
-| Engineer — bug fixes B1–B3 | **Opus** | **NOT STARTED — resume here** | fixes in `kodaman3d/` |
-| Design — Phase 1 polish | Sonnet | **defined, not spawned** (gated on B1–B3) | `DESIGN_SPEC_PHASE_1.md` |
+| Engineer — bug fixes B1–B4 | **Opus** | **done** — 4 commits, tests 76/76 | `ENGINEER_FIX_REPORT.md` |
+| Human spot-check of the fixes | user | **NOT DONE — resume here** | 6-step checklist in the fix report |
+| Design — Phase 1 polish | Sonnet | **defined, not spawned** (needs the B5 decision) | `DESIGN_SPEC_PHASE_1.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
 Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
@@ -102,23 +103,34 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 **Phase 1 is BUILT, independently verified, and human-tested. It survived the test pass in good
 shape: 10 of 13 browser criteria clean, one measurement recorded, one defect, one fail.**
 
-**Next action:** spawn an **Opus** Engineer agent to fix B1–B3 in `QA_HUMAN_RESULTS.md`.
+**B1–B4 are fixed and committed.** Tests, build and the 2D-file zero-diff were re-verified
+independently by the orchestrator. **Nothing is verified visually** — the Engineer had no GPU
+and correctly refused to claim any visual result.
 
-| Bug | Summary | Where |
-|---|---|---|
-| **B1** | Cape streams forward instead of trailing. Sign error — confirmed by math and by the 2D reference's negative `trail`. | `Hero.js:302-307` |
-| **B2** | Tap-`W` takeoff gains only 0.96 m. Raise the scripted climb toward ~2.5–3 m. | `tuning.js:132-135` |
-| **B3** | Camera renders building interior on a `Shift`-dash into a wall. **The Engineer's own named fallback — sphere-cast the camera arm — is hereby authorised.** | `CameraRig.js:189-214` |
-| **B4** | *Suspected*: flight body pitch inverted the same way as B1. **Confirm visually before fixing**; the comment is wrong either way. | `Hero.js:211-214` |
+**Next action: the user runs the 6-step checklist at the end of `ENGINEER_FIX_REPORT.md`.**
+The load-bearing ones:
 
-That document is self-contained — root cause, exact fix, what not to do, and the verification
-step for each. Hand it over whole. Standing rules apply: no subagent spawning, incremental
-writes, ask rather than guess.
+- **B3** — `Shift`-dash into walls at multiple angles, grounded and hovering. The Engineer's
+  20,160-pose sweep settles the camera at each pose and so does **not** reproduce the dynamic
+  dash that originally broke it. This still needs a human.
+- **B2** — tap `W`. Apex should be ~2.7 m. Criteria 14 and 24 must still pass.
+- **B4** — dive fast and look at the pose. Head should lead. Reverting is a one-character change.
+- **Draw calls** — press `F1`, confirm still 45.
+
+**Then, blocking Design: decide B5.**
+
+**B5 — flight limb poses carry the same inversion as B1/B4.** Arms at `rotation.x = -2.6`
+sweep **back** over the head while the comment says "arms forward"; legs point forward ~7°
+while the comment says "trailing". The Engineer deliberately did **not** fix this, correctly:
+unlike B1/B4 there is no arithmetic answer — both silhouettes are legitimate flight poses, so
+it is a **design and taste call, not a correctness call.** Written up in the fix report; a
+two-line edit once someone decides. The grounded walk cycle is unaffected (symmetric signs
+cancel). **Resolve this before Design runs**, since it decides the hero's flight silhouette and
+Design would otherwise be speccing around an open question.
 
 **Then, in order:**
 1. **Design (Sonnet)** — the new sixth agent. Read `DESIGN_AGENT_BRIEF.md` first; it holds the
-   charter, the binding constraints table, and a ready spawn prompt. **Gated on B1–B3 landing**,
-   because B1/B4 change how the hero looks in motion.
+   charter, the binding constraints table, and a ready spawn prompt.
 2. **Review (Sonnet)** — budget gate on the design spec. Draw calls, triangles, renderer
    feasibility, locked decisions. **Not a vote on taste.**
 3. **Engineer (Opus)** — implement the reviewed design spec.
@@ -194,9 +206,13 @@ Cross-session observable total: **~771,000.**
 
 **Session 4 — ended 2026-07-30, closed deliberately by the user.**
 
-**No subagents were spawned.** All work was orchestrator-side: the user's human test results
-were collected, diagnosed against the source, and turned into handoff documents. Session 4
-adds **0** to the observable subagent total, which stays at **~771,000**.
+| Agent | Tokens |
+|---|---|
+| Engineer — B1–B4 bug fixes (Opus) | 152,611 |
+| **Session 4 total** | **152,611** |
+
+Cross-session observable total: **~924,000**. Well inside the per-session 400k prep-to-pause
+mark; no need to slow down.
 
 What happened:
 1. The user ran `HUMAN_TEST_GUIDE.md` in full and reported all 13 results.
@@ -206,20 +222,36 @@ What happened:
 3. The user approved adding a **Design agent** as a sixth pipeline stage, with Research
    branching and a Review budget gate on Design's output.
 4. Wrote `QA_HUMAN_RESULTS.md` and `DESIGN_AGENT_BRIEF.md`; rewrote this file's pipeline shape,
-   status table, and resume pointer.
+   status table, and resume pointer. Committed as `c409068`.
+5. Spawned the Opus Engineer against `QA_HUMAN_RESULTS.md`. It fixed B1, B2, B3, confirmed and
+   fixed B4, and raised a new **B5** it deliberately did not fix. Four commits
+   (`a9fa760`, `e2a2e87`, `95a15ab`, `5cde9e8`). Report: `ENGINEER_FIX_REPORT.md`.
 
-**Uncommitted at session close** — on `feat/3d-open-world`, nothing lost, nothing pushed:
+**Orchestrator re-verification of the Engineer's gate claims** — run independently, all
+confirmed:
 
-```
- M docs/handoff/PIPELINE_STATE.md
- ?? docs/handoff/QA_HUMAN_RESULTS.md
- ?? docs/handoff/DESIGN_AGENT_BRIEF.md
- ?? .claude/                  (settings.local.json + worktrees; pre-existing, untracked)
- ?? KODAMAN_HANDOFF.md        (pre-existing, untracked, and STALE — see corrections below)
-```
+- `npm test` → **76/76** (was 60/60; +16 new tests)
+- `npm run build` → clean, 25 modules, 585.89 kB
+- `kodaman_prototype.html` → **zero diff**
+- Working tree clean, nothing pushed, `main` untouched
+- The B1/B4 rotation math in the new comments was checked against the arithmetic and is correct
 
-The three `docs/handoff/` entries are this session's work and are worth committing on resume.
-The user was not asked to commit them and no commit was made.
+**Not re-verified:** draw calls still 45. The Engineer's reasoning (no mesh, geometry or
+material added or removed) is sound, but nobody has measured it since the fixes. Confirm with
+`F1` on the next browser pass.
+
+**Only `.claude/` and `KODAMAN_HANDOFF.md` remain untracked**, both pre-existing.
+
+### The Engineer's correction to the B2 diagnosis — worth carrying forward
+
+`QA_HUMAN_RESULTS.md` states the tap-`W` apex as **0.96 m**. That was the *scripted climb
+only*. A tap also keeps a coast: the FSM enters `flying` with `W` released, hover damping
+bleeds the residual climb speed off over its half-life, and **gravity is never applied in any
+flight state** — so roughly `0.087 m` of extra altitude is retained per `m/s` of climb speed.
+The real shipped apex was **1.36 m**. Sizing the fix against 0.96 m would have overshot the
+target by ~40%. The Engineer caught this and sized against 1.36 m instead.
+
+Lesson for future QA write-ups: in this FSM, altitude is not just the scripted phase.
 
 Report raw subagent token counts only. Never a percentage of a ceiling — no tool exposes
 account usage, and the user has asked that it not be attempted.
