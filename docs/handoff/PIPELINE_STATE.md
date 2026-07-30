@@ -1,9 +1,45 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-07-30 (session 3)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
-**Purpose:** If a session ends abruptly, read this file first. It is the single source of
-truth for where the 3D migration pipeline stopped and what to do next.
+**Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
+migration pipeline stopped and what to do next. Written to survive a cleared chat history.
+
+---
+
+## START HERE — cold resume in five minutes
+
+**The project.** Migrating `kodaman_prototype.html` — a 16,507-line single-file 2D canvas
+superhero game — into a 3D open-world game set in Los Angeles, built with Three.js + Vite in
+a new `kodaman3d/` directory. The 2D game is never edited; it is the design reference.
+
+**How work is organized.** A 5-agent pipeline the user specified: Research -> Review ->
+Engineer -> QA -> Overview. The main assistant orchestrates and gates each handoff rather than
+having agents spawn one another, because the user's feedback loops (Review->Research,
+QA->Engineer) require something to evaluate output and decide to send it back. All handoff
+documents live in `docs/handoff/`.
+
+**Read these in order to get current:**
+1. This file — decisions, status, resume pointer
+2. `REVIEW_FLAGS.md` — 12 adjudicated flags; the rulings are decisions already made
+3. `ENGINEER_BRIEF.md` — the self-contained Phase 1 build order (**write this if absent**)
+4. `IMPLEMENTATION_PLAN.md` — phases beyond 1
+5. `RESEARCH_FINDINGS.md` and `RESEARCH_LA_WORLDBUILDING.md` — consult by section, never
+   end-to-end
+
+**Never read `kodaman_prototype.html` in bulk.** 16,507 lines; it has killed agent budgets.
+Targeted `grep` only.
+
+**Standing working rules** (also stored in persistent memory, so they survive a cleared chat):
+- All agents run **Sonnet** except the **Engineer**, which runs **Opus**.
+- **Every agent prompt must explicitly forbid spawning subagents.** One fanned out to four
+  children unprompted and burned budget.
+- Instruct agents to **write files incrementally**. Three agents have been killed mid-task;
+  only persisted work survived.
+- Log cumulative subagent tokens per session. Begin prepping to pause near **400k**. Do not
+  pause until the user says so. **Never attempt to look up account usage** — no tool exposes
+  it, and the user asked for that to stop.
+- If genuinely unsure at a handoff, pause and ask the user rather than guessing.
 
 ---
 
@@ -106,9 +142,18 @@ Then, in order: **Engineer (Opus)** builds the slice -> **QA (Sonnet)** tests ->
 | Review (partial, stopped) | not reported |
 | **Observable total** | **~453,000** |
 
-The first Opus research agent's spend before it died is not reported. There is **no tool that
-exposes the user's account usage percentage** — only per-agent subagent token counts. Do not
-promise usage-threshold alerts that cannot be measured.
+The first Opus research agent's spend before it died is not reported.
+
+**Session 3 (in progress)**
+
+| Agent | Tokens |
+|---|---|
+| `ENGINEER_BRIEF.md` writer (Sonnet) | running |
+
+Running session-3 total: **0 reported so far.** Prep to pause near 400k.
+
+Report raw subagent token counts only. Never a percentage of a ceiling — no tool exposes
+account usage, and the user has asked that it not be attempted.
 
 ---
 
