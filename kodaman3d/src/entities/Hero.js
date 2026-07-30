@@ -208,10 +208,25 @@ export class Hero {
   syncTransform() {
     this.group.position.copy(this.state.position);
     this.group.rotation.y = this.state.facing;
-    // Positive body pitch = nose down. Rotating about +X tips the top of the
-    // body toward -Z, which is the direction the hero faces, so the sign is
-    // already correct for the "Superman horizontal" pose.
-    this.bodyPivot.rotation.x = this.state.pitch;
+    // Body pitch. `state.pitch` is POSITIVE FOR NOSE-DOWN by construction: the
+    // controller computes it as `-velocity.y / PITCH_SPEED_DIVISOR`, so a dive
+    // (velocity.y < 0) yields a positive number. That convention is what the
+    // MIN_/MAX_FORWARD_PITCH names in tuning.js describe, and it is not changed
+    // here — only the mapping onto the scene graph is.
+    //
+    // AXIS DIRECTION, EXPLICITLY. A rotation of +θ about +X maps the body's up
+    // axis (0,+1,0) to (0, cosθ, sinθ): for θ > 0 the HEAD tips toward +Z. The
+    // hero faces -Z (Scale.js), so +Z is BEHIND them — a positive rotation lays
+    // the hero onto their back and makes the FEET lead. Nose-down therefore
+    // needs a NEGATIVE rotation, which is why `state.pitch` is negated here.
+    //
+    // This was the B4 defect. The comment that used to sit here asserted the
+    // opposite ("rotating about +X tips the top of the body toward -Z") and the
+    // code faithfully followed the comment, so the hero dived feet-first. It is
+    // the same reversal that produced the B1 cape bug 90 lines below, and the
+    // two are one root cause: +X positive swings -Y toward -Z and +Y toward +Z,
+    // never the other way round. Name the axis in any comment about a sign.
+    this.bodyPivot.rotation.x = -this.state.pitch;
   }
 
   /**
@@ -294,14 +309,29 @@ export class Hero {
     // Trail: how far the cape streams out behind. Flight gets a floor value so a
     // stationary hover still has a live cape rather than a dead sheet.
     const trail = flying ? 0.45 + speedFactor * 0.9 : speedFactor * 0.8;
-    // Lift rotates the whole cape from hanging (0) toward horizontal (~90°).
+    // Lift swings the whole cape up from hanging (0) toward horizontal (~90°).
+    // It is a MAGNITUDE, always positive; the direction is applied once, at the
+    // point of use below.
     const targetLift = flying ? 1.15 + speedFactor * 0.35 : speedFactor * 1.0;
     // Cape flare on takeoff — a brief snap outward that punctuates the burst.
     const flare = this.state.capeFlare ? 0.45 : 0;
 
+    // AXIS DIRECTION, EXPLICITLY — this is the B1 fix, so do not "tidy" the sign
+    // away. The cape hangs at local (0,-1,0) from `capeAnchor`, which sits at
+    // CAPE_Z = +0.14, i.e. BEHIND the hero (facing is -Z). A rotation of +θ about
+    // +X maps (0,-1,0) to (0,-cosθ,-sinθ): for θ > 0 the hem swings toward -Z,
+    // which is the direction the hero is TRAVELLING. That is a cape streaming
+    // forward into the wind, and it is what shipped. Trailing behind means
+    // swinging the hem toward +Z, which is a NEGATIVE rotation — hence the
+    // negation here.
+    //
+    // The 2D reference agrees: drawCape() in kodaman_prototype.html uses
+    // `trail = -(8 + speed * 3.2)`, explicitly backward. The 3D port dropped the
+    // sign, and the old comment ("toward horizontal (~90°)") never said WHICH
+    // horizontal, which is exactly how it got through review.
     this.capeAnchor.rotation.x = damp(
       this.capeAnchor.rotation.x,
-      targetLift + flare,
+      -(targetLift + flare),
       12,
       dt,
     );

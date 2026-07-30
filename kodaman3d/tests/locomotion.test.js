@@ -11,7 +11,9 @@ import {
 } from '../src/controllers/LocomotionController.js';
 import { damp, smoothingWeight } from '../src/controllers/CameraRig.js';
 import { CollisionWorld } from '../src/world/Collision.js';
+import { Hero } from '../src/entities/Hero.js';
 import { Input } from '../src/core/Input.js';
+import { yawForward } from '../src/core/Scale.js';
 import { TUNING, resetTuning } from '../src/config/tuning.js';
 
 /**
@@ -123,6 +125,39 @@ describe('FSM: grounded → takeoff → flying', () => {
     const expected = TUNING.TAKEOFF_CLIMB_SPEED * TUNING.TAKEOFF_STEPS * DT;
     step(controller, mkInput({ jumpDown: true }), 11);
     expect(hero.position.y).toBeCloseTo(expected, 6);
+  });
+
+  it('B2: a tap of W gains 2.5-3 m of altitude and holds it', () => {
+    // The whole of bug B2. Note that the scripted climb is only PART of the
+    // gain: on entering `flying` with W already released, the hover half-life
+    // bleeds the residual climb speed off over ~0.4 s, and because gravity is
+    // never applied in flight, every metre of that coast is kept. Measuring only
+    // TAKEOFF_CLIMB_SPEED × TAKEOFF_STEPS × dt (1.92 m here) understates the
+    // apex by about 40% and is what made the original 4.8 look adequate on
+    // paper. Assert the SETTLED altitude, which is what a player experiences.
+    const { hero, controller } = makeRig();
+    controller.update(DT, mkInput({ jumpPressed: true, jumpDown: true }), 0);
+    step(controller, mkInput(), 180); // released immediately: a tap, not a climb
+
+    expect(hero.position.y).toBeGreaterThan(2.5);
+    expect(hero.position.y).toBeLessThan(3.0);
+    expect(hero.state).toBe(LocomotionState.FLYING);
+    // Hover HOLDS the apex. A tap that drifts back down would read as a hop.
+    expect(hero.velocity.y).toBe(0);
+  });
+
+  it('B2: the burst still lands inside the camera cross-fade window', () => {
+    // Criteria 14 and 24 passed human QA against a 0.2 s takeoff feeding a 0.6 s
+    // camera cross-fade. TAKEOFF_STEPS was deliberately not touched, but the
+    // taller climb must also not leave the hero still rising after the blend has
+    // finished — that is what would turn a "burst" into a "drift".
+    const { hero, controller } = makeRig();
+    controller.update(DT, mkInput({ jumpPressed: true, jumpDown: true }), 0);
+    step(controller, mkInput(), Math.round(TUNING.CAM_BLEND_TIME * 60) - 1);
+    const atBlendEnd = hero.position.y;
+    step(controller, mkInput(), 180);
+
+    expect(atBlendEnd).toBeGreaterThan(hero.position.y * 0.95);
   });
 
   it('keeps horizontal control active during takeoff (not a canned animation)', () => {
@@ -487,6 +522,137 @@ describe('orientation', () => {
     expect(hero.pitch).toBeGreaterThanOrEqual(TUNING.MIN_FORWARD_PITCH);
     expect(hero.pitch).toBeLessThanOrEqual(TUNING.MAX_FORWARD_PITCH);
     expect(hero.pitch).toBeCloseTo(TUNING.MIN_FORWARD_PITCH, 9); // clamped while climbing
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hero visual orientation — bugs B1 (cape) and B4 (body pitch)
+//
+// These drive the REAL Hero mesh, not a stand-in. Hero.js only ever touches
+// CPU-side Three.js (Group, geometries, materials, matrices) — no renderer, no
+// canvas, no DOM — so it runs unchanged under `environment: 'node'`, and the
+// assertions below therefore cover the whole transform chain: controller state
+// -> syncTransform -> group yaw -> bodyPivot pitch -> capeAnchor lift.
+//
+// They live here rather than in a third test file for the same reason the
+// camera smoothing assertion does: Phase 1's file tree allows exactly two.
+//
+// WHY ASSERT DOT PRODUCTS AND NOT RAW ROTATION SIGNS. Both bugs were sign errors
+// that a comment asserting the wrong sign made invisible. A test that reasserted
+// `rotation.x > 0` would have been written from the same wrong model and would
+// have locked the bug in. Asking "is the cape hem BEHIND the hero's facing
+// direction" through the real matrices cannot be satisfied by a bug.
+// ---------------------------------------------------------------------------
+
+describe('Hero visual orientation — B1 cape, B4 body pitch', () => {
+  /** Build the real Hero mesh with a real controller driving its state object. */
+  function makeHero({ facing = 0.9 } = {}) {
+    const scene = new THREE.Scene();
+    const hero3d = new Hero({ scene, position: new THREE.Vector3(0, 0, 0) });
+    const collision = new CollisionWorld({ halfExtent: 150 });
+    const controller = new LocomotionController({ hero: hero3d.state, collision });
+    hero3d.state.facing = facing;
+    return { hero3d, controller, state: hero3d.state };
+  }
+
+  /** Advance simulation and visuals together, exactly as Game.js does. */
+  function stepHero(hero3d, controller, input, n) {
+    for (let i = 0; i < n; i++) {
+      controller.update(DT, input, 0);
+      hero3d.syncTransform();
+      hero3d.update(DT);
+    }
+    hero3d.group.updateMatrixWorld(true);
+  }
+
+  /** A local axis of `object`, expressed in world space as a unit direction. */
+  function worldAxis(object, x, y, z) {
+    const q = object.getWorldQuaternion(new THREE.Quaternion());
+    return new THREE.Vector3(x, y, z).applyQuaternion(q).normalize();
+  }
+
+  /** The hero's own forward direction in world space. */
+  function forwardOf(state) {
+    return new THREE.Vector3().copy(yawForward(state.facing, { x: 0, y: 0, z: 0 }));
+  }
+
+  it('B1: the cape hem trails BEHIND the hero at a full ground dash', () => {
+    const { hero3d, controller, state } = makeHero();
+    stepHero(hero3d, controller, mkInput({ forward: true, dash: true }), 150);
+
+    // The hem hangs at local -Y from the anchor; lift swings it about X.
+    const hem = worldAxis(hero3d.capeAnchor, 0, -1, 0);
+    const forward = forwardOf(state);
+
+    // Negative dot = the hem points opposite to travel, i.e. it trails. The
+    // shipped bug produced roughly +0.84 here.
+    expect(hem.dot(forward)).toBeLessThan(-0.7);
+    expect(hero3d.capeAnchor.rotation.x).toBeLessThan(0);
+  });
+
+  it('B1: the cape hem trails BEHIND the hero in dashing flight', () => {
+    const { hero3d, controller, state } = makeHero();
+    // Take off, then dash forward without climbing.
+    controller.update(DT, mkInput({ jumpPressed: true, jumpDown: true }), 0);
+    stepHero(hero3d, controller, mkInput({ forward: true, dash: true }), 240);
+
+    expect(state.flightActive).toBe(true);
+    const hem = worldAxis(hero3d.capeAnchor, 0, -1, 0);
+    expect(hem.dot(forwardOf(state))).toBeLessThan(-0.8);
+  });
+
+  it('B1: a standing hero has a cape that hangs down, not out', () => {
+    // Guard against "fixed" by simply reversing a constant: at zero speed the
+    // lift is zero and the cape must still hang under gravity, both before and
+    // after the sign fix.
+    const { hero3d, controller } = makeHero();
+    stepHero(hero3d, controller, mkInput(), 120);
+    const hem = worldAxis(hero3d.capeAnchor, 0, -1, 0);
+    expect(hem.y).toBeLessThan(-0.99);
+  });
+
+  it('B4: the hero dives HEAD-FIRST, not feet-first', () => {
+    const { hero3d, controller, state } = makeHero();
+    forceFlying(state, 100);
+    // No directional input, so yaw holds at 0.9 — which is the point: a non-zero
+    // facing proves the group's yaw is not what makes the sign come out right.
+    stepHero(hero3d, controller, mkInput({ descend: true }), 120);
+
+    expect(state.velocity.y).toBeLessThan(-5); // genuinely diving
+    expect(state.pitch).toBeGreaterThan(0.5); // positive pitch == nose down
+
+    // The head axis must lean INTO the direction of travel.
+    const head = worldAxis(hero3d.bodyPivot, 0, 1, 0);
+    const forward = forwardOf(state);
+    expect(head.dot(forward)).toBeGreaterThan(0.5);
+    // ...and the head must still be the high end of the body. A 90° over-rotation
+    // would satisfy the dot test alone.
+    expect(head.y).toBeGreaterThan(0.5);
+  });
+
+  it('B4: the hero climbs NOSE-UP', () => {
+    const { hero3d, controller, state } = makeHero();
+    forceFlying(state, 100);
+    stepHero(hero3d, controller, mkInput({ jumpDown: true }), 120);
+
+    expect(state.velocity.y).toBeGreaterThan(5);
+    expect(state.pitch).toBeCloseTo(TUNING.MIN_FORWARD_PITCH, 9); // clamped, negative
+
+    const head = worldAxis(hero3d.bodyPivot, 0, 1, 0);
+    expect(head.dot(forwardOf(state))).toBeLessThan(-0.3);
+    expect(head.y).toBeGreaterThan(0.5);
+  });
+
+  it('B4: level flight leaves the hero upright', () => {
+    const { hero3d, controller, state } = makeHero();
+    forceFlying(state, 100);
+    stepHero(hero3d, controller, mkInput(), 120);
+
+    // toBeCloseTo, not toBe: hover zeroes velocity.y exactly, and `-velocity.y`
+    // then yields the signed zero -0, which `toBe(0)` rejects.
+    expect(state.pitch).toBeCloseTo(0, 12);
+    const head = worldAxis(hero3d.bodyPivot, 0, 1, 0);
+    expect(head.y).toBeGreaterThan(0.999);
   });
 });
 
