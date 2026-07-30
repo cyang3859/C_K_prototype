@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-07-30 (session 3)
+**Last updated:** 2026-07-30 (session 4 — closed after the human QA pass)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -13,18 +13,27 @@ migration pipeline stopped and what to do next. Written to survive a cleared cha
 superhero game — into a 3D open-world game set in Los Angeles, built with Three.js + Vite in
 a new `kodaman3d/` directory. The 2D game is never edited; it is the design reference.
 
-**How work is organized.** A 5-agent pipeline the user specified: Research -> Review ->
-Engineer -> QA -> Overview. The main assistant orchestrates and gates each handoff rather than
-having agents spawn one another, because the user's feedback loops (Review->Research,
-QA->Engineer) require something to evaluate output and decide to send it back. All handoff
-documents live in `docs/handoff/`.
+**How work is organized.** A **6-agent** pipeline the user specified. Research **branches**:
+technical and worldbuilding requirements go Research -> Review -> Engineer, while visual and
+look-and-feel components go Research -> **Design** -> Engineer, with Design's output passing
+through Review for a **budget and feasibility check only** on the way. Then Engineer -> QA ->
+Overview. The main assistant orchestrates and gates each handoff rather than having agents
+spawn one another, because the user's feedback loops (Review->Research, QA->Engineer) require
+something to evaluate output and decide to send it back. All handoff documents live in
+`docs/handoff/`.
+
+The Design agent was added 2026-07-30 (session 3) after the human QA pass. See
+`DESIGN_AGENT_BRIEF.md` for its charter, the Research->Design handoff contract, and its spawn
+prompt.
 
 **Read these in order to get current:**
 1. This file — decisions, status, resume pointer
-2. `REVIEW_FLAGS.md` — 12 adjudicated flags; the rulings are decisions already made
-3. `ENGINEER_BRIEF.md` — the self-contained Phase 1 build order (**write this if absent**)
-4. `IMPLEMENTATION_PLAN.md` — phases beyond 1
-5. `RESEARCH_FINDINGS.md` and `RESEARCH_LA_WORLDBUILDING.md` — consult by section, never
+2. `QA_HUMAN_RESULTS.md` — the human test pass; 3 confirmed bugs + 1 suspected, assigned
+3. `REVIEW_FLAGS.md` — 12 adjudicated flags; the rulings are decisions already made
+4. `DESIGN_AGENT_BRIEF.md` — the new sixth agent; read before spawning anything design-related
+5. `ENGINEER_BRIEF.md` — the self-contained Phase 1 build order
+6. `IMPLEMENTATION_PLAN.md` — phases beyond 1
+7. `RESEARCH_FINDINGS.md` and `RESEARCH_LA_WORLDBUILDING.md` — consult by section, never
    end-to-end
 
 **Never read `kodaman_prototype.html` in bulk.** 16,507 lines; it has killed agent budgets.
@@ -78,7 +87,10 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Review — engineer brief | Sonnet | **done** | `ENGINEER_BRIEF.md` (917 lines, 28 tagged acceptance criteria) |
 | Review — summary | Sonnet | **not written** (low value now; the brief superseded it) | `REVIEW_SUMMARY.md` |
 | Engineer — Phase 1 | **Opus** | **done** | `kodaman3d/` — 25 files, 6,691 lines, 4 commits |
-| QA | Sonnet | **NOT STARTED — resume here** | `QA_REPORT.md` |
+| QA — headless agent | Sonnet | **never run** (superseded for the 13 `[HUMAN]` criteria) | `QA_REPORT.md` |
+| QA — human test pass | user | **done** | `QA_HUMAN_RESULTS.md` — 10 pass, 1 pass-with-defect, 1 fail |
+| Engineer — bug fixes B1–B3 | **Opus** | **NOT STARTED — resume here** | fixes in `kodaman3d/` |
+| Design — Phase 1 polish | Sonnet | **defined, not spawned** (gated on B1–B3) | `DESIGN_SPEC_PHASE_1.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
 Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
@@ -87,24 +99,37 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ## >>> RESUME HERE <<<
 
-**Phase 1 is BUILT and independently verified. QA has not run yet.**
+**Phase 1 is BUILT, independently verified, and human-tested. It survived the test pass in good
+shape: 10 of 13 browser criteria clean, one measurement recorded, one defect, one fail.**
 
-**Next action:** spawn a **Sonnet** QA agent. Its brief:
-- Read `docs/handoff/ENGINEER_SUMMARY.md` and `docs/handoff/ENGINEER_BRIEF.md` §12
-  (28 acceptance criteria, each tagged `[VITEST]` / `[HEADLESS]` / `[HUMAN]`).
-- Re-verify the 16 criteria the Engineer verified; do not take its word for them.
-- The 12 `[HUMAN]` criteria need a browser and a GPU. **A headless agent cannot verify these
-  and must not claim to.** They are for the user at the keyboard.
-- Review code quality against the brief's flexibility/comment requirements.
-- Produce `docs/handoff/QA_REPORT.md`. If bugs are found, it goes back to the Engineer. If
-  clean, open a PR against `dev` — **never push `main`.**
+**Next action:** spawn an **Opus** Engineer agent to fix B1–B3 in `QA_HUMAN_RESULTS.md`.
 
-Then: **Overview (Sonnet)** assembles `KNOWLEDGE_BASE.md` and the build wireframe.
+| Bug | Summary | Where |
+|---|---|---|
+| **B1** | Cape streams forward instead of trailing. Sign error — confirmed by math and by the 2D reference's negative `trail`. | `Hero.js:302-307` |
+| **B2** | Tap-`W` takeoff gains only 0.96 m. Raise the scripted climb toward ~2.5–3 m. | `tuning.js:132-135` |
+| **B3** | Camera renders building interior on a `Shift`-dash into a wall. **The Engineer's own named fallback — sphere-cast the camera arm — is hereby authorised.** | `CameraRig.js:189-214` |
+| **B4** | *Suspected*: flight body pitch inverted the same way as B1. **Confirm visually before fixing**; the comment is wrong either way. | `Hero.js:211-214` |
 
-**The user has `HUMAN_TEST_GUIDE.md`** — a step-by-step walkthrough of the 13 criteria that
-need a real browser and GPU. If they have run it, their results are the highest-value input
-available; ask for them before doing anything else. Any failure they report goes to the
-Engineer agent as a bug (the QA->Engineer loop).
+That document is self-contained — root cause, exact fix, what not to do, and the verification
+step for each. Hand it over whole. Standing rules apply: no subagent spawning, incremental
+writes, ask rather than guess.
+
+**Then, in order:**
+1. **Design (Sonnet)** — the new sixth agent. Read `DESIGN_AGENT_BRIEF.md` first; it holds the
+   charter, the binding constraints table, and a ready spawn prompt. **Gated on B1–B3 landing**,
+   because B1/B4 change how the hero looks in motion.
+2. **Review (Sonnet)** — budget gate on the design spec. Draw calls, triangles, renderer
+   feasibility, locked decisions. **Not a vote on taste.**
+3. **Engineer (Opus)** — implement the reviewed design spec.
+4. **Overview (Sonnet)** — `KNOWLEDGE_BASE.md` and the build wireframe.
+
+**Draw calls measured at 45 against the 60 ceiling.** Fifteen calls of headroom is the single
+most important number for everything downstream of here — the whole realism pass has to fit
+inside it.
+
+**A PR against `dev` has not been opened.** The original plan was to open it after a clean QA
+pass; QA was not clean. Open it once B1–B3 are fixed and verified. **Never push `main`.**
 
 ### Independent verification already performed by the orchestrator
 
@@ -166,6 +191,35 @@ The first Opus research agent's spend before it died is not reported.
 it. Slowing down; awaiting the user's call on whether to run QA now or pause first.
 
 Cross-session observable total: **~771,000.**
+
+**Session 4 — ended 2026-07-30, closed deliberately by the user.**
+
+**No subagents were spawned.** All work was orchestrator-side: the user's human test results
+were collected, diagnosed against the source, and turned into handoff documents. Session 4
+adds **0** to the observable subagent total, which stays at **~771,000**.
+
+What happened:
+1. The user ran `HUMAN_TEST_GUIDE.md` in full and reported all 13 results.
+2. Each failure was diagnosed against the actual source before being written up — not taken at
+   face value from the report. That is how B3's real cause (near-plane geometry, not hero
+   penetration) and the suspected B4 were found.
+3. The user approved adding a **Design agent** as a sixth pipeline stage, with Research
+   branching and a Review budget gate on Design's output.
+4. Wrote `QA_HUMAN_RESULTS.md` and `DESIGN_AGENT_BRIEF.md`; rewrote this file's pipeline shape,
+   status table, and resume pointer.
+
+**Uncommitted at session close** — on `feat/3d-open-world`, nothing lost, nothing pushed:
+
+```
+ M docs/handoff/PIPELINE_STATE.md
+ ?? docs/handoff/QA_HUMAN_RESULTS.md
+ ?? docs/handoff/DESIGN_AGENT_BRIEF.md
+ ?? .claude/                  (settings.local.json + worktrees; pre-existing, untracked)
+ ?? KODAMAN_HANDOFF.md        (pre-existing, untracked, and STALE — see corrections below)
+```
+
+The three `docs/handoff/` entries are this session's work and are worth committing on resume.
+The user was not asked to commit them and no commit was made.
 
 Report raw subagent token counts only. Never a percentage of a ceiling — no tool exposes
 account usage, and the user has asked that it not be attempted.
