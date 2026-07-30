@@ -30,20 +30,50 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 
 ## Agent pipeline status
 
+**Session 2 ended 2026-07-30, paused deliberately by user.**
+
 | Stage | Model | Status | Output |
 |---|---|---|---|
-| Research — Phase 1 spec | Opus | **done** | `PHASE_1_SPEC.md` (511 lines, committed `3d6218b`) |
-| Research — LA worldbuilding | Opus | **in progress** | `RESEARCH_LA_WORLDBUILDING.md` |
-| Research — findings + plan | Sonnet | **not started** | `RESEARCH_FINDINGS.md`, `IMPLEMENTATION_PLAN.md`, `RESEARCH_SUMMARY.md` |
-| Review | Sonnet | not started | `REVIEW_HANDOFF.md` |
+| Research — Phase 1 spec | Opus | **done** | `PHASE_1_SPEC.md` (511 lines) |
+| Research — LA worldbuilding | Opus | **done** | `RESEARCH_LA_WORLDBUILDING.md` (688 lines) |
+| Research — architecture/characters/constraints | Sonnet | **done** | `RESEARCH_FINDINGS.md` (920 lines, A1–A13 / C1–C4 / D1–D4, no gaps) |
+| Review — flags | Sonnet | **done** | `REVIEW_FLAGS.md` (355 lines) |
+| Review — implementation plan | Sonnet | **done** | `IMPLEMENTATION_PLAN.md` (594 lines) |
+| Review — engineer brief | Sonnet | **NOT WRITTEN — resume here** | `ENGINEER_BRIEF.md` |
+| Review — summary | Sonnet | **not written** | `REVIEW_SUMMARY.md` |
 | Engineer | **Opus** | not started | `kodaman3d/` vertical slice |
 | QA | Sonnet | not started | `QA_REPORT.md` or PR |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
+
+Total research + planning corpus on disk: **3,215 lines across 6 documents.**
+
+---
+
+## >>> RESUME HERE <<<
+
+The Review agent was stopped mid-task, immediately after finishing `IMPLEMENTATION_PLAN.md`
+and just as it began `ENGINEER_BRIEF.md`. Nothing was lost — it wrote incrementally.
+
+**Next action:** spawn a **Sonnet** agent to write `docs/handoff/ENGINEER_BRIEF.md`. Do NOT
+resume the old agent from its transcript — replaying that context is expensive (a comparable
+resume cost ~138k tokens). A fresh agent is cheaper because every input it needs is already
+committed to disk.
+
+That brief must be the single, self-contained, ambiguity-free Phase 1 build order: exact
+pinned dependencies, exact file list with per-module responsibility, data structures, game
+loop shape, camera math, input mapping (WASD move, W-tap flight toggle, Q persona toggle,
+J/K/L abilities, Shift dash), the resolved WebGL renderer decision, and precise acceptance
+criteria. It must fold in the F7 damping correction below. The Engineer should never need a
+second document.
+
+Then, in order: **Engineer (Opus)** builds the slice -> **QA (Sonnet)** tests -> **Overview
+(Sonnet)** assembles the knowledge base.
 
 ---
 
 ## What happened so far
 
+**Session 1**
 1. Verified the real state of the codebase. `KODAMAN_HANDOFF.md` is **stale** — it claims
    ~5,200 lines; the actual file is **16,507 lines / 896 KB**, 100% 2D canvas, no dependencies.
    Trust the code over that doc.
@@ -51,18 +81,81 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
    Fast-forwarded to `origin/dev`. The first research agent read the stale file for part of its
    run and was sent a correction mid-flight.
 3. First research agent completed `PHASE_1_SPEC.md`, then **terminated on a session token
-   limit** while writing the implementation plan.
-4. Its LA worldbuilding child agent completed substantial research but wrote **no files**;
-   being resumed now solely to persist findings.
+   limit** while writing the implementation plan. Its LA child agent finished substantial
+   research but had written **no files**.
 
-## Known gaps to close
+**Session 2**
+4. Resumed the LA agent for the sole purpose of persisting its findings to disk. Cost ~138k
+   tokens but rescued ~100k tokens of research that existed nowhere else.
+5. A Sonnet research agent spawned **four unauthorized child agents**. It was stopped and
+   redirected. Its children's work had already returned, so the 920-line findings file is
+   complete rather than wasteful — but the fan-out was not sanctioned and should not recur.
+   **Lesson: explicitly forbid subagent spawning in every agent prompt.**
+6. User decided trademark handling (locked decisions 5 and 6).
+7. Review agent resolved all three known conflicts, produced 12 flags + 3 research items,
+   and wrote the implementation plan before being stopped for the session pause.
 
-- `PHASE_1_SPEC.md` references `RESEARCH_FINDINGS.md` §A7 (physics-engine comparison) — that
-  file does not exist yet. Dangling reference.
-- `IMPLEMENTATION_PLAN.md` is referenced as holding the Vite 7 vs 8 open question — also
-  does not exist yet.
-- No research yet written for Three.js architecture (section A), DC-inspired character design
-  (section C), or practical constraints (section D). Only LA worldbuilding (B) is in flight.
+### Cost log (observable subagent tokens only)
+
+| Agent | Tokens |
+|---|---|
+| LA worldbuilding (session 1) | 100,056 |
+| Findings, first pass | 63,697 |
+| LA worldbuilding recovery | 137,871 |
+| Findings, completion | 151,384 |
+| Review (partial, stopped) | not reported |
+| **Observable total** | **~453,000** |
+
+The first Opus research agent's spend before it died is not reported. There is **no tool that
+exposes the user's account usage percentage** — only per-agent subagent token counts. Do not
+promise usage-threshold alerts that cannot be measured.
+
+---
+
+## Review outcomes — see `REVIEW_FLAGS.md` for full detail
+
+**Headline: zero unresolved BLOCKERs remain for Phase 1.**
+12 flags total (3 BLOCKER-designated-and-resolved, 4 MAJOR resolved, 5 MINOR) plus 3 items
+marked NEEDS RESEARCH.
+
+### Rulings on the three known conflicts
+
+| Flag | Conflict | Ruling |
+|---|---|---|
+| F1 | `WebGLRenderer` (spec §5) vs `WebGPURenderer` (findings §A13) | **WebGL for the whole plan.** The official CSM cascaded-shadow addon is WebGL-only; WebGPU would need the less-mature `CSMShadowNode`. Choosing WebGPU also commits to TSL vs classic materials and is expensive to reverse once world/character code is built against it. |
+| F2 | `PHASE_1_SPEC.md` Hero.js cites §C4, means §C3 | Confirmed citation bug. Corrected in the brief. |
+| F3 | 4,096 m world extent (LA research §9.5, provisional) | Reconciled against the §A4 draw-call/triangle budgets. See `REVIEW_FLAGS.md` F3 for the reconciled figure and reasoning. |
+
+### F7 — the most important technical correction
+
+`PHASE_1_SPEC.md` §5 gives a general per-frame→per-second damping conversion of
+`perSecond = factor^60`, but it only holds for two of the three constants:
+
+| Constant | per-frame | `factor^60` | Verdict |
+|---|---|---|---|
+| `GROUND_FRICTION` | 0.82 | ~6.75x10^-6 | fine |
+| `AIR_FRICTION` | 0.92 | ~6.74x10^-3 | fine |
+| `FLIGHT_HOVER_DAMPING` | 0.18 | **~2.1x10^-45** | **degenerate** |
+
+`0.18^60` is so close to zero that `v *= Math.pow(2.1e-45, dt)` collapses velocity to zero
+within a single fixed step. Not numerically broken — JS doubles handle it, no NaN risk — but
+it provides **no usable tuning knob**: the constant does nothing until the exponent nears 1.0,
+at which point it swings between "instant" and "never."
+
+**Resolution the Engineer must implement:** give hover damping its own explicit decay with a
+half-life of ~0.05–0.08 s, exposed in lil-gui as `hoverDampingHalfLife`, applied as
+`v *= 0.5 ** (dt / halfLife)`, combined with the spec's existing hard snap-to-zero below
+0.11 m/s. **Do not derive it from `0.18^60`.** `GROUND_FRICTION` and `AIR_FRICTION` are fine
+as specified.
+
+### Three items needing research, not judgment
+
+- **R1** — LA visibility/haze parameters. The fog numbers in LA research §9.5 are guesses. The
+  LaDochy visibility PDF is cached in the session scratchpad and needs text extraction.
+- **R2** — DTLA and suburban block dimensions. Lead: the 1849 Ord survey in varas.
+- **R3** — Trademark rename per-occurrence classification. The §C4 counts are **sampled, not
+  exhaustively classified** into player-visible strings vs. code identifiers vs. comments.
+  Totals are reliable; the per-category split is approximate.
 
 ---
 
@@ -112,6 +205,17 @@ decision, not an emergency.
 
 **Not blocking Phase 1** — the vertical slice is hero + street block + camera, no named
 characters. The mapping table is needed before Phase 2 content porting begins.
+
+### STILL OUTSTANDING — the proposed names are not yet actual names
+
+`RESEARCH_FINDINGS.md` §C4 contains the full mapping table, but its "proposed replacement"
+column currently holds **descriptions, not names** — e.g. "new reporter-companion name",
+"invented secure-facility name". Nothing in it is usable as-is.
+
+Before Phase 2 porting starts, someone must turn that column into concrete names. Per locked
+decision 6 the user approves them. A reasonable split, offered when the user next engages:
+the user supplies names for the characters they care about (the companion at 345 refs
+especially), and agents fill in the remainder for sign-off.
 
 ---
 
