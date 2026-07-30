@@ -101,6 +101,11 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 Then: **Overview (Sonnet)** assembles `KNOWLEDGE_BASE.md` and the build wireframe.
 
+**The user has `HUMAN_TEST_GUIDE.md`** — a step-by-step walkthrough of the 13 criteria that
+need a real browser and GPU. If they have run it, their results are the highest-value input
+available; ask for them before doing anything else. Any failure they report goes to the
+Engineer agent as a bug (the QA->Engineer loop).
+
 ### Independent verification already performed by the orchestrator
 
 Do not redo these — they are confirmed:
