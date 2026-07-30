@@ -66,12 +66,51 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 
 ## Open items needing user sign-off
 
-**Trademark exposure — unresolved, blocking public release.** The existing code uses literal
-DC marks: scene names `wayne` and `arkham`, an enemy named "Lexcorp Warsuit", and characters
-named "Lois" and "Power Girl". Harmless in a private prototype; not harmless in a public
-GitHub repo, which is where delivery is headed. A rename mapping table (old -> proposed new)
-is owed to the user for sign-off. **No agent should rename anything unilaterally.** The
-character *designs* are already legally distinct; only the names are the problem.
+### Trademark exposure — MUCH larger than first assessed. Blocks public release.
+
+Measured occurrence counts in `kodaman_prototype.html` (case-insensitive). The `wayne` count
+of 112 and the `drawCape` location were independently verified by the orchestrator.
+
+| Mark | Count | Type |
+|---|---|---|
+| `Lois` / Lois Lane | 345 | companion character |
+| `arkham` | 126 | scene id, building |
+| `lexcorp` | 114 | building |
+| `wayne` (+ Wayne Enterprises, Bruce Wayne) | 112 | scene id, building, character |
+| `powerGirl` | 93 | companion character |
+| Wonder Woman / Diana / Themyscira / Ares | 61 | L3 companion arc, location, villain |
+| Gotham City | 31 | destination location |
+| Lex Luthor | 28 | boss character |
+| Kryptonite / Kryptonian | 6 | material / origin term |
+| Metropolis | 4 | location reference |
+| "Daily Planet" | 1 | ambient NPC dialogue line |
+| Darkseid / Superman / Batman | 5 | **source comments only**, not player-visible |
+
+**Roughly 900+ occurrences across 10+ distinct protected marks.** This is NOT a cosmetic
+find-and-replace. `Lois` at 345 and the Wonder Woman/Diana/Themyscira/Ares Level 3 arc mean a
+rename touches character logic, dialogue trees, and quest state machines — not just display
+strings.
+
+Character *designs* are already legally distinct. **Only the names are the problem.**
+
+**Not blocking Phase 1** — the vertical slice is hero + street block + camera and needs no
+named characters. It blocks Phase 2+ content porting and any public push.
+**No agent renames anything unilaterally.** Awaiting user sign-off on the mapping table.
+
+---
+
+## Corrections to existing project docs
+
+`KODAMAN_HANDOFF.md` is stale and wrong on at least these points:
+
+1. **Line count.** Claims ~5,200; actual is **16,507**.
+2. **Cape rendering.** Claims a "multi-segment bezier quad-strip." Actually
+   `drawCape()` at `kodaman_prototype.html:5188` is a **7-segment closed polygon** built with
+   `ctx.lineTo` + `closePath()`, using per-vertex `Math.sin(e.capePhase + t*3)` wave
+   displacement, a speed-driven backward trail (`trail = -(8 + speed * 3.2)`), and a flight-
+   dependent `lift`. No bezier curves are used anywhere in it. Verified by direct read.
+   This is good news for the 3D port: a sine-displaced polygon strip maps cleanly onto a
+   bone-chain or vertex-shader cape.
 
 ---
 
