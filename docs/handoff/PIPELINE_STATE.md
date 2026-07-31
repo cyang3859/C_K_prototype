@@ -90,8 +90,11 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | QA — headless agent | Sonnet | **never run** (superseded for the 13 `[HUMAN]` criteria) | `QA_REPORT.md` |
 | QA — human test pass | user | **done** | `QA_HUMAN_RESULTS.md` — 10 pass, 1 pass-with-defect, 1 fail |
 | Engineer — bug fixes B1–B4 | **Opus** | **done** — 4 commits, tests 76/76 | `ENGINEER_FIX_REPORT.md` |
-| Human spot-check of the fixes | user | **NOT DONE — resume here** | 6-step checklist in the fix report |
-| Design — Phase 1 polish | Sonnet | **defined, not spawned** (needs the B5 decision) | `DESIGN_SPEC_PHASE_1.md` |
+| Human spot-check of the fixes | user | **NOT DONE — user declined for now** | 6-step checklist in the fix report |
+| Design — buildings | Sonnet | **done** | `DESIGN_SPEC_PHASE_1_BUILDINGS.md` (446 lines) |
+| Review — feasibility gate | Sonnet | **done** — APPROVED WITH CORRECTIONS | `REVIEW_DESIGN_SPEC_BUILDINGS.md` |
+| Engineer — implement the building spec | **Opus** | **NOT STARTED — resume here** | changes in `StreetBlock.js` |
+| Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
 Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
@@ -209,10 +212,16 @@ Cross-session observable total: **~771,000.**
 | Agent | Tokens |
 |---|---|
 | Engineer — B1–B4 bug fixes (Opus) | 152,611 |
-| **Session 4 total** | **152,611** |
+| Design — building spec (Sonnet) | 122,497 |
+| Review — feasibility gate on that spec (Sonnet) | 113,626 |
+| **Session 4 total** | **388,734** |
 
-Cross-session observable total: **~924,000**. Well inside the per-session 400k prep-to-pause
-mark; no need to slow down.
+Cross-session observable total: **~1,160,000**.
+
+**AT THE 400k PREP-TO-PAUSE MARK.** The next Engineer run costs ~150–190k on the evidence of
+the last one, which would put this session near 550k. Prep to pause is underway; **do not pause
+until the user says so.** Never attempt to look up account usage — no tool exposes it and the
+user has asked that it stop.
 
 What happened:
 1. The user ran `HUMAN_TEST_GUIDE.md` in full and reported all 13 results.
