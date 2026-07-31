@@ -62,6 +62,9 @@ Targeted `grep` only.
 | 4 | Delivery | **Feature branch + PR against `dev`.** No agent pushes `main`. No deploy target exists. |
 | 5 | Trademark handling | **Rename in the 3D build ONLY.** `kodaman3d/` uses original, legally-distinct names from day one. `kodaman_prototype.html` keeps its current names and is NOT edited. |
 | 6 | Naming authority | **Agents propose, user approves.** Research delivers the old->new mapping table with rationale. No agent applies a rename before user sign-off. |
+| 7 | Draw-call ceiling | **The 60 ceiling is a Phase 1 number and is deliberately raised for Phase 2.** Set the new figure from a **measured worst case**, not a guess. User decision 2026-07-30. |
+| 8 | World extent | **Vast and explorable, but BOUNDED.** Explicitly *not* endless open world. User decision 2026-07-30. |
+| 9 | Skeletal animation | **Pulled forward into Phase 2** (was Phase 5). Accepts imported rigged assets, which supersedes the Phase 1 primitives-only constraint from Phase 2 onward. User decision 2026-07-30. |
 
 ## Model assignment
 
@@ -106,7 +109,15 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 **Phase 1 is BUILT, independently verified, and human-tested. It survived the test pass in good
 shape: 10 of 13 browser criteria clean, one measurement recorded, one defect, one fail.**
 
-**Session 4 ended here by user decision, with two things queued and nothing in flight.**
+**Scope note, from the user 2026-07-30.** After the spot-check they gave a batch of broader
+design feedback — character not human enough and wanting a comic-accurate read, empty world with
+too few landmarks, buildings and landscape "too blocky and rigid," open-world inspiration from
+RDR2 and Watch Dogs, animation fluidity like Ghost of Tsushima. They then recognised it as scope
+creep against the phase plan themselves and **deferred it to Phase 2+**. Locked decisions 7, 8
+and 9 are what survived into binding scope. **Do not fold the deferred feedback into Phase 1
+work** — it is Phase 2 Research input and is recorded here so it is not lost.
+
+**Session 4 continued past this point; see below for current status.**
 
 **The user is running the browser spot-check between sessions.** The guide is
 `docs/handoff/BROWSER_SPOT_CHECK.md` — 9 steps, written for them, covering B1–B4 visually, the
