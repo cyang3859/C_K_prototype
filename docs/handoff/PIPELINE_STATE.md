@@ -96,7 +96,8 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Human spot-check of the fixes | user | **NOT DONE — user declined for now** | 6-step checklist in the fix report |
 | Design — buildings | Sonnet | **done** | `DESIGN_SPEC_PHASE_1_BUILDINGS.md` (446 lines) |
 | Review — feasibility gate | Sonnet | **done** — APPROVED WITH CORRECTIONS | `REVIEW_DESIGN_SPEC_BUILDINGS.md` |
-| Engineer — implement the building spec | **Opus** | **NOT STARTED — resume here** | changes in `StreetBlock.js` |
+| Engineer — B5 limb pose | orchestrator, inline | **done** — commit `44df9fe` | `Hero.js` flight pose |
+| Engineer — implement the building spec | **Opus** | **FAILED on a session limit, no work done — resume here** | changes in `StreetBlock.js` |
 | Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
@@ -146,7 +147,28 @@ on an `InstancedMesh` is **still one draw call and zero budget change**, looks m
 coping, and leaves the roof centre clear so the collision correction is not needed at all. Put
 this to the user before the Engineer starts.
 
-**Also still open: decide B5.**
+**B5 is decided and fixed** — arms forward, legs trailing, commit `44df9fe`. Done inline by the
+orchestrator rather than by an agent: the diagnosis was already complete in
+`SPOT_CHECK_RESULTS.md` and the change was two sign flips. Unverified visually.
+
+### OPEN FINDING — body pitch ignores horizontal speed
+
+Raised while fixing B5, **not yet acted on, needs a user decision.**
+
+`LocomotionController.js:507-511` computes `pitch = -velocity.y / PITCH_SPEED_DIVISOR` — from
+**vertical velocity alone.** So flying fast and level produces `pitch = 0` and leaves the hero
+**upright**, standing in the air, however fast they are travelling. The comment directly above it
+claims the opposite: "Body pitch leans the hero toward horizontal at speed (the Superman pose)."
+
+This is very likely the deeper cause of the user's "the flight pose is inverted, the arms don't
+point towards the direction of travel." The B5 sign fix makes the arms reach forward *relative to
+the body*, but if the body stays vertical during level cruise, forward-reaching arms still point
+upward in world space.
+
+**Candidate fix:** derive pitch from horizontal speed as well as vertical — lean toward
+horizontal as the hero approaches `FLIGHT_DASH_SPEED`, with the existing vertical term added on
+top. **This is a feel change, not a bug fix**, so it is the user's call, and it wants a browser
+to tune. Do not fold it into an unrelated run.
 
 **B5 — flight limb poses carry the same inversion as B1/B4.** Arms at `rotation.x = -2.6`
 sweep **back** over the head while the comment says "arms forward"; legs point forward ~7°
