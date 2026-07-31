@@ -106,21 +106,36 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 **Phase 1 is BUILT, independently verified, and human-tested. It survived the test pass in good
 shape: 10 of 13 browser criteria clean, one measurement recorded, one defect, one fail.**
 
-**B1–B4 are fixed and committed.** Tests, build and the 2D-file zero-diff were re-verified
-independently by the orchestrator. **Nothing is verified visually** — the Engineer had no GPU
-and correctly refused to claim any visual result.
+**Session 4 ended here by user decision, with two things queued and nothing in flight.**
 
-**Next action: the user runs the 6-step checklist at the end of `ENGINEER_FIX_REPORT.md`.**
-The load-bearing ones:
+**The user is running the browser spot-check between sessions.** The guide is
+`docs/handoff/BROWSER_SPOT_CHECK.md` — 9 steps, written for them, covering B1–B4 visually, the
+draw-call count, regressions on criteria 14/20/24, and the B5 decision. **Ask for their results
+first thing.** They report back as a numbered pass/fail list.
 
-- **B3** — `Shift`-dash into walls at multiple angles, grounded and hovering. The Engineer's
-  20,160-pose sweep settles the camera at each pose and so does **not** reproduce the dynamic
-  dash that originally broke it. This still needs a human.
-- **B2** — tap `W`. Apex should be ~2.7 m. Criteria 14 and 24 must still pass.
-- **B4** — dive fast and look at the pose. Head should lead. Reverting is a one-character change.
-- **Draw calls** — press `F1`, confirm still 45.
+**B1–B4 are fixed and committed.** Tests (76/76), build, and the 2D-file zero-diff were
+re-verified independently by the orchestrator. **Nothing is verified visually** — the Engineer
+had no GPU and correctly refused to claim any visual result.
 
-**Then, blocking Design: decide B5.**
+**Then the next action is: spawn an Opus Engineer to implement the building design spec.**
+Hand it both documents together — the spec and the review are a pair:
+
+- `DESIGN_SPEC_PHASE_1_BUILDINGS.md` — 446 lines, what to build.
+- `REVIEW_DESIGN_SPEC_BUILDINGS.md` — APPROVED WITH CORRECTIONS. **Two corrections are
+  mandatory and both ship as drop-in code:** the roof-atlas `ctx.scale(1, 0.17857)` aspect
+  compensation, and the second `Box3` per building registering parapet collision. Without the
+  second one, landing on the tower roof (criterion 20) breaks.
+
+Fold in whatever the spot-check turns up, plus the **B5** decision, so it is one Engineer run
+rather than three.
+
+**An open option nobody has decided:** G1's parapet is specified as a solid slab over ~97% of
+each roof. Real coping is a perimeter **ring** — 4 instances per building instead of 1, which
+on an `InstancedMesh` is **still one draw call and zero budget change**, looks more like real
+coping, and leaves the roof centre clear so the collision correction is not needed at all. Put
+this to the user before the Engineer starts.
+
+**Also still open: decide B5.**
 
 **B5 — flight limb poses carry the same inversion as B1/B4.** Arms at `rotation.x = -2.6`
 sweep **back** over the head while the comment says "arms forward"; legs point forward ~7°
