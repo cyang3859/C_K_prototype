@@ -290,7 +290,7 @@ const BLADE = Object.freeze({
  * A and B share the same V range on purpose: both represent the same 90 m of
  * real height, so the floor lines line up when the player flies around a corner.
  */
-const TOWER_ATLAS = Object.freeze({
+export const TOWER_ATLAS = Object.freeze({
   SIZE: 1024,
   /** Storey height, m. Backed into from Century Plaza Tower I (174.0 m / 44 floors = 3.95). */
   STOREY_M: 3.9,
