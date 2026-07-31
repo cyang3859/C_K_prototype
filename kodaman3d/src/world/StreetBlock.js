@@ -36,6 +36,15 @@ import { disposeObject3D } from '../core/dispose.js';
  * proper nouns for locations, businesses or characters, and no invented
  * placeholder names either — that exercise is blocked pending sign-off on a
  * separate trademark mapping table.
+ *
+ * BUILDING REALISM PASS (docs/handoff/DESIGN_SPEC_PHASE_1_BUILDINGS.md, gated by
+ * REVIEW_DESIGN_SPEC_BUILDINGS.md). The facade materials below carry a diffuse,
+ * a roughness AND a metalness canvas each so a glass mid-rise and a stucco
+ * low-rise stop responding to light identically; the 90 m tower gets a unique
+ * non-repeating atlas with a painted helipad; and four InstancedMeshes add
+ * parapets, rooftop mechanical units, awnings and blade signs. Everything in
+ * that pass is either free (textures) or exactly one draw call (the four
+ * instanced items).
  */
 
 /** Metres. Right-of-way, roadway and sidewalk widths, per S-470-1. */
@@ -123,6 +132,203 @@ export const BLOCK = Object.freeze({
 /** Metres of facade per texture tile. Drives the window grid density. */
 const FACADE_TILE_M = 4;
 
+/**
+ * The one building that gets a bespoke, non-repeating texture atlas instead of
+ * the shared repeat-tiled kind material.
+ *
+ * Index 2 is the 90 m tower at (-2, 31) — the building acceptance criterion 20
+ * asks a human to fly over AND LAND ON, so it is the only rooftop in the block
+ * guaranteed close inspection. Everything else is seen from a distance, where a
+ * repeat-tiled texture is indistinguishable from a unique one.
+ */
+const BESPOKE_TOWER_INDEX = 2;
+
+/**
+ * Facade variants — five repeat-tiled materials covering nine of the ten
+ * buildings (the tenth is BESPOKE_TOWER_INDEX, above).
+ *
+ * `wallRough`/`wallMetal` and `winRough`/`winMetal` are the whole point of this
+ * table. Before the realism pass every building shared `roughness: 0.85,
+ * metalness: 0.05`, so a glass curtain-wall mid-rise and a stucco low-rise
+ * scattered light identically. Now stucco is near-fully rough and non-metallic
+ * while glass is smooth and half-metallic, which is what makes one throw a
+ * specular highlight and the other not.
+ *
+ * Colours are the palette from DESIGN_SPEC_PHASE_1_BUILDINGS.md § Palette. The
+ * cream/ochre low-rise split is Spanish Colonial Revival / dingbat stucco; the
+ * steel-blue vs smoked-bronze mid-rise split is the 1971–1992 "dark glass and
+ * stone-clad box" generation, which would plausibly not all be one shade.
+ */
+const FACADE_VARIANTS = Object.freeze({
+  lowriseA: {
+    wall: 0xd9c6a0, // cream stucco
+    window: 0x293b4d,
+    band: 0xb8a888, // roof/spandrel neutral — DECOUPLED from the wall colour
+    columns: 3,
+    wallRough: 0.98,
+    wallMetal: 0.0,
+    winRough: 0.22,
+    winMetal: 0.45,
+  },
+  lowriseB: {
+    wall: 0xc2a06e, // ochre stucco
+    window: 0x293b4d,
+    band: 0xb8a888,
+    columns: 3,
+    wallRough: 0.98,
+    wallMetal: 0.0,
+    winRough: 0.22,
+    winMetal: 0.45,
+  },
+  midriseA: {
+    wall: 0x8f96a3, // steel-blue glass box
+    window: 0x1f2c3a,
+    band: 0x6a675f,
+    columns: 4,
+    wallRough: 0.45,
+    wallMetal: 0.4,
+    winRough: 0.12,
+    winMetal: 0.65,
+  },
+  midriseB: {
+    wall: 0x8a7a68, // smoked bronze glass box
+    window: 0x2e2519,
+    band: 0x6a675f,
+    columns: 4,
+    wallRough: 0.45,
+    wallMetal: 0.4,
+    winRough: 0.12,
+    winMetal: 0.65,
+  },
+  towerShared: {
+    wall: 0x6f7b8c,
+    window: 0x16212e,
+    band: 0x4a4844,
+    columns: 5,
+    wallRough: 0.4,
+    wallMetal: 0.45,
+    winRough: 0.1,
+    winMetal: 0.7,
+  },
+});
+
+/**
+ * The frame/mullion around each window pane, in the roughness+metalness maps.
+ * Anodised aluminium: smoother than stucco, rougher and less reflective than
+ * the glass it holds. Diffuse-side the frame is drawn as a light/dark bevel
+ * instead (see `paintWindowCell`).
+ */
+const FRAME_ROUGH = 0.55;
+const FRAME_METAL = 0.3;
+
+/**
+ * Roof/spandrel band PBR. This band is ALSO the pixel the flat-roof UVs of the
+ * nine repeat-tiled buildings collapse onto (see `scaleBoxUVs`), so its
+ * roughness and metalness are authored for a ROOF, not for a facade detail:
+ * built-up roofing and rooftop gravel are matte and non-metallic.
+ */
+const BAND_ROUGH = 0.92;
+const BAND_METAL = 0.05;
+
+/**
+ * G1 — rooftop parapet coping. A low cap inset from the roof edge on every
+ * building, so a roofline reads as a hard parapet-edged silhouette instead of a
+ * box that simply stops (post-1958 LA high-rises are flat-roofed by ordinance).
+ *
+ * INSET is per edge, so the slab is (w - 2×INSET) × (d - 2×INSET).
+ */
+const PARAPET = Object.freeze({
+  INSET: 0.3,
+  HEIGHT: 0.45,
+  COLOR: 0x6b6a62,
+});
+
+/** G2 — rooftop mechanical units. Real geometry, deliberately not painted into the roof texture. */
+const HVAC = Object.freeze({
+  W: 1.2,
+  H: 0.9,
+  D: 1.2,
+  COLOR: 0x9aa0a6,
+});
+
+/** G3 — ground-floor storefront awnings. */
+const AWNING = Object.freeze({
+  /** Fraction of the building's street-facing width the canopy spans. */
+  WIDTH_FRACTION: 0.85,
+  THICKNESS: 0.12,
+  /** How far the canopy projects out over the sidewalk, metres. */
+  PROJECTION: 1.4,
+  /** Height of the canopy's attachment to the wall. Well above the 1.85 m hero. */
+  Y: 3.2,
+  /** Slope, radians. Sign is chosen per side so the LEADING edge drops. */
+  TILT: 0.26,
+  /** Cycled by building index so eight canopies do not read as one asset copied. */
+  FABRIC: [0x9c4632, 0x39543f, 0x6b2f3a],
+});
+
+/** G4 — vertical blade signs. Silhouette only: no text, no graphics, no proper nouns. */
+const BLADE = Object.freeze({
+  W: 0.15, // thin front-on: the blade's broad faces look down the street
+  H: 2.5,
+  D: 0.6, // projects perpendicular to the facade
+  Y: 4.2, // spans 2.95–5.45 m, clear of the awnings below
+  /** Distance from the facade plane to the sign's centre. */
+  STANDOFF: 0.4,
+  /** Distance in from the building corner. */
+  CORNER_INSET: 0.8,
+  COLOR: 0x1c1c1e,
+});
+
+/**
+ * The bespoke tower's texture atlas. One 1024×1024 canvas divided into three
+ * regions; the box's six faces are remapped into them by `atlasBoxUVs`.
+ *
+ * Region A — front/back (+Z/-Z), 20 m wide × 90 m tall
+ * Region B — sides (+X/-X), 28 m wide × 90 m tall
+ * Region C — roof (+Y, and -Y which is never visible), the 20 × 28 m roof plan
+ *
+ * A and B share the same V range on purpose: both represent the same 90 m of
+ * real height, so the floor lines line up when the player flies around a corner.
+ */
+const TOWER_ATLAS = Object.freeze({
+  SIZE: 1024,
+  /** Storey height, m. Backed into from Century Plaza Tower I (174.0 m / 44 floors = 3.95). */
+  STOREY_M: 3.9,
+  /** Structural bay width, m — a conventional commercial curtain-wall bay. */
+  BAY_M: 3.2,
+  /**
+   * [uMin, uMax, vMin, vMax] per face, in BoxGeometry's fixed face order:
+   * +X, -X, +Y, -Y, +Z, -Z.
+   */
+  REGIONS: Object.freeze([
+    [0.5, 1.0, 0.0, 0.75], // +X -> region B
+    [0.5, 1.0, 0.0, 0.75], // -X -> region B
+    [0.0, 1.0, 0.75, 1.0], // +Y -> region C (roof)
+    [0.0, 1.0, 0.75, 1.0], // -Y -> region C, reused; never visible
+    [0.0, 0.5, 0.0, 0.75], // +Z -> region A
+    [0.0, 0.5, 0.0, 0.75], // -Z -> region A
+  ]),
+  /** Roof art colours. */
+  ROOF_BASE: 0x3d3a36, // tar/gravel
+  SPECKLE_LIGHT: 0x55504a,
+  SPECKLE_DARK: 0x2c2925,
+  HELIPAD_RING: 0xd9c840, // safety yellow
+  HELIPAD_GLYPH: 0xe8e4d6,
+  /**
+   * Helipad ring radii, in canvas pixels ALONG THE U AXIS. The V axis is
+   * compensated at draw time (see `_paintRoofRegion`), so these are the radii
+   * that survive into world space: at 1024 px over the tower's 20 m width the
+   * outer ring is 90 / 51.2 = 1.76 m, i.e. a 3.5 m marking on a 20 × 28 m roof.
+   * Straight from the reviewed spec. If it reads too small in a browser this is
+   * the one constant to raise.
+   */
+  HELIPAD_OUTER_PX: 90,
+  HELIPAD_INNER_PX: 78,
+  /** Gravel speckle: authored in METRES so it stays square once V is compensated. */
+  SPECKLE_M: 0.12,
+  SPECKLE_COUNT: 400,
+});
+
 export class StreetBlock {
   /**
    * @param {object} args
@@ -150,6 +356,10 @@ export class StreetBlock {
     this._buildGround();
     this._buildRoad();
     this._buildBuildings();
+    this._buildParapets();
+    this._buildRoofUnits();
+    this._buildAwnings();
+    this._buildBladeSigns();
     this._buildPalms();
     this._buildLamps();
 
@@ -258,26 +468,53 @@ export class StreetBlock {
   // --------------------------------------------------------------- buildings
 
   _buildBuildings() {
-    // One shared CanvasTexture + material per building KIND, not per building.
-    // Per-building UV scaling (below) is what lets ten differently-sized boxes
-    // share three materials while keeping a consistent real-world window size —
-    // the alternative, a cloned texture per building with its own `repeat`,
-    // would triple the texture count for no visual difference.
-    const kinds = {
-      lowrise: this._makeFacadeMaterial(0xb9a58c, 0x2b3a4a, 3),
-      midrise: this._makeFacadeMaterial(0x8f96a3, 0x1f2c3a, 4),
-      tower: this._makeFacadeMaterial(0x6f7b8c, 0x16212e, 5),
+    // FIVE shared repeat-tiled materials, not three, and not ten.
+    //
+    // Not three: a glass mid-rise and a stucco low-rise need different PBR
+    // response, and two buildings of the same kind sitting side by side in the
+    // same shade of glass is the "ten boxes, three textures" read the user
+    // called out. Two variants per kind fixes that for zero draw calls.
+    //
+    // Not ten: per-building UV scaling (below) already keeps a window the same
+    // physical size on a 9 m low-rise and a 90 m tower, so a unique texture per
+    // building would multiply texture memory for no visual difference — except
+    // on the one rooftop a player actually stands on, which is why exactly one
+    // building (BESPOKE_TOWER_INDEX) opts out into its own atlas.
+    const tier1 = {
+      lowriseA: this._makeFacadeMaterial('lowriseA'),
+      lowriseB: this._makeFacadeMaterial('lowriseB'),
+      midriseA: this._makeFacadeMaterial('midriseA'),
+      midriseB: this._makeFacadeMaterial('midriseB'),
+      towerShared: this._makeFacadeMaterial('towerShared'),
     };
+
+    // Variant assignment alternates A/B in array order WITHIN each kind, so it
+    // is deterministic and stays sensible if a building is added or reordered.
+    const ordinal = { lowrise: 0, midrise: 0, tower: 0 };
 
     for (let i = 0; i < BLOCK.buildings.length; i++) {
       const b = BLOCK.buildings[i];
+      const n = ordinal[b.kind]++;
 
       const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
-      // Scale each face's UVs by its real-world size so a window is the same
-      // physical size on a 9 m low-rise and a 90 m tower.
-      scaleBoxUVs(geo, b.w, b.h, b.d, FACADE_TILE_M);
+      let material;
 
-      const mesh = new THREE.Mesh(geo, kinds[b.kind]);
+      if (i === BESPOKE_TOWER_INDEX) {
+        // Non-repeating atlas: every face gets its own slice of one canvas, so
+        // the roof can carry unique art (a helipad) that a repeat-wrapped
+        // texture physically cannot — any pixel in a tiled canvas also lands
+        // somewhere on the walls.
+        material = this._makeBespokeTowerMaterial(b);
+        atlasBoxUVs(geo, TOWER_ATLAS.REGIONS);
+      } else {
+        // Scale each face's UVs by its real-world size so a window is the same
+        // physical size on a 9 m low-rise and a 90 m tower.
+        const key = b.kind === 'tower' ? 'towerShared' : `${b.kind}${n % 2 === 0 ? 'A' : 'B'}`;
+        material = tier1[key];
+        scaleBoxUVs(geo, b.w, b.h, b.d, FACADE_TILE_M);
+      }
+
+      const mesh = new THREE.Mesh(geo, material);
       mesh.name = `building_${b.kind}_${i}`;
       // Box geometry is centred on its origin, so lift it by half its height to
       // stand it on the ground plane.
@@ -286,7 +523,7 @@ export class StreetBlock {
       mesh.receiveShadow = true;
       this.group.add(mesh);
 
-      // Register the collider. Built from the authored numbers rather than from
+      // Register the colliders. Built from the authored numbers rather than from
       // `setFromObject(mesh)` so the collision world never depends on the mesh's
       // world matrix having been updated first — a classic source of
       // off-by-one-frame collider drift.
@@ -296,76 +533,559 @@ export class StreetBlock {
           new THREE.Vector3(b.x + b.w / 2, b.h, b.z + b.d / 2),
         ),
       );
+      // SECOND box, for the G1 parapet slab. Mandatory, not optional: the slab
+      // raises the visible roof surface from b.h to b.h + PARAPET.HEIGHT over
+      // ~97% of the footprint, and without this box a hero landing on the tower
+      // roof (acceptance criterion 20) would stand 0.45 m INSIDE it.
+      //
+      // The two boxes coexist deliberately. resolveCapsule picks the HIGHEST
+      // surface the feet crossed, so landing anywhere over the slab lands on the
+      // slab; the original box still supports the 0.3 m un-raised lip at the
+      // true roof edge. Landing is via flight, never a walked step-up, so the
+      // 0.45 m rise never needs to be climbed.
+      //
+      // KNOWN EDGE CASE, accepted: standing on that 0.3 m lip puts the feet at
+      // b.h while the parapet's top is b.h + 0.45, so the horizontal push-out
+      // treats the parapet as a wall and nudges the hero (radius 0.35 m) off the
+      // edge. Walking off the parapet has the same result. That is a 0.3 m
+      // perimeter band on a 19.4 × 27.4 m roof, it reads as "you walked off a
+      // ledge", and the hero can fly. Fixing it properly means step-up logic in
+      // the controller, which is explicitly Phase 2.
+      this.collision.addBuilding(parapetBox(b));
     }
   }
 
   /**
-   * Build a facade material from a procedurally drawn window-strip canvas,
-   * mirroring the 2D game's `drawWindowRow` technique.
+   * Build one repeat-tiled facade material: a diffuse canvas plus a roughness
+   * and a metalness canvas.
    *
-   * @param {number} wallColor base facade colour
-   * @param {number} windowColor window glass colour
-   * @param {number} columns windows across one tile
+   * WHY THREE CANVASES AND `roughness: 1.0 / metalness: 1.0`. Three.js
+   * multiplies `material.roughness × roughnessMap.g` and
+   * `material.metalness × metalnessMap.b` — roughnessMap reads the GREEN
+   * channel, metalnessMap reads BLUE (the glTF ORM convention, so one packed
+   * texture can serve both). These are separate neutral-grey canvases here, so
+   * every channel carries the same value and which one is sampled is moot — but
+   * do NOT assume `.g` for metalness if these are ever packed into one texture.
+   * Setting the scalars to 1.0 lets the maps carry 100% of the per-pixel value.
+   *
+   * @param {keyof typeof FACADE_VARIANTS} variant
    * @returns {THREE.MeshStandardMaterial}
    */
-  _makeFacadeMaterial(wallColor, windowColor, columns) {
-    const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
+  _makeFacadeMaterial(variant) {
+    const spec = FACADE_VARIANTS[variant];
+    const size = 512; // up from 256: free in draw-call terms, ~1 MB per canvas
+    const diffuse = makeContext(size, size);
+    const rough = makeContext(size, size);
+    const metal = makeContext(size, size);
 
-    ctx.fillStyle = `#${wallColor.toString(16).padStart(6, '0')}`;
-    ctx.fillRect(0, 0, size, size);
+    // Base fills.
+    fillAll(diffuse, `#${hex6(spec.wall)}`, size, size);
+    fillAll(rough, grey(spec.wallRough), size, size);
+    fillAll(metal, grey(spec.wallMetal), size, size);
 
-    // Window grid. The bottom band is left plain — see the roof-UV note below.
+    // CANVAS-Y DIRECTION, stated explicitly because this file has been bitten by
+    // comments that asserted the opposite of the arithmetic:
+    //   CanvasTexture defaults to flipY = true, so UV v = 0 samples the canvas's
+    //   BOTTOM row and v = 1 samples its TOP row. Combined with BoxGeometry's
+    //   side faces (v = 1 at the box's top, v = 0 at its base — verified in
+    //   BoxGeometry.js's buildPlane, which passes vdir = -1 for all four sides),
+    //   SMALL canvas y is HIGH on the building and LARGE canvas y is low on it.
+    // Therefore the plinth band, which must sit at the BOTTOM of each tile, is
+    // drawn at the BOTTOM of the canvas.
     const bandH = Math.floor(size * 0.12);
+    const bandY = size - bandH;
     const usableH = size - bandH;
-    const rows = columns;
-    const cellW = size / columns;
+
+    const rows = spec.columns;
+    const cellW = size / spec.columns;
     const cellH = usableH / rows;
     const winW = cellW * 0.62;
     const winH = cellH * 0.55;
+    // Frame width scales with resolution so the bevel keeps its proportions if
+    // `size` ever changes. U and V pixel density are equal on a repeat tile
+    // (both axes span FACADE_TILE_M), so one width serves both directions.
+    const frame = Math.max(1, Math.round(size / 128));
 
     for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < columns; c++) {
+      for (let c = 0; c < spec.columns; c++) {
         const x = c * cellW + (cellW - winW) / 2;
-        const y = bandH + r * cellH + (cellH - winH) / 2;
+        const y = r * cellH + (cellH - winH) / 2;
         // Slight per-window brightness variation so the grid does not read as a
         // perfect checkerboard. Deterministic: a hash of the cell coordinates,
         // never Math.random(), so the texture is identical on every load and a
-        // screenshot diff stays meaningful.
+        // screenshot diff stays meaningful. Range widened from 0.75–1.25 to
+        // 0.65–1.35 so some panes clearly catch more sun than others.
         const t = ((r * 73856093) ^ (c * 19349663)) >>> 0;
-        const jitter = 0.75 + ((t % 100) / 100) * 0.5;
-        ctx.fillStyle = shade(windowColor, jitter);
-        ctx.fillRect(x, y, winW, winH);
+        const jitter = 0.65 + ((t % 100) / 100) * 0.7;
+        paintWindowCell(
+          { diffuse, rough, metal },
+          x,
+          y,
+          winW,
+          winH,
+          spec,
+          jitter,
+          frame,
+          frame,
+        );
       }
     }
 
     // Solid plinth band across the bottom of the tile. It reads as a floor-slab
     // edge when the texture tiles up a facade, AND it is where the roof faces'
-    // UVs are pointed (see scaleBoxUVs) so rooftops get flat concrete instead of
-    // a nonsensical grid of windows — without needing a second material and the
-    // extra draw call per building that would cost.
-    ctx.fillStyle = shade(wallColor, 0.82);
-    ctx.fillRect(0, 0, size, bandH);
+    // UVs are pointed (see scaleBoxUVs) so rooftops get flat neutral roofing
+    // instead of a nonsensical grid of windows — without needing a second
+    // material and the extra draw call per building that would cost.
+    //
+    // The band colour is now an INDEPENDENT roof/spandrel neutral rather than
+    // `shade(wallColor, 0.82)`. Tinting a rooftop with its own facade's hue is
+    // physically backwards: real built-up roofing and rooftop gravel is a
+    // neutral grey-brown whatever colour the wall below it is painted.
+    fillRect(diffuse, `#${hex6(spec.band)}`, 0, bandY, size, bandH);
+    fillRect(rough, grey(BAND_ROUGH), 0, bandY, size, bandH);
+    fillRect(metal, grey(BAND_METAL), 0, bandY, size, bandH);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    // 4× anisotropy keeps facades legible at the grazing angles you get when
-    // flying alongside a tower. Cheap; 16 would be overkill for Phase 1.
-    texture.anisotropy = 4;
-    this._disposables.push(texture);
+    const map = this._registerTexture(diffuse.canvas, {
+      repeat: true,
+      srgb: true,
+    });
+    const roughnessMap = this._registerTexture(rough.canvas, { repeat: true, srgb: false });
+    const metalnessMap = this._registerTexture(metal.canvas, { repeat: true, srgb: false });
 
     const material = new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.85,
-      metalness: 0.05,
+      map,
+      roughnessMap,
+      metalnessMap,
+      roughness: 1,
+      metalness: 1,
     });
     this._disposables.push(material);
     return material;
+  }
+
+  /**
+   * Build the one bespoke, non-repeating material for BESPOKE_TOWER_INDEX.
+   *
+   * Still one mesh and one draw call — it REPLACES the shared-tower material on
+   * that mesh rather than adding anything. The only cost is texture memory and a
+   * few milliseconds of canvas fill at construction.
+   *
+   * @param {{w:number,d:number,h:number}} b the authored building record
+   * @returns {THREE.MeshStandardMaterial}
+   */
+  _makeBespokeTowerMaterial(b) {
+    const S = TOWER_ATLAS.SIZE;
+    const diffuse = makeContext(S, S);
+    const rough = makeContext(S, S);
+    const metal = makeContext(S, S);
+    const ctxs = { diffuse, rough, metal };
+    const spec = FACADE_VARIANTS.towerShared;
+
+    // Region pixel rectangles. Derived from the UV regions with the SAME flipY
+    // convention as above: canvasY = (1 - v) × SIZE, so v ∈ [0, 0.75] (the
+    // building's full height) is the canvas's LOWER 768 rows and v ∈ [0.75, 1]
+    // (the roof) is its TOP 256 rows.
+    const facadeTop = S * 0.25; // canvas y of the building's roofline
+    const facadeH = S * 0.75;
+    const halfW = S * 0.5;
+
+    // Real floor count, not a repeat tile. Both regions use the same row height
+    // because both represent the same 90 m — required, or the floor lines break
+    // where the player flies around a corner.
+    const floors = Math.round(b.h / TOWER_ATLAS.STOREY_M); // 90 / 3.9 -> 23
+    const colsA = Math.round(b.w / TOWER_ATLAS.BAY_M); // 20 / 3.2 -> 6
+    const colsB = Math.round(b.d / TOWER_ATLAS.BAY_M); // 28 / 3.2 -> 9
+
+    fillAll(diffuse, `#${hex6(spec.wall)}`, S, S);
+    fillAll(rough, grey(spec.wallRough), S, S);
+    fillAll(metal, grey(spec.wallMetal), S, S);
+
+    // Region A — front/back, 512 px over the 20 m width.
+    this._paintFacadeRegion(ctxs, spec, {
+      x: 0,
+      y: facadeTop,
+      w: halfW,
+      h: facadeH,
+      columns: colsA,
+      floors,
+      metresW: b.w,
+      metresH: b.h,
+    });
+    // Region B — sides, 512 px over the 28 m depth.
+    this._paintFacadeRegion(ctxs, spec, {
+      x: halfW,
+      y: facadeTop,
+      w: halfW,
+      h: facadeH,
+      columns: colsB,
+      floors,
+      metresW: b.d,
+      metresH: b.h,
+    });
+    // Region C — the roof plan.
+    this._paintRoofRegion(ctxs, { x: 0, y: 0, w: S, h: facadeTop, metresW: b.w, metresD: b.d });
+
+    const map = this._registerTexture(diffuse.canvas, { repeat: false, srgb: true });
+    const roughnessMap = this._registerTexture(rough.canvas, { repeat: false, srgb: false });
+    const metalnessMap = this._registerTexture(metal.canvas, { repeat: false, srgb: false });
+
+    const material = new THREE.MeshStandardMaterial({
+      map,
+      roughnessMap,
+      metalnessMap,
+      roughness: 1,
+      metalness: 1,
+    });
+    this._disposables.push(material);
+    return material;
+  }
+
+  /**
+   * Paint one facade region of the bespoke atlas: a real floor × bay window grid
+   * plus structural spandrel bands.
+   *
+   * @param {{diffuse:CanvasRenderingContext2D,rough:CanvasRenderingContext2D,metal:CanvasRenderingContext2D}} ctxs
+   * @param {typeof FACADE_VARIANTS.towerShared} spec
+   * @param {{x:number,y:number,w:number,h:number,columns:number,floors:number,metresW:number,metresH:number}} r
+   */
+  _paintFacadeRegion(ctxs, spec, r) {
+    const cellW = r.w / r.columns;
+    const rowH = r.h / r.floors;
+    const winW = cellW * 0.66;
+    const winH = rowH * 0.58;
+
+    // ASPECT COMPENSATION, horizontal vs vertical. This region is 512 px over
+    // metresW but 768 px over 90 m, so a pixel is not square in world space. The
+    // window CELLS are safe (they come from real column/floor counts), but a
+    // bevel measured in pixels would not be: express it in metres and convert
+    // per axis, or the top/bottom bevels come out several times thicker than the
+    // left/right ones.
+    const pxPerM_U = r.w / r.metresW;
+    const pxPerM_V = r.h / r.metresH;
+    const BEVEL_M = 0.1;
+    const frameU = Math.max(1, Math.round(BEVEL_M * pxPerM_U));
+    const frameV = Math.max(1, Math.round(BEVEL_M * pxPerM_V));
+
+    for (let floor = 0; floor < r.floors; floor++) {
+      // Floor 0 is the GROUND floor. Canvas y grows downward while the building
+      // grows upward (flipY, see _makeFacadeMaterial), so floor 0 is the region's
+      // BOTTOM row.
+      const rowY = r.y + r.h - (floor + 1) * rowH;
+
+      // Structural spandrel band every 4th floor. Without it, 23 identical floor
+      // rows read as an undifferentiated grid over the full 90 m.
+      if (floor > 0 && floor % 4 === 0) {
+        fillRect(ctxs.diffuse, `#${hex6(spec.band)}`, r.x, rowY, r.w, rowH);
+        fillRect(ctxs.rough, grey(BAND_ROUGH), r.x, rowY, r.w, rowH);
+        fillRect(ctxs.metal, grey(BAND_METAL), r.x, rowY, r.w, rowH);
+        continue;
+      }
+
+      for (let c = 0; c < r.columns; c++) {
+        const x = r.x + c * cellW + (cellW - winW) / 2;
+        const y = rowY + (rowH - winH) / 2;
+        const t = ((floor * 73856093) ^ (c * 19349663)) >>> 0;
+        const jitter = 0.65 + ((t % 100) / 100) * 0.7;
+        paintWindowCell(ctxs, x, y, winW, winH, spec, jitter, frameU, frameV);
+      }
+    }
+  }
+
+  /**
+   * Paint the roof plan region of the bespoke atlas: tar and gravel, a
+   * deterministic speckle, and a painted helipad.
+   *
+   * THE ASPECT PROBLEM, and why the ctx.scale below is not optional. This region
+   * is 1024 px wide over the roof's 20 m X extent (51.2 px/m) but only 256 px
+   * tall over its 28 m Z extent (9.14 px/m) — a 5.6× mismatch, because a
+   * 1024×256 px region does not share the aspect ratio of a 20×28 m footprint.
+   * (BoxGeometry's +Y face binds U to the box's X and V to its Z:
+   * `buildPlane('x','z','y', 1, 1, width, depth, height, ...)`.) A circle drawn
+   * with equal x/y radii here would land on the real roof as an ellipse 5.6×
+   * longer along Z than along X. Squashing V by (256/28)/(1024/20) = 0.17857
+   * before drawing makes it a true circle in world space.
+   *
+   * @param {{diffuse:CanvasRenderingContext2D,rough:CanvasRenderingContext2D,metal:CanvasRenderingContext2D}} ctxs
+   * @param {{x:number,y:number,w:number,h:number,metresW:number,metresD:number}} r
+   */
+  _paintRoofRegion(ctxs, r) {
+    const { diffuse, rough, metal } = ctxs;
+
+    fillRect(diffuse, `#${hex6(TOWER_ATLAS.ROOF_BASE)}`, r.x, r.y, r.w, r.h);
+    fillRect(rough, grey(0.95), r.x, r.y, r.w, r.h); // tar and gravel: matte
+    fillRect(metal, grey(0.0), r.x, r.y, r.w, r.h);
+
+    const pxPerM_U = r.w / r.metresW; // 1024 / 20 = 51.2
+    const pxPerM_V = r.h / r.metresD; // 256 / 28 = 9.142857
+    const vSquash = pxPerM_V / pxPerM_U; // 0.178571...
+
+    // Gravel speckle. Sized in metres and converted per axis so the flecks stay
+    // roughly square once the 5.6× density mismatch is accounted for; a literal
+    // 3×3 px dot would land on the roof as a 6 cm × 33 cm streak.
+    const dotW = Math.max(1, Math.round(TOWER_ATLAS.SPECKLE_M * pxPerM_U));
+    const dotH = Math.max(1, Math.round(TOWER_ATLAS.SPECKLE_M * pxPerM_V));
+    for (let i = 0; i < TOWER_ATLAS.SPECKLE_COUNT; i++) {
+      const px = r.x + hash01(i * 2246822519) * (r.w - dotW);
+      const py = r.y + hash01(i * 3266489917 + 7) * (r.h - dotH);
+      const light = hash01(i * 668265263 + 13) < 0.5;
+      fillRect(
+        diffuse,
+        `#${hex6(light ? TOWER_ATLAS.SPECKLE_LIGHT : TOWER_ATLAS.SPECKLE_DARK)}`,
+        px,
+        py,
+        dotW,
+        dotH,
+      );
+    }
+
+    // Helipad, centred in the region — which is the centre of the real roof,
+    // because the region maps proportionally onto the whole +Y face.
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const ro = TOWER_ATLAS.HELIPAD_OUTER_PX;
+    const ri = TOWER_ATLAS.HELIPAD_INNER_PX;
+
+    for (const [ctx, ringStyle, glyphStyle] of [
+      [diffuse, `#${hex6(TOWER_ATLAS.HELIPAD_RING)}`, `#${hex6(TOWER_ATLAS.HELIPAD_GLYPH)}`],
+      // Paint is smoother than the gravel it sits on, and stays non-metallic.
+      [rough, grey(0.5), grey(0.5)],
+      [metal, grey(0.0), grey(0.0)],
+    ]) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(1, vSquash);
+
+      // Annulus: outer circle then inner circle wound backwards, so the default
+      // nonzero fill rule leaves the middle open.
+      ctx.beginPath();
+      ctx.arc(0, 0, ro, 0, Math.PI * 2, false);
+      ctx.arc(0, 0, ri, 0, Math.PI * 2, true);
+      ctx.fillStyle = ringStyle;
+      ctx.fill();
+
+      // "H", sized to roughly fill the ring's inner diameter. It is drawn INSIDE
+      // the same squash transform, which is what keeps it upright rather than
+      // stretched once it lands on the real roof.
+      ctx.fillStyle = glyphStyle;
+      ctx.font = `bold ${Math.round(ri * 1.4)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('H', 0, 0);
+
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Turn a canvas into a CanvasTexture with the project's standard settings and
+   * register it for disposal.
+   *
+   * COLOUR SPACE IS NOT COSMETIC HERE. The diffuse map holds authored sRGB
+   * colour and must be tagged sRGB so the renderer linearises it. The roughness
+   * and metalness maps hold raw LINEAR data — a byte of 128 means "0.5
+   * roughness", not "mid grey" — and tagging them sRGB would silently apply a
+   * gamma curve to the material's PBR inputs.
+   *
+   * @param {HTMLCanvasElement} canvas
+   * @param {{repeat:boolean, srgb:boolean}} options
+   */
+  _registerTexture(canvas, { repeat, srgb }) {
+    const texture = new THREE.CanvasTexture(canvas);
+    const wrap = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    texture.wrapS = wrap;
+    texture.wrapT = wrap;
+    texture.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    // 8× anisotropy: window rhythm stays legible at the grazing angles you get
+    // flying alongside a tower, which is most of what the player does with these
+    // facades. Cheap; 16 would still be overkill for Phase 1.
+    texture.anisotropy = 8;
+    this._disposables.push(texture);
+    return texture;
+  }
+
+  // ---------------------------------------------------------- roof furniture
+
+  /**
+   * G1 — the parapet coping cap on every roof. ONE draw call for all ten.
+   *
+   * The matching collision boxes are registered in `_buildBuildings` rather than
+   * here, so that every collider this class creates is registered in one place.
+   */
+  _buildParapets() {
+    const geo = new THREE.BoxGeometry(1, 1, 1); // unit cube, scaled per instance
+    const mat = new THREE.MeshStandardMaterial({
+      color: PARAPET.COLOR,
+      roughness: 0.6,
+      metalness: 0.2,
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, BLOCK.buildings.length);
+    mesh.name = 'roofParapets';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const m = new THREE.Object3D();
+    for (let i = 0; i < BLOCK.buildings.length; i++) {
+      const b = BLOCK.buildings[i];
+      m.position.set(b.x, b.h + PARAPET.HEIGHT / 2, b.z);
+      m.rotation.set(0, 0, 0);
+      m.scale.set(b.w - PARAPET.INSET * 2, PARAPET.HEIGHT, b.d - PARAPET.INSET * 2);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    this.group.add(mesh);
+  }
+
+  /**
+   * G2 — rooftop mechanical units. ONE draw call for all 22.
+   *
+   * DELIBERATE DECISION, flagged by the Review as the Engineer's call: these ARE
+   * registered as colliders. A player who can land on a roof (criterion 20) can
+   * walk into one, and walking through a condenser unit is exactly the
+   * game-world tell this pass exists to remove. The cost is 22 more AABBs in a
+   * linear scan of ~40 — nothing — and they sit 8 m or more up, so they can
+   * never interfere with street-level movement or pull the camera arm in.
+   */
+  _buildRoofUnits() {
+    const units = hvacUnits();
+    const geo = new THREE.BoxGeometry(HVAC.W, HVAC.H, HVAC.D);
+    const mat = new THREE.MeshStandardMaterial({
+      color: HVAC.COLOR,
+      roughness: 0.5,
+      metalness: 0.4,
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, units.length);
+    mesh.name = 'roofUnits';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const m = new THREE.Object3D();
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i];
+      // `u.y` is the unit's BASE (it rests on the parapet slab's top face), so
+      // the mesh centre is half a box-height above it.
+      m.position.set(u.x, u.y + HVAC.H / 2, u.z);
+      m.rotation.set(0, 0, 0);
+      m.scale.set(1, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+
+      this.collision.addBuilding(
+        new THREE.Box3(
+          new THREE.Vector3(u.x - HVAC.W / 2, u.y, u.z - HVAC.D / 2),
+          new THREE.Vector3(u.x + HVAC.W / 2, u.y + HVAC.H, u.z + HVAC.D / 2),
+        ),
+      );
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    this.group.add(mesh);
+  }
+
+  // ------------------------------------------------------- street furniture
+
+  /**
+   * G3 — ground-floor storefront awnings on the eight low/mid-rise buildings.
+   * ONE draw call.
+   *
+   * NOT COLLIDERS, deliberately. Their underside sits at ~2.96 m at the leading
+   * edge, well clear of the 1.85 m hero, so they can only ever be walked under.
+   * Registering them would also feed them to the camera's spring-arm sphere-cast,
+   * which would yank the camera in every time the player walked past a storefront
+   * — strictly worse than the nothing it would fix.
+   */
+  _buildAwnings() {
+    const indices = [];
+    for (let i = 0; i < BLOCK.buildings.length; i++) {
+      if (BLOCK.buildings[i].kind !== 'tower') indices.push(i);
+    }
+
+    // Real thickness and projection are baked into the geometry; only the width
+    // axis is scaled per instance, so the canopy's depth over the sidewalk is
+    // identical on every building regardless of how wide the shopfront is.
+    const geo = new THREE.BoxGeometry(1, AWNING.THICKNESS, AWNING.PROJECTION);
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.0 });
+    const mesh = new THREE.InstancedMesh(geo, mat, indices.length);
+    mesh.name = 'awnings';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const m = new THREE.Object3D();
+    const color = new THREE.Color();
+    for (let k = 0; k < indices.length; k++) {
+      const i = indices[k];
+      const b = BLOCK.buildings[i];
+      // `outward` is +1 for buildings SOUTH of the boulevard (b.z < 0, whose
+      // street frontage faces +Z) and -1 for those NORTH of it (b.z > 0, facing
+      // -Z). Every sign below is derived from it, so there is one place to be
+      // wrong rather than four.
+      const outward = b.z > 0 ? -1 : 1;
+      const facadeZ = b.z + outward * (b.d / 2);
+
+      m.position.set(b.x, AWNING.Y, facadeZ + outward * (AWNING.PROJECTION / 2));
+      // Rotating by θ about X sends a point at local +z to y = -z·sin θ. The
+      // canopy's LEADING edge is at local z = outward × PROJECTION/2, and we
+      // want it to drop, so θ must take the sign of `outward`.
+      m.rotation.set(outward * AWNING.TILT, 0, 0);
+      m.scale.set(b.w * AWNING.WIDTH_FRACTION, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(k, m.matrix);
+
+      // Cycled by the building's index in BLOCK.buildings, not by its position in
+      // this filtered list, so a given building keeps its colour if the filter
+      // ever changes.
+      color.setHex(AWNING.FABRIC[i % AWNING.FABRIC.length]);
+      mesh.setColorAt(k, color);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    this.group.add(mesh);
+  }
+
+  /**
+   * G4 — vertical blade signs on the four mid-rises. ONE draw call.
+   *
+   * Silhouette only: no text, no graphics, no emissive. Phase 1's lighting is
+   * static midday and a sign glowing at noon reads as a bug, not a light. Not
+   * colliders, for the same reasons as the awnings.
+   */
+  _buildBladeSigns() {
+    const indices = [];
+    for (let i = 0; i < BLOCK.buildings.length; i++) {
+      if (BLOCK.buildings[i].kind === 'midrise') indices.push(i);
+    }
+
+    const geo = new THREE.BoxGeometry(BLADE.W, BLADE.H, BLADE.D);
+    const mat = new THREE.MeshStandardMaterial({
+      color: BLADE.COLOR,
+      roughness: 0.6,
+      metalness: 0.3,
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, indices.length);
+    mesh.name = 'bladeSigns';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const m = new THREE.Object3D();
+    for (let k = 0; k < indices.length; k++) {
+      const b = BLOCK.buildings[indices[k]];
+      const outward = b.z > 0 ? -1 : 1; // see _buildAwnings for the convention
+      const facadeZ = b.z + outward * (b.d / 2);
+      // Alternate which corner the sign hangs off, so four signs do not line up
+      // on the same side of every building.
+      const side = k % 2 === 0 ? -1 : 1;
+
+      m.position.set(
+        b.x + side * (b.w / 2 - BLADE.CORNER_INSET),
+        BLADE.Y,
+        facadeZ + outward * BLADE.STANDOFF,
+      );
+      m.rotation.set(0, 0, 0);
+      m.scale.set(1, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(k, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    this.group.add(mesh);
   }
 
   // ------------------------------------------------------------ palms, lamps
@@ -500,6 +1220,11 @@ export class StreetBlock {
    * materials that are referenced by several meshes (traversal would visit them
    * repeatedly, which is harmless, but a shared resource whose last mesh was
    * already detached would be missed entirely).
+   *
+   * The realism pass tripled the texture count — every facade material now owns a
+   * diffuse, a roughness AND a metalness CanvasTexture — which is exactly the
+   * kind of growth that turns a missed dispose into a visible leak across an
+   * afternoon of HMR reloads. All three are registered by `_registerTexture`.
    */
   dispose() {
     disposeObject3D(this.group);
@@ -508,6 +1233,74 @@ export class StreetBlock {
     this.scene.remove(this.group);
     this.collision.clearBuildings();
   }
+}
+
+/**
+ * The G1 parapet slab's collision box for one authored building.
+ *
+ * Exported and pure so the roof-landing behaviour that acceptance criterion 20
+ * depends on can be tested headlessly, without a canvas or a WebGL context.
+ *
+ * @param {{x:number,z:number,w:number,d:number,h:number}} b
+ * @returns {THREE.Box3}
+ */
+export function parapetBox(b) {
+  const halfW = (b.w - PARAPET.INSET * 2) / 2;
+  const halfD = (b.d - PARAPET.INSET * 2) / 2;
+  return new THREE.Box3(
+    new THREE.Vector3(b.x - halfW, b.h, b.z - halfD),
+    new THREE.Vector3(b.x + halfW, b.h + PARAPET.HEIGHT, b.z + halfD),
+  );
+}
+
+/** The visible (and walkable) top of a building's roof, including its parapet. */
+export function roofTopY(b) {
+  return b.h + PARAPET.HEIGHT;
+}
+
+/**
+ * Placement for the G2 rooftop mechanical units.
+ *
+ * Pure, deterministic and exported so both the InstancedMesh and the colliders
+ * read from one source, and so the helipad-clearance claim is testable.
+ * Returned `y` is each unit's BASE, which rests on the parapet slab's top face.
+ *
+ * @param {ReadonlyArray<{kind:string,x:number,z:number,w:number,d:number,h:number}>} [buildings]
+ * @returns {Array<{x:number,y:number,z:number}>}
+ */
+export function hvacUnits(buildings = BLOCK.buildings) {
+  /** @type {Array<{x:number,y:number,z:number}>} */
+  const units = [];
+
+  for (let i = 0; i < buildings.length; i++) {
+    const b = buildings[i];
+    const y = roofTopY(b);
+
+    if (b.kind === 'tower') {
+      // FIXED, not hashed. On the bespoke tower these must stay clear of the
+      // painted helipad at the roof centre, and a hash that happened to land one
+      // on the "H" would be a bug nobody could reproduce from the source.
+      // +X / -Z corner: 0.32 of the half-extent out from centre on each axis.
+      const bx = b.x + b.w * 0.32;
+      const bz = b.z - b.d * 0.32;
+      units.push({ x: bx, y, z: bz });
+      units.push({ x: bx - 1.5, y, z: bz });
+      units.push({ x: bx, y, z: bz + 1.5 });
+    } else {
+      // Scattered within the parapet-inset roof area. `- 3` keeps a 1.5 m margin
+      // on each side so a 1.2 m box never overhangs the coping.
+      for (let u = 0; u < 2; u++) {
+        const seed = i * 131 + u * 17;
+        units.push({
+          x: b.x + (hash01(seed) - 0.5) * (b.w - 3),
+          y,
+          z: b.z + (hash01(seed + 1) - 0.5) * (b.d - 3),
+        });
+      }
+    }
+  }
+
+  return units;
 }
 
 /**
@@ -523,6 +1316,11 @@ export class StreetBlock {
  * needing a second material (and therefore without the extra draw call per
  * building that a material array would cost — 10 buildings × 6 groups = 60 draw
  * calls would blow acceptance criterion 6 on its own).
+ *
+ * THE SAMPLE POINT IS v = 0.06, AND THAT IS THE BOTTOM OF THE TILE. With
+ * CanvasTexture's default flipY = true, v = 0 samples the canvas's BOTTOM row —
+ * which is where `_makeFacadeMaterial` paints the roof/spandrel band. Do not
+ * "fix" this to 0.94 without moving the band too.
  *
  * @param {THREE.BoxGeometry} geo
  * @param {number} w size on X
@@ -555,6 +1353,136 @@ export function scaleBoxUVs(geo, w, h, d, tile) {
     }
   }
   uv.needsUpdate = true;
+}
+
+/**
+ * Remap a BoxGeometry's per-face UVs into sub-rectangles of a single
+ * non-repeating atlas — the alternative to `scaleBoxUVs` for the one building
+ * whose roof carries unique art.
+ *
+ * Every face gets the SAME linear remap with no per-face flip:
+ *   newU = uMin + u × (uMax − uMin),  newV = vMin + v × (vMax − vMin)
+ * That uniformity is what makes the floor lines meet at the corners. It is safe
+ * because BoxGeometry gives all four side faces the same vertical convention:
+ * `buildPlane` is called with vdir = -1 and v bound to the world Y axis for
+ * +X, -X, +Z and -Z alike, putting UV v = 1 at the box's TOP and v = 0 at its
+ * BASE on every one of them.
+ *
+ * @param {THREE.BoxGeometry} geo
+ * @param {ReadonlyArray<readonly [number, number, number, number]>} regions
+ *   Six [uMin, uMax, vMin, vMax] entries, in BoxGeometry's face order.
+ */
+export function atlasBoxUVs(geo, regions) {
+  const uv = geo.attributes.uv;
+
+  for (let face = 0; face < 6; face++) {
+    const [uMin, uMax, vMin, vMax] = regions[face];
+    const uSpan = uMax - uMin;
+    const vSpan = vMax - vMin;
+    for (let v = 0; v < 4; v++) {
+      const i = face * 4 + v;
+      uv.setXY(i, uMin + uv.getX(i) * uSpan, vMin + uv.getY(i) * vSpan);
+    }
+  }
+  uv.needsUpdate = true;
+}
+
+// --------------------------------------------------------------- canvas util
+
+/**
+ * Paint one window pane into the diffuse, roughness and metalness canvases at
+ * once.
+ *
+ * The diffuse bevel is the single highest-return addition in this pass: four
+ * thin edge strokes are what turn a flat rectangle into something that reads as
+ * inset glazing. Draw order is base, top, left, bottom, right, so corners
+ * resolve to whichever of highlight/shadow was drawn last and the bottom-right
+ * corner comes out as shadow — correct for an overhead sun.
+ *
+ * DIRECTION, stated explicitly: canvas y = 0 is the TOP of the canvas, and with
+ * flipY the top of the canvas is HIGH on the building. So the strip at the
+ * smallest y really is the geometric top of the pane, and really is the
+ * highlight.
+ *
+ * @param {{diffuse:CanvasRenderingContext2D,rough:CanvasRenderingContext2D,metal:CanvasRenderingContext2D}} ctxs
+ * @param {number} x
+ * @param {number} y
+ * @param {number} w
+ * @param {number} h
+ * @param {{window:number,winRough:number,winMetal:number}} spec
+ * @param {number} jitter per-pane brightness multiplier
+ * @param {number} frameU frame thickness on the horizontal axis, px
+ * @param {number} frameV frame thickness on the vertical axis, px
+ */
+function paintWindowCell(ctxs, x, y, w, h, spec, jitter, frameU, frameV) {
+  const { diffuse, rough, metal } = ctxs;
+
+  const glass = shade(spec.window, jitter);
+  const hi = shade(spec.window, Math.min(1.8, jitter * 1.6));
+  const lo = shade(spec.window, jitter * 0.45);
+
+  fillRect(diffuse, glass, x, y, w, h);
+  fillRect(diffuse, hi, x, y, w, frameV); // top edge: light catches the frame
+  fillRect(diffuse, hi, x, y, frameU, h); // left edge
+  fillRect(diffuse, lo, x, y + h - frameV, w, frameV); // bottom: lintel shadow
+  fillRect(diffuse, lo, x + w - frameU, y, frameU, h); // right edge
+
+  // PBR side: the pane is glass, the frame around it is anodised aluminium.
+  fillRect(rough, grey(spec.winRough), x, y, w, h);
+  fillRect(metal, grey(spec.winMetal), x, y, w, h);
+  for (const [ctx, value] of [
+    [rough, FRAME_ROUGH],
+    [metal, FRAME_METAL],
+  ]) {
+    const style = grey(value);
+    fillRect(ctx, style, x, y, w, frameV);
+    fillRect(ctx, style, x, y, frameU, h);
+    fillRect(ctx, style, x, y + h - frameV, w, frameV);
+    fillRect(ctx, style, x + w - frameU, y, frameU, h);
+  }
+}
+
+/**
+ * Allocate a 2D canvas context.
+ * @param {number} w
+ * @param {number} h
+ * @returns {CanvasRenderingContext2D}
+ */
+function makeContext(w, h) {
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  return canvas.getContext('2d');
+}
+
+/** @param {CanvasRenderingContext2D} ctx @param {string} style */
+function fillAll(ctx, style, w, h) {
+  fillRect(ctx, style, 0, 0, w, h);
+}
+
+/** @param {CanvasRenderingContext2D} ctx @param {string} style */
+function fillRect(ctx, style, x, y, w, h) {
+  ctx.fillStyle = style;
+  ctx.fillRect(x, y, w, h);
+}
+
+/** Six-digit zero-padded hex, for a CSS colour string. @param {number} n */
+function hex6(n) {
+  return n.toString(16).padStart(6, '0');
+}
+
+/**
+ * A neutral grey CSS colour carrying a LINEAR 0..1 material value.
+ *
+ * Roughness and metalness maps are data, not colour: the renderer reads the byte
+ * straight through (their textures are tagged NoColorSpace), so 0.5 must be
+ * written as byte 128 and not as an sRGB-encoded mid grey.
+ *
+ * @param {number} v
+ */
+function grey(v) {
+  const c = Math.round(Math.max(0, Math.min(1, v)) * 255);
+  return `rgb(${c},${c},${c})`;
 }
 
 /**
