@@ -62,7 +62,7 @@ Targeted `grep` only.
 | 4 | Delivery | **Feature branch + PR against `dev`.** No agent pushes `main`. No deploy target exists. |
 | 5 | Trademark handling | **Rename in the 3D build ONLY.** `kodaman3d/` uses original, legally-distinct names from day one. `kodaman_prototype.html` keeps its current names and is NOT edited. |
 | 6 | Naming authority | **Agents propose, user approves.** Research delivers the old->new mapping table with rationale. No agent applies a rename before user sign-off. |
-| 7 | Draw-call ceiling | **The 60 ceiling is a Phase 1 number and is deliberately raised for Phase 2.** Set the new figure from a **measured worst case**, not a guess. User decision 2026-07-30. |
+| 7 | Draw-call ceiling | **The 60 ceiling is a Phase 1 number and is deliberately raised for Phase 2.** Set the new figure from a **measured worst case**, not a guess. User decision 2026-07-30. **See the correction below — every draw-call figure used before 2026-07-31 undercounted by roughly half.** |
 | 8 | World extent | **Vast and explorable, but BOUNDED.** Explicitly *not* endless open world. User decision 2026-07-30. |
 | 9 | Skeletal animation | **Pulled forward into Phase 2** (was Phase 5). Accepts imported rigged assets, which supersedes the Phase 1 primitives-only constraint from Phase 2 onward. User decision 2026-07-30. |
 
@@ -97,7 +97,8 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Design — buildings | Sonnet | **done** | `DESIGN_SPEC_PHASE_1_BUILDINGS.md` (446 lines) |
 | Review — feasibility gate | Sonnet | **done** — APPROVED WITH CORRECTIONS | `REVIEW_DESIGN_SPEC_BUILDINGS.md` |
 | Engineer — B5 limb pose | orchestrator, inline | **done** — commit `44df9fe` | `Hero.js` flight pose |
-| Engineer — implement the building spec | **Opus** | **FAILED on a session limit, no work done — resume here** | changes in `StreetBlock.js` |
+| Engineer — building spec + budget | **Opus** | **done** — 3 commits, tests 95/95 | `ENGINEER_PHASE1_CLOSE.md` |
+| Browser spot-check 2 | user | **NOT DONE — resume here** | `BROWSER_SPOT_CHECK_2.md`, 11 steps |
 | Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
@@ -150,6 +151,38 @@ this to the user before the Engineer starts.
 **B5 is decided and fixed** — arms forward, legs trailing, commit `44df9fe`. Done inline by the
 orchestrator rather than by an agent: the diagnosis was already complete in
 `SPOT_CHECK_RESULTS.md` and the change was two sign flips. Unverified visually.
+
+### CORRECTION — the draw-call budget was counting half the work
+
+**Every draw-call figure this project used before 2026-07-31 was a main-pass count. The real
+number includes the shadow pass.**
+
+`renderer.info.render.calls` accumulates across **both** passes: `WebGLRenderer` calls
+`info.reset()` and *then* `shadowMap.render()`, and the shadow map draws through the same
+`renderBufferDirect`. So every shadow-casting object costs **two** calls, not one. Verified
+independently by the orchestrator in the installed `three` 0.185.1 bundle — `info.reset()` at
+line 17696, `shadowMap.render()` at 17702, main scene render at 17751.
+
+Worst case with nothing culled, from a scene-graph walk:
+
+| | Main pass | Shadow pass | **Total** |
+|---|---|---|---|
+| Before the building pass | 28 | 21 | **49** |
+| After | 32 | 25 | **57** |
+
+**Consequences:**
+
+- `DESIGN_SPEC_PHASE_1_BUILDINGS.md`'s ledger — 45 baseline, +4, "eleven calls of headroom left
+  for the character pass" — **counts main-pass objects only.** The headroom it promises does not
+  exist.
+- The real position is **57 against a 60 ceiling: three calls of headroom, not eleven.** The
+  character pass cannot be budgeted against 49.
+- The human's 42 and the earlier 45 are both consistent with a 49 worst case; they differ
+  because each pass culls independently.
+
+**For locked decision 7: raise from 57, and state explicitly whether the new ceiling counts one
+pass or both.** Getting this wrong in the other direction — setting a ceiling that silently
+assumes single-pass — would repeat the same mistake with a bigger world.
 
 ### OPEN FINDING — body pitch ignores horizontal speed
 
@@ -262,7 +295,9 @@ Cross-session observable total: **~771,000.**
 | Engineer — B1–B4 bug fixes (Opus) | 152,611 |
 | Design — building spec (Sonnet) | 122,497 |
 | Review — feasibility gate on that spec (Sonnet) | 113,626 |
-| **Session 4 total** | **388,734** |
+| Engineer — Phase 1 close, attempt 1 (Opus) | died on a session limit, no work done |
+| Engineer — Phase 1 close, attempt 2 (Opus) | 180,786 |
+| **Session 4 total** | **569,520** |
 
 Cross-session observable total: **~1,160,000**.
 
