@@ -98,7 +98,8 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Review — feasibility gate | Sonnet | **done** — APPROVED WITH CORRECTIONS | `REVIEW_DESIGN_SPEC_BUILDINGS.md` |
 | Engineer — B5 limb pose | orchestrator, inline | **done** — commit `44df9fe` | `Hero.js` flight pose |
 | Engineer — building spec + budget | **Opus** | **done** — 3 commits, tests 95/95 | `ENGINEER_PHASE1_CLOSE.md` |
-| Browser spot-check 2 | user | **NOT DONE — resume here** | `BROWSER_SPOT_CHECK_2.md`, 11 steps |
+| Browser spot-check 2 | user | **done** — all steps pass; 2 feel notes, 1 palette defect | results in this file |
+| Flight lean + 12 m helipad | orchestrator, inline | **done** — commit `fd33b41`, 99/99 tests | not yet seen in a browser |
 | Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
 | Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
 
@@ -151,6 +152,24 @@ this to the user before the Engineer starts.
 **B5 is decided and fixed** — arms forward, legs trailing, commit `44df9fe`. Done inline by the
 orchestrator rather than by an agent: the diagnosis was already complete in
 `SPOT_CHECK_RESULTS.md` and the change was two sign flips. Unverified visually.
+
+### Phase 1 is verified end to end
+
+**Spot-check 2 passed on every step**, including criterion 20 — landing on the tallest roof —
+which confirms the parapet collider holds. Between the Engineer's headless work and two human
+browser passes, all 28 acceptance criteria are now verified. **Phase 1 is done.**
+
+Measured on real hardware: **120 fps**, draw calls **47 street / 52 peak** against the 57
+computed worst case, geometries and textures **flat at 27 / 21** over five minutes.
+
+Three items came out of it, none blocking:
+
+1. **Flight lean and dive angle** — fixed inline, commit `fd33b41`. Unverified visually.
+2. **The helipad was invisible** at 3.5 m — now 12 m. Unverified visually.
+3. **The dark tower facade reads as near-black** with pure-black window voids and almost no
+   light response. The tan mid-rise, by contrast, reads well — window rhythm, banding, depth.
+   **This is a palette defect, not taste**, and it is the one substantive visual problem left.
+   It belongs to Design, not to a guess at hex values.
 
 ### CORRECTION — the draw-call budget was counting half the work
 
