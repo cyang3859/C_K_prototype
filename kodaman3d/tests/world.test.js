@@ -297,8 +297,13 @@ describe('StreetBlock, built', () => {
     const rx = TOWER_ATLAS.HELIPAD_OUTER_PX / roofPxPerM_U;
     const rz = (TOWER_ATLAS.HELIPAD_OUTER_PX * squash) / roofPxPerM_V;
     expect(rz).toBeCloseTo(rx, 10);
-    // Sanity: this is the real-world size of the marking. ~3.5 m across.
-    expect(rx).toBeCloseTo(1.7578, 3);
+    // Sanity: the real-world size of the marking. A 6 m radius, i.e. a 12 m
+    // helipad on the 20 x 28 m roof — the real FATO proportion. It shipped at
+    // 1.76 m (3.5 m across) and a human flying over the roof could not find it.
+    expect(rx).toBeCloseTo(5.996, 3);
+    // And it still fits the region it is painted into, in both axes.
+    expect(2 * TOWER_ATLAS.HELIPAD_OUTER_PX).toBeLessThan(TOWER_ATLAS.SIZE);
+    expect(2 * TOWER_ATLAS.HELIPAD_OUTER_PX * squash).toBeLessThan(TOWER_ATLAS.SIZE * 0.25);
   });
 
   it('draws the helipad ring and glyph inside a save/restore pair', () => {

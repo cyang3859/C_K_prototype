@@ -317,13 +317,21 @@ export const TOWER_ATLAS = Object.freeze({
   /**
    * Helipad ring radii, in canvas pixels ALONG THE U AXIS. The V axis is
    * compensated at draw time (see `_paintRoofRegion`), so these are the radii
-   * that survive into world space: at 1024 px over the tower's 20 m width the
-   * outer ring is 90 / 51.2 = 1.76 m, i.e. a 3.5 m marking on a 20 × 28 m roof.
-   * Straight from the reviewed spec. If it reads too small in a browser this is
-   * the one constant to raise.
+   * that survive into world space. At 1024 px over the tower's 20 m width the
+   * scale is 51.2 px/m, so 307 px is a 6 m radius — a **12 m helipad** on a
+   * 20 × 28 m roof, and a ~1 m ring stroke.
+   *
+   * It shipped at 90/78 first, a 3.5 m marking straight from the reviewed spec.
+   * A human flew over the roof and could not find it: 3.5 m on a 20 m roof is a
+   * few pixels from flight altitude, so it read as a decal rather than a place
+   * to land. 12 m is the real FATO proportion for a roof this size and is what
+   * the user chose.
+   *
+   * Both circles fit their region: 2 × 307 = 614 px of the 1024 px width, and
+   * once squashed, 2 × 307 × 0.17857 ≈ 110 px of the 256 px height.
    */
-  HELIPAD_OUTER_PX: 90,
-  HELIPAD_INNER_PX: 78,
+  HELIPAD_OUTER_PX: 307,
+  HELIPAD_INNER_PX: 256,
   /** Gravel speckle: authored in METRES so it stays square once V is compensated. */
   SPECKLE_M: 0.12,
   SPECKLE_COUNT: 400,

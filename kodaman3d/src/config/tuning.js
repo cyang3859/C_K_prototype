@@ -184,7 +184,13 @@ export const TUNING = {
   MAX_FORWARD_PITCH: 1.5,
   /** rad — flight body-pitch floor (nose-up while climbing). */
   MIN_FORWARD_PITCH: -0.6,
-  /** divisor in `pitch = clamp(-velocity.y / PITCH_SPEED_DIVISOR, min, max)`. */
+  /**
+   * Divisor on the VERTICAL half of the body-pitch calculation. See
+   * `LocomotionController._updateOrientation` for the full two-term model —
+   * this term is faded out as horizontal speed rises, so it governs the
+   * near-vertical climb and dive poses rather than flight generally.
+   * Lower = tips harder for the same vertical speed.
+   */
   PITCH_SPEED_DIVISOR: 8.0,
 
   // ---- World bounds --------------------------------------------------------

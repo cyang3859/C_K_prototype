@@ -501,11 +501,40 @@ export class LocomotionController {
     // to a default facing when you release the stick looks broken.
 
     // Body pitch leans the hero toward horizontal at speed (the Superman pose).
-    // Positive pitch = nose down. At the flying dive cap of 6.1 m/s this reaches
-    // ~0.76 rad; the 1.5 rad cap exists for future, faster dive tuning.
+    // Positive pitch = nose down.
+    //
+    // TWO TERMS, and the split is the whole design. The version that shipped
+    // first used the vertical term alone, which meant flying fast and LEVEL
+    // produced a pitch of exactly zero — the hero cruised upright, standing in
+    // the air, and a human tester reported it as "leaning back and not leaning
+    // forward in the direction of travel." Horizontal speed has to drive the
+    // pose, because horizontal speed is what the player spends most of their
+    // flight doing.
+    //
+    // 1. SPEED LEAN, from horizontal speed. Reaches the full MAX_FORWARD_PITCH
+    //    at FLIGHT_DASH_SPEED, i.e. a dash puts the hero flat into the classic
+    //    horizontal pose. The sqrt curve is deliberate: lean builds fast at low
+    //    speed and saturates near the top, so ordinary flight already reads as
+    //    leaning rather than needing a dash to look like anything. A linear
+    //    ramp left normal-speed flight nearly upright.
+    //
+    // 2. VERTICAL LEAN, the original term, FADED OUT BY HORIZONTAL SPEED. On a
+    //    near-vertical climb it is the only thing acting and the hero tips
+    //    properly nose-up. Once travelling fast horizontally it yields to the
+    //    speed lean — otherwise climbing while moving forward cancels out to
+    //    upright, which is the complaint above in a different costume.
+    //
+    // Worked cases at the shipped constants: hover 0 rad (upright); level
+    // flight at 7.5 m/s ≈ 0.91 rad forward; level dash at 20.5 ≈ 1.5 rad, flat;
+    // vertical climb at 7.5 clamps to -0.6 rad, nose up; diving at 6.1 while
+    // moving 7.5 forward ≈ 1.39 rad, a steep head-first dive.
     if (hero.flightActive) {
+      const horizontalSpeed = Math.hypot(hero.velocity.x, hero.velocity.z);
+      const speedFactor = clampNumber(horizontalSpeed / t.FLIGHT_DASH_SPEED, 0, 1);
+      const speedLean = t.MAX_FORWARD_PITCH * Math.sqrt(speedFactor);
+      const verticalLean = (-hero.velocity.y / t.PITCH_SPEED_DIVISOR) * (1 - speedFactor);
       hero.pitch = clampNumber(
-        -hero.velocity.y / t.PITCH_SPEED_DIVISOR,
+        speedLean + verticalLean,
         t.MIN_FORWARD_PITCH,
         t.MAX_FORWARD_PITCH,
       );

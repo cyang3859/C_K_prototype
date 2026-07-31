@@ -97,6 +97,10 @@ export class DebugHud {
     flight.add(TUNING, 'FLIGHT_FINE_MULT', 0.05, 1, 0.05).name('FLIGHT_FINE_MULT (J/K/L)');
     flight.add(TUNING, 'AIR_FRICTION', 0.5, 0.99, 0.005).name('AIR_FRICTION /frame');
     flight.add(TUNING, 'MAX_FORWARD_PITCH', 0, 1.6, 0.01).name('MAX_FORWARD_PITCH (rad)');
+    // Both halves of the body-pitch model are tunable live, because how much
+    // lean reads as "right" is a judgement nobody can make without a screen.
+    flight.add(TUNING, 'MIN_FORWARD_PITCH', -1.6, 0, 0.01).name('MIN_FORWARD_PITCH (rad)');
+    flight.add(TUNING, 'PITCH_SPEED_DIVISOR', 1, 30, 0.1).name('PITCH_SPEED_DIVISOR');
 
     // The hover damping folder gets its own home and an explanatory name,
     // because this is the single most important — and most easily broken —

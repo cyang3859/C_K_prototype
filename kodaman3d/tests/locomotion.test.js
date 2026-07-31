@@ -643,7 +643,7 @@ describe('Hero visual orientation — B1 cape, B4 body pitch', () => {
     expect(head.y).toBeGreaterThan(0.5);
   });
 
-  it('B4: level flight leaves the hero upright', () => {
+  it('B4: a motionless hover leaves the hero upright', () => {
     const { hero3d, controller, state } = makeHero();
     forceFlying(state, 100);
     stepHero(hero3d, controller, mkInput(), 120);
@@ -653,6 +653,58 @@ describe('Hero visual orientation — B1 cape, B4 body pitch', () => {
     expect(state.pitch).toBeCloseTo(0, 12);
     const head = worldAxis(hero3d.bodyPivot, 0, 1, 0);
     expect(head.y).toBeGreaterThan(0.999);
+  });
+
+  // The two-term pitch model. Horizontal speed drives the lean; the vertical
+  // term fades out as it rises. See `_updateOrientation` for the full rationale.
+  // This is the defect a human reported as "the character is leaning back and
+  // does not lean forward in the direction of travel."
+
+  it('level flight AT SPEED leans forward — it is not upright', () => {
+    const { hero3d, controller, state } = makeHero();
+    forceFlying(state, 100);
+    state.velocity.set(0, 0, -TUNING.MAX_SPEED); // travelling, not hovering
+    controller._updateOrientation(1 / 60, mkInput());
+    hero3d.syncTransform();
+
+    // Leaning appreciably forward, and NOT the zero the old model produced.
+    expect(state.pitch).toBeGreaterThan(0.7);
+    // The head has tipped toward travel rather than staying straight up.
+    const head = worldAxis(hero3d.bodyPivot, 0, 1, 0);
+    expect(head.y).toBeLessThan(0.7);
+    expect(head.z).toBeLessThan(0); // -Z is the facing/travel direction
+  });
+
+  it('a level dash reaches the full horizontal pose', () => {
+    const { state, controller } = makeHero();
+    forceFlying(state, 100);
+    state.velocity.set(0, 0, -TUNING.FLIGHT_DASH_SPEED);
+    controller._updateOrientation(1 / 60, mkInput());
+
+    expect(state.pitch).toBeCloseTo(TUNING.MAX_FORWARD_PITCH, 6);
+  });
+
+  it('climbing STRAIGHT up still tips nose-up, since the vertical term rules there', () => {
+    const { state, controller } = makeHero();
+    forceFlying(state, 100);
+    state.velocity.set(0, TUNING.MAX_FLIGHT_UP_SPEED, 0); // no horizontal speed
+    controller._updateOrientation(1 / 60, mkInput());
+
+    expect(state.pitch).toBeLessThan(0);
+  });
+
+  it('diving WHILE travelling forward is steeper than diving alone', () => {
+    const dive = (vx, vz) => {
+      const { state, controller } = makeHero();
+      forceFlying(state, 100);
+      state.velocity.set(vx, -TUNING.MAX_FLIGHT_DOWN_SPEED, vz);
+      controller._updateOrientation(1 / 60, mkInput());
+      return state.pitch;
+    };
+
+    // A vertical drop tips less than a dive carrying real forward speed, which
+    // is the "the angle could use a bit more work" feedback from the browser.
+    expect(dive(0, -TUNING.MAX_SPEED)).toBeGreaterThan(dive(0, 0));
   });
 });
 

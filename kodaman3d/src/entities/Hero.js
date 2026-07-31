@@ -350,9 +350,22 @@ export class Hero {
     // `trail = -(8 + speed * 3.2)`, explicitly backward. The 3D port dropped the
     // sign, and the old comment ("toward horizontal (~90°)") never said WHICH
     // horizontal, which is exactly how it got through review.
+    // BODY PITCH IS CANCELLED OUT HERE, and it has to be. `capeAnchor` is a
+    // child of `bodyPivot`, so it inherits the body's pitch; the hem's total
+    // world rotation is `-pitch + capeAnchor.rotation.x`. Once the body leans to
+    // horizontal at dash speed, that inherited -1.5 rad ALREADY swings the cape
+    // from hanging to trailing — and adding the lift on top of it double-counts,
+    // rotating the hem a further 90° past the hero until it points straight up,
+    // perpendicular to travel. Adding `state.pitch` back cancels the inherited
+    // term, so the total world lift is exactly `-(targetLift + flare)` whatever
+    // the body is doing, and `targetLift` keeps meaning what it says: the cape's
+    // angle from hanging, measured against the world.
+    //
+    // This surfaced the moment body pitch started responding to horizontal
+    // speed. A unit test caught it, not an eye.
     this.capeAnchor.rotation.x = damp(
       this.capeAnchor.rotation.x,
-      -(targetLift + flare),
+      this.state.pitch - (targetLift + flare),
       12,
       dt,
     );
