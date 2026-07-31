@@ -260,11 +260,32 @@ export class Hero {
     if (flying) {
       // Flight pose: arms forward and slightly out, legs together and trailing.
       // Eased rather than snapped so takeoff reads as a transition.
+      //
+      // AXIS DIRECTION, EXPLICITLY — this was the B5 defect and the signs here
+      // are load-bearing. Arms pivot AT THE SHOULDER with the mesh hanging
+      // below, so an arm's rest direction is local (0,-1,0). Under a rotation
+      // of +a about +X that maps to (0, -cos a, -sin a). Reading off the two
+      // components: a > 0 sends the hand toward -Z, and the hero faces -Z, so
+      // POSITIVE IS FORWARD. Legs pivot at the hip with the same rest
+      // direction, so the same rule applies to them.
+      //
+      // At +2.6 the hands sit at (0, +0.86, -0.52): forward and raised about
+      // 59 deg — reaching ahead into travel. The value that shipped was -2.6,
+      // the same magnitude with the sign inverted, which put the hands at
+      // (0, +0.86, +0.52) — swept up and BEHIND the head. Composed with the
+      // body's dive lean that pointed them nearly straight up in world space,
+      // and a figure descending with its arms overhead reads as falling
+      // feet-first however the torso is angled. That is what a human tester
+      // saw and reported as "the arms don't point towards the direction of
+      // travel."
+      //
+      // Legs go slightly NEGATIVE so they trail at ~7 deg behind rather than
+      // leading by 7 deg, which is the pose the user chose.
       const k = 1 - Math.exp(-8 * dt);
-      approachRotation(this.joints.armLeft, -2.6, 0, 0.12, k);
-      approachRotation(this.joints.armRight, -2.6, 0, -0.12, k);
-      approachRotation(this.joints.legLeft, 0.12, 0, 0.05, k);
-      approachRotation(this.joints.legRight, 0.12, 0, -0.05, k);
+      approachRotation(this.joints.armLeft, 2.6, 0, 0.12, k);
+      approachRotation(this.joints.armRight, 2.6, 0, -0.12, k);
+      approachRotation(this.joints.legLeft, -0.12, 0, 0.05, k);
+      approachRotation(this.joints.legRight, -0.12, 0, -0.05, k);
       return;
     }
 
