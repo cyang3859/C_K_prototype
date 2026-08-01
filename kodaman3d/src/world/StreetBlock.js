@@ -202,12 +202,17 @@ const FACADE_VARIANTS = Object.freeze({
   },
   // WHY THESE ARE NOT DARKER, which is the obvious instinct for glass.
   //
-  // There is NO ENVIRONMENT MAP in this project — no `scene.environment`, no
-  // PMREM, no `.envMap` on any material. Lighting is one DirectionalLight plus
-  // one HemisphereLight (`Sky.js`), and the renderer tone-maps with ACES
-  // Filmic (`Renderer.js:45`).
+  // HISTORY — these values were tuned when there was NO environment map. As of
+  // commit 6a07c13 there IS one: a PMREM baked from the synthetic sky, applied
+  // as `scene.environment` (`Sky.js`), so the reasoning below no longer holds
+  // as stated. The values are kept because the fix worked and the towers now
+  // read as glass; see the closing note.
   //
-  // That combination changes what `metalness` means here. In
+  // The original reasoning, for the record. Lighting was one DirectionalLight
+  // plus one HemisphereLight (`Sky.js`), with ACES Filmic tone mapping
+  // (`Renderer.js:45`) and no environment to reflect.
+  //
+  // That combination changed what `metalness` means here. In
   // MeshStandardMaterial, metalness SUBTRACTS from the diffuse term and moves
   // that energy into specular reflection of the environment — but with no
   // environment to reflect, indirect specular is exactly zero. Metal takes the
@@ -222,11 +227,16 @@ const FACADE_VARIANTS = Object.freeze({
   // never implicated, and the low `winRough` is what keeps the glass reading
   // glossy rather than chalky.
   //
-  // If this still reads flat on a real GPU, the physically correct fix is a
-  // real environment map (PMREM-baked from a synthetic gradient sky, no asset
-  // file needed) rather than pushing these numbers further. That is written up
-  // in DESIGN_SPEC_TOWER_PALETTE.md as an open question, and it would let the
-  // metalness values go back up where they belong.
+  // The environment map named above as the physically correct fix SHIPPED in
+  // 6a07c13, and it closed the dark-tower defect on its own. The metalness
+  // raise it would have unlocked was deliberately NOT taken: measured under
+  // Playwright (spot-check 5), ENV_INTENSITY 0 -> 1 lifts the far towers by
+  // +780% / +637% mean luminance with these values unchanged, so there is no
+  // problem left for a metalness raise to solve. Note the env map feeds DIFFUSE
+  // irradiance too, independent of metalness — it is the scene's global ambient
+  // fill, not only a glass reflection. Anything that changes ENV_INTENSITY
+  // changes scene-wide brightness. See BROWSER_SPOT_CHECK_5.md for the numbers
+  // and DESIGN_SPEC_TOWER_PALETTE.md for the original write-up.
   towerShared: {
     wall: 0x828fa0,
     window: 0x32475e,
