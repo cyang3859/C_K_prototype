@@ -142,8 +142,14 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 ## >>> RESUME HERE — session 8 closed 2026-08-01, deliberately, by the user <<<
 
 **Nothing is half-finished. Working tree is clean and everything is committed.** 108/108 tests.
-`main` untouched. `kodaman_prototype.html` zero diff. **No agent ran this session at all** — subagent
-spend **0 tokens**, all work inline. Nothing was interrupted and nothing is stranded.
+`main` untouched (`5f62309`). `kodaman_prototype.html` zero diff. **No agent ran this session at
+all** — subagent spend **0 tokens**, all work inline. Nothing was interrupted and nothing is stranded.
+
+**ONE COMMIT IS UNPUSHED: `86ec6b5`** — this session's whole output, documentation only, no code.
+Deliberately not pushed: **PR #3 is open and the user is reviewing its diff**, and pushing adds to
+what they are reading. Session 7 hit the identical situation and the user's answer then was to push;
+they have **not** been asked this time. A plain `git push` sends it up — `origin/feat/3d-open-world`
+already exists. **Low stakes either way, since no code is affected.**
 
 ### A standing working rule CHANGED this session — read this before any browser work
 
