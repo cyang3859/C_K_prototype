@@ -57,8 +57,16 @@ export const ROADWAY = 21.34;
 export const SIDEWALK = 4.57;
 export const HALF_ROADWAY = ROADWAY / 2; // 10.67
 
-/** Local coordinates of the street centre-lines, both axes. */
-export const STREET_LINES = Object.freeze([-150, -50, 50, 150]);
+/**
+ * Local coordinates of the street centre-lines, both axes.
+ *
+ * ONLY THE TWO INTERIOR LINES, deliberately. A street on the district edge at
+ * ±150 would be half outside the district and would need every road strip
+ * clipped to the boundary — real work for a half-street nobody can drive down.
+ * The outermost lots front onto the district edge instead, which is what the
+ * edge of a real downtown core does anyway.
+ */
+export const STREET_LINES = Object.freeze([-50, 50]);
 /** Local coordinates of the 3 cell centres, both axes. */
 export const CELL_CENTRES = Object.freeze([-100, 0, 100]);
 /** Metres. Half the gap between the two slot centres inside one cell. */

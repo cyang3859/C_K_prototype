@@ -13,6 +13,8 @@ import {
   roofInnerBox,
   roofTopY,
 } from '../src/world/StreetBlock.js';
+import { DISTRICTS, WORLD_HALF_EXTENT } from '../src/world/districts.js';
+import { District } from '../src/world/District.js';
 import { Sky } from '../src/world/Sky.js';
 import { Hero } from '../src/entities/Hero.js';
 import { createdContexts, installCanvasStub } from './support/canvas2d.js';
@@ -485,6 +487,106 @@ describe('worst-case draw calls', () => {
       expect(inv.shadow).toContain(name);
     }
     expect(added.length * 2).toBe(8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2 worst-case draw calls — the whole world, both passes
+// ---------------------------------------------------------------------------
+
+describe('Phase 2 worst-case draw calls', () => {
+  it('is 83 with nothing culled: 49 main + 34 shadow, against the 150 ceiling', () => {
+    installCanvasStub();
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    // eslint-disable-next-line no-new
+    new Sky(scene);
+    // eslint-disable-next-line no-new
+    new StreetBlock({ scene, collision });
+    for (const spec of DISTRICTS) {
+      // eslint-disable-next-line no-new
+      new District({ scene, collision, spec });
+    }
+    // eslint-disable-next-line no-new
+    new Hero({ scene, position: new THREE.Vector3(0, 0, 13) });
+
+    const inv = drawCallInventory(scene);
+
+    // WHY A GRAPH WALK AND NOT renderer.info. `info.render.calls` reports what
+    // was actually drawn last frame, so it moves with frustum culling and with
+    // the shadow camera's own extent — the browser reads 53 for the Phase 1
+    // scene the ledger below counts as 57. This is the static upper bound, and
+    // it is the number every budget figure in this project is quoted against.
+    //
+    // Phase 1 baseline: 32 main / 25 shadow / 57 total.
+    // Phase 2 districts add 17 main / 9 shadow / 26 total:
+    //   ground+road   8 main, 0 shadow  (4 merged surfaces x 2 districts, §6)
+    //   families      7 main, 7 shadow  (3 in A + 4 in B, §4)
+    //   landmarks     2 main, 2 shadow  (own Mesh each — no batched material
+    //                                    override exists to fold them in)
+    // which is EXACTLY §BGT-1's ground/road + facade families + landmark lines.
+    expect(inv.main.length).toBe(49);
+    expect(inv.shadow.length).toBe(34);
+    expect(inv.total).toBe(83);
+
+    // The Phase 2 ceiling, both passes (RESEARCH_PHASE_2_WORLD.md §BUD-6).
+    expect(inv.total).toBeLessThanOrEqual(150);
+
+    // §6 again, from the other direction: not one ground or road surface casts.
+    for (const spec of DISTRICTS) {
+      for (const surface of ['ground', 'roadway', 'sidewalk', 'curb']) {
+        expect(inv.shadow).not.toContain(`${spec.id}_${surface}`);
+      }
+    }
+  });
+
+  it('the districts cost 26 calls — exactly the three §BGT-1 lines they cover', () => {
+    installCanvasStub();
+    const bare = new THREE.Scene();
+    const withDistricts = new THREE.Scene();
+    const c1 = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const c2 = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    // eslint-disable-next-line no-new
+    new StreetBlock({ scene: bare, collision: c1 });
+    // eslint-disable-next-line no-new
+    new StreetBlock({ scene: withDistricts, collision: c2 });
+    for (const spec of DISTRICTS) {
+      // eslint-disable-next-line no-new
+      new District({ scene: withDistricts, collision: c2, spec });
+    }
+
+    const before = drawCallInventory(bare);
+    const after = drawCallInventory(withDistricts);
+    expect(after.main.length - before.main.length).toBe(17);
+    expect(after.shadow.length - before.shadow.length).toBe(9);
+    expect(after.total - before.total).toBe(26);
+  });
+
+  it('68 buildings cost 7 calls, not 136 — this is what batching buys', () => {
+    installCanvasStub();
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const districts = DISTRICTS.map(
+      (spec) => new District({ scene, collision, spec }),
+    );
+
+    const buildings = districts.reduce((n, d) => n + d.buildings.length, 0);
+    expect(buildings).toBe(68);
+
+    let batches = 0;
+    let instances = 0;
+    scene.traverse((o) => {
+      if (o.isBatchedMesh) {
+        batches++;
+        instances += o.instanceCount;
+      }
+    });
+    expect(batches).toBe(7);
+    // Every massing box is its own geometry+instance inside its family's batch.
+    expect(instances).toBe(170);
+    // One mesh per building would be 68 main + 68 shadow = 136 calls, which
+    // exhausts the 150 ceiling on buildings alone. BUD-3 is not polish.
+    expect(batches * 2).toBeLessThan(buildings * 2);
   });
 });
 

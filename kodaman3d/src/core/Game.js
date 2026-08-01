@@ -2,7 +2,9 @@ import * as THREE from 'three';
 
 import { CameraRig } from '../controllers/CameraRig.js';
 import { CollisionWorld } from '../world/Collision.js';
+import { DISTRICTS } from '../world/districts.js';
 import { DebugHud } from '../ui/DebugHud.js';
+import { District } from '../world/District.js';
 import { Hero } from '../entities/Hero.js';
 import { Input } from './Input.js';
 import { LocomotionController } from '../controllers/LocomotionController.js';
@@ -86,6 +88,14 @@ export class Game {
     // shared by the hero's capsule resolution and the camera's arm raycast.
     this.collision = new CollisionWorld({ halfExtent: TUNING.PLAYABLE_HALF_EXTENT });
     this.world = new StreetBlock({ scene: this.scene, collision: this.collision });
+
+    // Phase 2's two districts, built statically alongside Phase 1's block. They
+    // register into the SAME collision world, and for the same reason it is
+    // created first. No streaming, no chunk loading, no LOD — a district is
+    // built once and stays resident, which is all this phase's scope needs.
+    this.districts = DISTRICTS.map(
+      (spec) => new District({ scene: this.scene, collision: this.collision, spec }),
+    );
 
     // Spawn on the sidewalk, clear of every building footprint, facing the
     // boulevard so the first thing the player sees is the street.
@@ -182,6 +192,7 @@ export class Game {
     // 3. World. Static in Phase 1; the call exists so the step has its final
     //    shape for Phase 2's time-of-day and streaming work.
     this.world.update(dt);
+    for (const district of this.districts) district.update(dt);
     this.sky.update(dt);
 
     // 4. Camera, AFTER locomotion, reading the hero's final transform.
@@ -231,6 +242,7 @@ export class Game {
     if (this.debugHud) this.debugHud.dispose();
     if (this.hero) this.hero.dispose();
     if (this.world) this.world.dispose();
+    if (this.districts) for (const d of this.districts) d.dispose();
     if (this.sky) this.sky.dispose();
     if (this.scene) disposeObject3D(this.scene);
     if (this.renderer) this.renderer.dispose();

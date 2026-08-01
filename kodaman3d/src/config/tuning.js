@@ -230,8 +230,23 @@ export const TUNING = {
   ENV_INTENSITY: 1.0,
 
   // ---- World bounds --------------------------------------------------------
-  /** m — ±150 m on X and Z from the origin = a 300 m playable square. */
-  PLAYABLE_HALF_EXTENT: 150.0,
+  /**
+   * m — the playable half-extent, i.e. where the four invisible boundary walls
+   * sit.
+   *
+   * RAISED FROM PHASE 1's 150 BY THE PHASE 2 DISTRICTS, and the number is
+   * derived rather than picked: Phase 1's block keeps ±150; District B is
+   * cardinal and spans world x ∈ [170, 470]; District A is yawed 36°, so its
+   * 300 m square has a 419 m axis-aligned envelope and spans x ∈ [−609.5,
+   * −190.5]. 610 is the smallest square that contains all three. See
+   * `world/districts.js`'s `WORLD_HALF_EXTENT`, which is the source of truth —
+   * this constant must track it.
+   *
+   * The world is still BOUNDED (locked decision 8). This moves the fence out; it
+   * does not remove it. The world-edge fade (decision 11) is separate work and
+   * is not built yet.
+   */
+  PLAYABLE_HALF_EXTENT: 610.0,
 
   // ---- Camera rig ----------------------------------------------------------
   /**

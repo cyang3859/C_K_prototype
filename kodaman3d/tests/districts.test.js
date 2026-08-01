@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   DISTRICT_A_FAMILIES,
@@ -9,6 +9,8 @@ import {
 import {
   CELL_PITCH,
   DISTRICTS,
+  STREET_LINES,
+  WORLD_HALF_EXTENT,
   DISTRICT_A_ROTATION,
   DISTRICT_B_ROTATION,
   HALF_ROADWAY,
@@ -21,7 +23,10 @@ import {
   localToWorld,
   slotCentres,
 } from '../src/world/districts.js';
+import { CollisionWorld } from '../src/world/Collision.js';
+import { District } from '../src/world/District.js';
 import { FACADE_VARIANTS } from '../src/world/StreetBlock.js';
+import { installCanvasStub } from './support/canvas2d.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
 
 /**
@@ -388,5 +393,135 @@ describe('district placement maths', () => {
         expect(Math.abs(box.max.z)).toBeLessThanOrEqual(610);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The built districts — the §BUD-2 ground/road trap and the §BGT-1 ledger
+// ---------------------------------------------------------------------------
+
+describe('District, built', () => {
+  /** @type {THREE.Scene} */
+  let scene;
+  /** @type {CollisionWorld} */
+  let collision;
+  /** @type {District[]} */
+  let districts;
+
+  beforeAll(() => {
+    installCanvasStub();
+    scene = new THREE.Scene();
+    collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    districts = DISTRICTS.map((spec) => new District({ scene, collision, spec }));
+  });
+
+  it('BUD-2: ground and road are FOUR meshes per district, not seven per tile', () => {
+    // This is the single biggest budget risk in the whole phase. Phase 1 builds
+    // 7 ground/road meshes for one block; repeating that per 256 m chunk costs
+    // 7 x 64 = 448 draw calls before a single building, and §BUD-2 calls a
+    // design that implies it unshippable. So: merged per surface type, per
+    // district, and MEASURED here rather than asserted in a comment.
+    for (const d of districts) {
+      const surfaces = ['ground', 'roadway', 'sidewalk', 'curb'].map(
+        (s) => `${d.spec.id}_${s}`,
+      );
+      const found = surfaces.filter((name) => scene.getObjectByName(name));
+      expect(found).toHaveLength(4);
+      // And none of them casts — §6, and Phase 1's own convention.
+      for (const name of surfaces) {
+        expect(scene.getObjectByName(name).castShadow, name).toBe(false);
+      }
+    }
+  });
+
+  it('BUD-2: the road mesh count does not move with the number of streets', () => {
+    // The property that actually matters is that surfaces are merged, so adding
+    // a street adds triangles and not draw calls. Assert on the merged geometry
+    // instead of on the mesh count alone, which a single street would also pass.
+    for (const d of districts) {
+      const roadway = scene.getObjectByName(`${d.spec.id}_roadway`);
+      // Each street line contributes one full-length strip along its own axis
+      // plus (lines + 1) segments across the perpendicular streets, and all of
+      // it lands in ONE geometry.
+      const quads = STREET_LINES.length * (1 + (STREET_LINES.length + 1));
+      expect(roadway.geometry.index.count / 3).toBe(quads * 2);
+      expect(roadway.geometry.groups.length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('there is no centreline MESH anywhere — §6 folds it into the road texture', () => {
+    // Phase 1's seventh ground/road mesh is an InstancedMesh of dashes. Removing
+    // that whole category district-wide is the entire difference between §6's
+    // 8-call line and BUD-6's ~10-16 estimate.
+    let dashes = 0;
+    scene.traverse((o) => {
+      if (o.isInstancedMesh && /centre|center|dash/i.test(o.name)) dashes++;
+    });
+    expect(dashes).toBe(0);
+  });
+
+  it('§4: one BatchedMesh per facade family, and every family is populated', () => {
+    for (const d of districts) {
+      expect(d.batches.size).toBe(d.spec.families.length);
+      for (const [id, batch] of d.batches) {
+        expect(batch.isBatchedMesh, id).toBe(true);
+        expect(batch.castShadow).toBe(true);
+        // An empty batch would still cost its two draw calls.
+        expect(batch.instanceCount, `${d.spec.id}/${id}`).toBeGreaterThan(0);
+      }
+    }
+    expect(districts[0].batches.size).toBe(3);
+    expect(districts[1].batches.size).toBe(4);
+  });
+
+  it('§DA-4/§DB-4: both landmarks exist as their own non-batched Mesh', () => {
+    // BatchedMesh has no per-instance material override (RVW-7), so a bespoke
+    // atlas cannot join a batch. The 4-call landmarks line is load-bearing.
+    for (const d of districts) {
+      const lm = scene.getObjectByName(`${d.spec.id}_landmark`);
+      expect(lm).toBeDefined();
+      expect(lm.isBatchedMesh).toBeFalsy();
+      expect(lm.isMesh).toBe(true);
+      expect(lm.castShadow).toBe(true);
+      // One material, one merged geometry: "its own mesh" must mean 2 calls,
+      // not 2 per part.
+      expect(Array.isArray(lm.material)).toBe(false);
+    }
+  });
+
+  it('the landmarks stand at the heights the spec and decisions 19/20 fix', () => {
+    const a = scene.getObjectByName('districtA_landmark');
+    const b = scene.getObjectByName('districtB_landmark');
+    a.geometry.computeBoundingBox();
+    b.geometry.computeBoundingBox();
+    expect(a.geometry.boundingBox.max.y).toBeCloseTo(150, 6);
+    expect(b.geometry.boundingBox.max.y).toBeCloseTo(75, 6);
+  });
+
+  it('the grid group carries the district rotation, not the ground plane', () => {
+    // Rotating the featureless ground would buy nothing and would stop it
+    // covering its half of the world. The split is deliberate; pin it.
+    for (const d of districts) {
+      expect(d.grid.rotation.y).toBe(d.spec.rotation);
+      expect(d.group.rotation.y).toBe(0);
+      const ground = scene.getObjectByName(`${d.spec.id}_ground`);
+      expect(ground.parent).toBe(d.group);
+      expect(ground.position.y).toBeLessThan(0); // under Phase 1's block ground
+    }
+  });
+
+  it('registers one collider per building plus one per landmark', () => {
+    const expected = DISTRICTS.reduce((n, s) => n + s.buildings().length + 1, 0);
+    expect(collision.buildings.length).toBe(expected);
+  });
+
+  it('disposes cleanly', () => {
+    const local = new THREE.Scene();
+    const world = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const d = new District({ scene: local, collision: world, spec: DISTRICTS[1] });
+    expect(local.children.length).toBe(1);
+    d.dispose();
+    expect(local.children.length).toBe(0);
+    expect(d._disposables.length).toBe(0);
   });
 });
