@@ -112,7 +112,45 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 5 <<<
+## >>> RESUME HERE — session 5 closed 2026-07-31, deliberately, by the user <<<
+
+**PHASE 1 IS COMPLETE, FULLY VERIFIED, AND MERGE-READY. There is nothing left in it to do.**
+Five browser passes, all 28 acceptance criteria, 108/108 tests, clean build, `main` untouched,
+`kodaman_prototype.html` zero diff. **Everything is committed AND pushed** — unlike previous
+sessions, nothing is stranded locally. Working tree clean apart from `.claude/` and
+`KODAMAN_HANDOFF.md`, both pre-existing and untracked.
+
+**The whole six-agent pipeline has now run at least once.**
+
+### Do this first next session
+
+**Ask the user which of these they want.** They were offered the choice at the end of session 5
+and chose to pause instead, so none of it is decided:
+
+1. **Phase 2 research** — the plan of record and the natural next step. Locked decisions 7, 8
+   and 9 are the binding scope; the user's deferred design feedback is the input (RDR2 and the
+   Watch Dogs series for open world, Ghost of Tsushima for animation fluidity). **Hand the
+   researcher `KNOWLEDGE_BASE.md`, not the document pile.** Budget from the real **57**, and say
+   explicitly whether any new ceiling counts one pass or both. Does NOT need the naming table.
+2. **The trademark naming table** — still descriptions, not names. Blocks Phase 2 *content
+   porting*, not Phase 2 research. Per locked decision 6 the user approves every name; the
+   companion at 345 references is the one they should name personally.
+3. **PR #3** — open, 49 commits, base `dev`. Verified and merge-ready. **The review and the
+   merge are the user's; do not merge it for them.** Merging before Phase 2 means that work
+   builds on landed code.
+
+### Session 5 in one paragraph
+
+Fixed the cape (it was mounted *inside* the torso, not merely colliding at speed — the recorded
+diagnosis had been half wrong), opened PR #3, ran the Overview agent to produce
+`KNOWLEDGE_BASE.md`, and built the PMREM environment map that finally closed the dark-tower
+defect. Every one of those was verified by the user in a browser except the PR. Two stale entries
+in this file were found and corrected rather than propagated — the body-pitch "open finding" that
+the code had already implemented, and the cape diagnosis.
+
+---
+
+## Session 5 detail
 
 **Spot-check 3 was run by the user 2026-07-31. Six of seven steps pass.** Flight lean, the
 tuning sliders, the dive angle, the helipad, and roof art + landing on the real roof are all
