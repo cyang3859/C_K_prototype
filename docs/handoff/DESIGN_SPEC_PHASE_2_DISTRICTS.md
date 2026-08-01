@@ -482,7 +482,7 @@ buildings, props — on top of a district-shared render batch it does not own).
    already does.** Checked directly: `StreetBlock.js`'s ground mesh explicitly sets `castShadow =
    false` (line 441); the roadway (`asphalt`) and curb meshes never set `castShadow` at all, and
    `THREE.Mesh`'s own default is `false`; the centreline dashes explicitly set `castShadow = false`
-   (line 515). This carries forward unchanged and is worth calling out because it also happens to be
+   (line 525 — corrected from 515 per Review's `RVW-11`). This carries forward unchanged and is worth calling out because it also happens to be
    the right call for a reason Phase 1 didn't need to worry about: `DESIGN_BRIEF_PHASE_2_DISTRICTS.md`
    flags that **large thin geometry straddling CSM cascade boundaries is the likeliest way to
    reintroduce shadow acne** (§ATM-3). A district-length curb (3–7 cm tall, per the locked, do-not-fix
@@ -712,6 +712,15 @@ per `ATM-3`/`BUD-5`), cut from the bottom of this list, not by guessing.
    could shrink to zero, since the landmark's bespoke geometry/atlas could join its family's batch as
    one more instance. Worth a five-minute Engineer-side check before implementation rather than
    assuming either answer.
+   > **SETTLED 2026-08-01 by Review (`RVW-7`), and independently re-verified by the orchestrator.**
+   > **There is NO per-instance material override.** `BatchedMesh`'s constructor takes a single
+   > `material` for the whole batch (`node_modules/three/src/objects/BatchedMesh.js:192`), its
+   > per-geometry `geometryInfo` record carries no material index field (`:632`), and the render
+   > path unconditionally reads `_mesh.material = this.material` (`:1390`). **So the landmark's
+   > dedicated `Mesh` at +2 calls both passes is load-bearing, not a placeholder** — the 4-call
+   > district-landmarks line in §BGT-1 stands as budgeted and cannot be deleted. This also settles
+   > the dependency **locked decision 19** created when the user chose a sculpted crown for District
+   > A's landmark: the crown cannot join its facade family's batch, so it costs its own `Mesh`.
 2. **Real per-district building and prop counts.** This document inherits `BUD-3`'s 30–50-per-district
    planning figure unchanged (§MAS-6 explicitly labels it `[ESTIMATE, INHERITED]`) — no source gives
    an authoritative count for an as-yet-unauthored district, and every recipe-share percentage and

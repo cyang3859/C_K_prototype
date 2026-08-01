@@ -89,7 +89,7 @@ Targeted `grep` only.
 | 11 | World edge behaviour | **A hard wall behind an atmospheric fade — both, not either.** User decision 2026-07-31, on §DIS-3. Phase 1's four-`Box3` boundary mechanism carries forward unchanged but moves out to the true edge; a radial fade driven by distance-from-centre whites out visibility well before the hero can reach it. The wall is an unreachable safety net, never the player's experience. No new rendering system — the fade is a per-frame tuning value feeding the existing `Fog`, the same shape as `Sky.update()`'s `ENV_INTENSITY` write. |
 | 12 | Hero shading model | **Stay on PBR (`MeshStandardMaterial`). No toon shading.** User decision 2026-08-01, on §ART-2. The hero keeps consuming the world's PMREM environment map — the same indirect-specular mechanism the tower-facade fix was built for. Per §ART-1 the **Superhero proportion set carries the comic-accurate read instead of the shading model**, and the user's own reference games (RDR2, Watch Dogs, Ghost of Tsushima) are stylized-realistic, not cel-shaded. `MeshToonMaterial` was the argued alternative and is rejected: it has no `envMap` property at all, so it would opt the hero out of that mechanism entirely. |
 | 13 | Outline treatment | **None. Not built, not toggled.** User decision 2026-08-01, on §ART-3. Screen-space edge detection is blocked until Phase 7 by the standing no-post-processing rule; inverted hull was the only compatible technique and costs +1 draw call per outlined material group. Skipping it keeps the hero's budget clean and avoids committing to a look before a rig exists. Revisit only if the PBR hero reads as insufficiently comic once seen in a browser. |
-| 14 | Hero material grouping | **3 material groups — suit, skin, accent/cape. Visible face, NOT a full cowl. 8 draw calls total across both passes.** User decision 2026-08-01, on §DRAW-2. Down from Phase 1's 14. The 4-call full-cowl floor was the argued alternative and is rejected: a visible face directly serves the user's "character isn't human enough" feedback, and §DRAW-2 itself calls 3 groups the art-direction-neutral target. **The 8 is a budget the Engineer must hit, not an aspiration** — a rig built object-by-object instead of merged stays at 14 and silently wastes the entire gain. |
+| 14 | Hero material grouping | **4 material groups — suit, skin, accent, and the cape as its own group. Visible face, NOT a full cowl. 8 draw calls total across both passes (4 main / 4 shadow).** User decision 2026-08-01, on §DRAW-2. Down from Phase 1's 14. The 4-call full-cowl floor was the argued alternative and is rejected: a visible face directly serves the user's "character isn't human enough" feedback, and §DRAW-2 calls the 3 *body* groups the art-direction-neutral target. **The 8 is a budget the Engineer must hit, not an aspiration** — a rig built object-by-object instead of merged stays at 14 and silently wastes the entire gain. **⚠️ WORDING CORRECTED 2026-08-01, session 9, after Review's `RVW-9` flagged a contradiction with the design spec's §BGT-1.** This row previously read "3 material groups — suit, skin, accent/cape", folding the cape in with accent. **That was wrong and self-contradictory: 3 groups is 3 main + 3 shadow = 6 calls, not the 8 this same row states.** `RESEARCH_PHASE_2_CHARACTER.md` §DRAW-2's recommended row is explicit — *"1 `SkinnedMesh`, 3 material groups (suit/skin/accent), cape as a 4th group or separate mesh → 4 / 4 / **8***"*, and the cape needs its own material either way (§CAPE-1, double-sided, different shading). **No budget figure anywhere changes** — every downstream document already used the 8, which was only ever derivable from the 4-group reading. Review called the two readings "identical either way"; they are not, and the 4-group reading is the correct one. |
 | 15 | Asset source | **Quaternius only for Phase 2. Mixamo is OUT of scope this phase.** User decision 2026-08-01, on §ASSET-3/§ASSET-5. Mixamo's terms permit shipping inside a game, but a permanently-archived *public* git history of Mixamo-derived `.glb` is not a scenario those terms clearly anticipate — not a violation, not unambiguously clean. Quaternius is unambiguous CC0, so this **sidesteps the question rather than answering it.** Mixamo may be reconsidered in a later phase if a specific motion is genuinely unavailable. Kenney stays reserved for future crowd/NPC work per §ASSET-4, never for the hero. |
 | 16 | Animation authoring scope | **Floor first, then decide on the enhanced tier.** User decision 2026-08-01, on §CLIP-3/§CLIP-4. Ship §CLIP-3's 4 assets (idle/walk/run sourced CC0, one custom flight hold), see the rig moving in a browser, and only then decide whether §CLIP-4's remaining ~6 are worth authoring. Every flight-specific clip is custom either way (§CLIP-5 — flying humans are not a mocap category), so this **defers the expensive half until the cheap half is proven.** The enhanced tier is deferred, NOT rejected — it is what actually answers the Ghost of Tsushima fluidity reference. |
 | 17 | Floating-origin precision test | **Run §ORG-6's synthetic test as soon as a rigged hero exists in Phase 2. Do not defer to Phase 5.** User decision 2026-08-01. It is **a test, not a system** — no `FloatingOrigin.js`, nothing beyond the rig being built anyway. Spawn the rigged hero at 0 / 1,024 / 2,048 / 3,072 / 6,144 m, apply identical bind and animated poses, diff world-space vertex positions against an origin-computed pose rigidly translated. Run 1 deferred this only because no skinned mesh existed to test; locked decision 9 removes that precondition. Running it late risks discovering jitter after the animation work is already built on the rig. |
@@ -143,7 +143,65 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 8 closed 2026-08-01, deliberately, by the user <<<
+## >>> RESUME HERE — session 9, 2026-08-01 <<<
+
+**The next pipeline action is the ENGINEER.** Review's feasibility gate on
+`DESIGN_SPEC_PHASE_2_DISTRICTS.md` is **done and APPROVED WITH CORRECTIONS**, both corrections are
+applied, and the spec's §12 taste decisions are all made (decisions 19–22). **Nothing blocks the
+district build any more.** The Engineer runs on **Opus**, per the standing model rule.
+
+| Stage | Model | Status | Output |
+|---|---|---|---|
+| Review — Phase 2 districts feasibility gate | Sonnet | **done** — 101,218 tokens, 18 tool calls | `REVIEW_DESIGN_SPEC_PHASE_2_DISTRICTS.md` (222 lines) |
+
+**It re-derived every draw-call and triangle figure independently rather than checking the spec's
+arithmetic for plausibility** — §4, §6, §8, §9/§BGT-1 and §5/§MAS-6 all confirmed: 14 calls for
+facade families, 8 for ground/road, 35 for props and terrain, **69 subtotal against the 150 ceiling,
+81 headroom.** It found one immaterial slip (MAS-6's building counts sum to 79, not the stated ~80;
+the 2,376-triangle total is exact regardless) and correctly declined to raise it as a correction. It
+recorded **no aesthetic objection anywhere**, per its charter.
+
+**The most valuable thing it did was close the spec's own §11 item 1** — the "five-minute
+Engineer-side check" that had been the cheapest open question in the pile. Read directly from the
+installed library and **re-verified by the orchestrator**: `BatchedMesh` takes one `material` for the
+whole batch (`BatchedMesh.js:192`), `geometryInfo` has no material-index field (`:632`), and the
+render path always reads `this.material` (`:1390`). **There is no per-instance material override.**
+Consequences: §BGT-1's 4-call district-landmarks line **stands and cannot be deleted**, and
+**decision 19's sculpted crown cannot join its facade family's batch** — it costs its own `Mesh`.
+That dependency is now answered before the Engineer could trip over it.
+
+### Both corrections are APPLIED, and one of them was slightly wrong
+
+- **`RVW-11`** (cosmetic) — the centreline `castShadow=false` citation said line 515; it is 525.
+  Fixed in the spec.
+- **`RVW-9`** — decision 14's group wording contradicted the design spec's §BGT-1. **Fixed at source
+  in the locked table above, but not as Review framed it.** Review called the two readings "identical
+  either way, no budget consequence." **They are not identical:** 3 material groups is 3 main + 3
+  shadow = **6** calls, not the 8 the same row states. §DRAW-2's recommended row is explicit — 3 body
+  groups *plus the cape as a 4th* → 4/4/**8**. So decision 14's **number was always right and its
+  group description was wrong**, and the table now says 4 groups. **No budget figure anywhere
+  changed**, because every downstream document already used the 8. This mattered enough to fix
+  properly: the character Design run needs an unambiguous *group count*, not just a total.
+
+**That is the fourth time an agent in this pipeline has been right to distrust something handed to
+it, and the first time one of its own findings needed the same treatment.** Both practices should
+continue.
+
+### Cost log — session 9
+
+| Agent | Tokens |
+|---|---|
+| Review — Phase 2 districts feasibility gate (Sonnet) | 101,218 |
+| **Session 9 total so far** | **~101,218** |
+
+Cross-session observable total: **~2,342,000.** Well inside the 400k prep-to-pause mark. Everything
+else this session — the decisions, the corrections, the spot-checks, the `StreetBlock.js` comment fix
+— was inline orchestrator work. Report raw counts only, never a percentage, and **never attempt to
+look up account usage.**
+
+---
+
+## Session 8 closed 2026-08-01, deliberately, by the user
 
 **Nothing is half-finished. Working tree is clean and everything is committed.** 108/108 tests.
 `main` untouched (`5f62309`). `kodaman_prototype.html` zero diff. **No agent ran this session at
