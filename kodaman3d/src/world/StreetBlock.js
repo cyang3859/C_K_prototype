@@ -258,16 +258,32 @@ const BAND_ROUGH = 0.92;
 const BAND_METAL = 0.05;
 
 /**
- * G1 — rooftop parapet coping. A low cap inset from the roof edge on every
+ * G1 — rooftop parapet coping. A low wall around the roof EDGE on every
  * building, so a roofline reads as a hard parapet-edged silhouette instead of a
  * box that simply stops (post-1958 LA high-rises are flat-roofed by ordinance).
  *
- * INSET is per edge, so the slab is (w - 2×INSET) × (d - 2×INSET).
+ * A RING OF FOUR BARS, NOT A SLAB, and the difference is not cosmetic. The
+ * first implementation was a single slab spanning the whole roof, raised 0.45 m.
+ * That is what real coping is not — coping caps the wall — and it had a
+ * consequence nobody traced until a human went looking for the helipad and
+ * could not find it: the slab sat directly on top of the +Y face, which is
+ * exactly where the roof atlas paints the helipad. **The marking was covered by
+ * the parapet at every size.** Raising it from 3.5 m to 12 m changed nothing,
+ * because the problem was never the size.
+ *
+ * Four bars cost the same ONE draw call — an InstancedMesh does not care
+ * whether it draws 10 instances or 40 — and they leave the roof centre open, so
+ * the roof art is visible and the hero lands on the real roof surface rather
+ * than on a lid over it.
+ *
+ * THICKNESS is the coping width; bars sit flush with the building edge.
  */
 const PARAPET = Object.freeze({
-  INSET: 0.3,
+  THICKNESS: 0.6,
   HEIGHT: 0.45,
   COLOR: 0x6b6a62,
+  /** Bars per building. N and S span the full width; E and W fit between them. */
+  BARS: 4,
 });
 
 /** G2 — rooftop mechanical units. Real geometry, deliberately not painted into the roof texture. */
@@ -568,25 +584,18 @@ export class StreetBlock {
           new THREE.Vector3(b.x + b.w / 2, b.h, b.z + b.d / 2),
         ),
       );
-      // SECOND box, for the G1 parapet slab. Mandatory, not optional: the slab
-      // raises the visible roof surface from b.h to b.h + PARAPET.HEIGHT over
-      // ~97% of the footprint, and without this box a hero landing on the tower
-      // roof (acceptance criterion 20) would stand 0.45 m INSIDE it.
+      // FOUR more boxes, one per bar of the G1 parapet ring, so the coping is
+      // solid instead of something the hero walks through.
       //
-      // The two boxes coexist deliberately. resolveCapsule picks the HIGHEST
-      // surface the feet crossed, so landing anywhere over the slab lands on the
-      // slab; the original box still supports the 0.3 m un-raised lip at the
-      // true roof edge. Landing is via flight, never a walked step-up, so the
-      // 0.45 m rise never needs to be climbed.
-      //
-      // KNOWN EDGE CASE, accepted: standing on that 0.3 m lip puts the feet at
-      // b.h while the parapet's top is b.h + 0.45, so the horizontal push-out
-      // treats the parapet as a wall and nudges the hero (radius 0.35 m) off the
-      // edge. Walking off the parapet has the same result. That is a 0.3 m
-      // perimeter band on a 19.4 × 27.4 m roof, it reads as "you walked off a
-      // ledge", and the hero can fly. Fixing it properly means step-up logic in
-      // the controller, which is explicitly Phase 2.
-      this.collision.addBuilding(parapetBox(b));
+      // This replaced a single slab-shaped box, and the ring is better in a way
+      // worth recording. The slab covered the whole roof, so landing put the
+      // hero on top of a lid at b.h + 0.45 and the true roof was unreachable —
+      // and the slab's edge acted as a wall against the 0.3 m of un-raised lip
+      // outside it, which nudged anyone standing there off the building. With a
+      // ring the hero lands on the roof itself, the lip case disappears
+      // entirely, and the coping becomes a low wall at the edge that stops you
+      // walking off — which is what a real parapet is for.
+      for (const box of parapetBoxes(b)) this.collision.addBuilding(box);
     }
   }
 
@@ -953,19 +962,27 @@ export class StreetBlock {
       roughness: 0.6,
       metalness: 0.2,
     });
-    const mesh = new THREE.InstancedMesh(geo, mat, BLOCK.buildings.length);
+    // Still ONE draw call: an InstancedMesh costs the same whether it draws ten
+    // instances or forty. The ring is free relative to the slab it replaced.
+    const mesh = new THREE.InstancedMesh(
+      geo,
+      mat,
+      BLOCK.buildings.length * PARAPET.BARS,
+    );
     mesh.name = 'roofParapets';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
     const m = new THREE.Object3D();
-    for (let i = 0; i < BLOCK.buildings.length; i++) {
-      const b = BLOCK.buildings[i];
-      m.position.set(b.x, b.h + PARAPET.HEIGHT / 2, b.z);
-      m.rotation.set(0, 0, 0);
-      m.scale.set(b.w - PARAPET.INSET * 2, PARAPET.HEIGHT, b.d - PARAPET.INSET * 2);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
+    let i = 0;
+    for (const b of BLOCK.buildings) {
+      for (const bar of parapetBars(b)) {
+        m.position.set(bar.cx, bar.cy, bar.cz);
+        m.rotation.set(0, 0, 0);
+        m.scale.set(bar.sx, bar.sy, bar.sz);
+        m.updateMatrix();
+        mesh.setMatrixAt(i++, m.matrix);
+      }
     }
     mesh.instanceMatrix.needsUpdate = true;
     this.group.add(mesh);
@@ -997,7 +1014,7 @@ export class StreetBlock {
     const m = new THREE.Object3D();
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
-      // `u.y` is the unit's BASE (it rests on the parapet slab's top face), so
+      // `u.y` is the unit's BASE (it rests on the roof surface itself), so
       // the mesh centre is half a box-height above it.
       m.position.set(u.x, u.y + HVAC.H / 2, u.z);
       m.rotation.set(0, 0, 0);
@@ -1271,7 +1288,8 @@ export class StreetBlock {
 }
 
 /**
- * The G1 parapet slab's collision box for one authored building.
+ * The four bars of the G1 parapet ring for one authored building, as
+ * centre-and-scale records ready for an InstancedMesh.
  *
  * Exported and pure so the roof-landing behaviour that acceptance criterion 20
  * depends on can be tested headlessly, without a canvas or a WebGL context.
@@ -1279,18 +1297,62 @@ export class StreetBlock {
  * @param {{x:number,z:number,w:number,d:number,h:number}} b
  * @returns {THREE.Box3}
  */
-export function parapetBox(b) {
-  const halfW = (b.w - PARAPET.INSET * 2) / 2;
-  const halfD = (b.d - PARAPET.INSET * 2) / 2;
-  return new THREE.Box3(
-    new THREE.Vector3(b.x - halfW, b.h, b.z - halfD),
-    new THREE.Vector3(b.x + halfW, b.h + PARAPET.HEIGHT, b.z + halfD),
+export function parapetBars(b) {
+  const T = PARAPET.THICKNESS;
+  const cy = b.h + PARAPET.HEIGHT / 2;
+  const halfW = b.w / 2;
+  const halfD = b.d / 2;
+  // N and S run the full width; E and W fit between them, so the four bars meet
+  // at the corners without overlapping (overlap would double-shade the corners).
+  return [
+    { cx: b.x, cy, cz: b.z + halfD - T / 2, sx: b.w, sy: PARAPET.HEIGHT, sz: T },
+    { cx: b.x, cy, cz: b.z - halfD + T / 2, sx: b.w, sy: PARAPET.HEIGHT, sz: T },
+    { cx: b.x + halfW - T / 2, cy, cz: b.z, sx: T, sy: PARAPET.HEIGHT, sz: b.d - T * 2 },
+    { cx: b.x - halfW + T / 2, cy, cz: b.z, sx: T, sy: PARAPET.HEIGHT, sz: b.d - T * 2 },
+  ];
+}
+
+/**
+ * The G1 parapet ring's collision boxes for one authored building — one per bar.
+ *
+ * Exported and pure so the roof-landing behaviour acceptance criterion 20
+ * depends on can be tested headlessly, without a canvas or a WebGL context.
+ *
+ * @param {{x:number,z:number,w:number,d:number,h:number}} b
+ * @returns {THREE.Box3[]}
+ */
+export function parapetBoxes(b) {
+  return parapetBars(b).map(
+    (bar) =>
+      new THREE.Box3(
+        new THREE.Vector3(bar.cx - bar.sx / 2, b.h, bar.cz - bar.sz / 2),
+        new THREE.Vector3(bar.cx + bar.sx / 2, b.h + PARAPET.HEIGHT, bar.cz + bar.sz / 2),
+      ),
   );
 }
 
-/** The visible (and walkable) top of a building's roof, including its parapet. */
+/**
+ * The clear roof area INSIDE the coping ring — where the roof art shows and
+ * where anything standing on the roof has to fit.
+ */
+export function roofInnerBox(b) {
+  const T = PARAPET.THICKNESS;
+  return new THREE.Box3(
+    new THREE.Vector3(b.x - b.w / 2 + T, b.h, b.z - b.d / 2 + T),
+    new THREE.Vector3(b.x + b.w / 2 - T, b.h + PARAPET.HEIGHT, b.z + b.d / 2 - T),
+  );
+}
+
+/**
+ * The walkable top of a building's roof.
+ *
+ * This is now the ROOF ITSELF (`b.h`), not the top of a parapet slab. When the
+ * coping became a ring the lid came off, so the hero lands on the real roof —
+ * which is also what makes the painted helipad something you land ON rather
+ * than something buried under 0.45 m of concrete.
+ */
 export function roofTopY(b) {
-  return b.h + PARAPET.HEIGHT;
+  return b.h;
 }
 
 /**
@@ -1298,7 +1360,7 @@ export function roofTopY(b) {
  *
  * Pure, deterministic and exported so both the InstancedMesh and the colliders
  * read from one source, and so the helipad-clearance claim is testable.
- * Returned `y` is each unit's BASE, which rests on the parapet slab's top face.
+ * Returned `y` is each unit's BASE, which rests on the roof surface itself.
  *
  * @param {ReadonlyArray<{kind:string,x:number,z:number,w:number,d:number,h:number}>} [buildings]
  * @returns {Array<{x:number,y:number,z:number}>}
@@ -1322,7 +1384,7 @@ export function hvacUnits(buildings = BLOCK.buildings) {
       units.push({ x: bx - 1.5, y, z: bz });
       units.push({ x: bx, y, z: bz + 1.5 });
     } else {
-      // Scattered within the parapet-inset roof area. `- 3` keeps a 1.5 m margin
+      // Scattered within the roof area inside the coping. `- 3` keeps a 1.5 m margin
       // on each side so a 1.2 m box never overhangs the coping.
       for (let u = 0; u < 2; u++) {
         const seed = i * 131 + u * 17;

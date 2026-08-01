@@ -189,9 +189,10 @@ export const TUNING = {
    * `LocomotionController._updateOrientation` for the full two-term model —
    * this term is faded out as horizontal speed rises, so it governs the
    * near-vertical climb and dive poses rather than flight generally.
-   * Lower = tips harder for the same vertical speed.
+   * Lower = tips harder for the same vertical speed. Dropped 8.0 -> 5.0 after a
+   * browser pass judged the dive "could still use a bit more lean downwards".
    */
-  PITCH_SPEED_DIVISOR: 8.0,
+  PITCH_SPEED_DIVISOR: 5.0,
 
   // ---- World bounds --------------------------------------------------------
   /** m — ±150 m on X and Z from the origin = a 300 m playable square. */

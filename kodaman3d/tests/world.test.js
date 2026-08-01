@@ -9,7 +9,8 @@ import {
   TOWER_ATLAS,
   atlasBoxUVs,
   hvacUnits,
-  parapetBox,
+  parapetBoxes,
+  roofInnerBox,
   roofTopY,
 } from '../src/world/StreetBlock.js';
 import { Sky } from '../src/world/Sky.js';
@@ -39,69 +40,110 @@ const TOWER = BLOCK.buildings[2];
 // G1 parapet — Review §2, the correction without which criterion 20 regresses
 // ---------------------------------------------------------------------------
 
+const structuralBox = (b) =>
+  new THREE.Box3(
+    new THREE.Vector3(b.x - b.w / 2, 0, b.z - b.d / 2),
+    new THREE.Vector3(b.x + b.w / 2, b.h, b.z + b.d / 2),
+  );
+
 describe('G1 parapet collider', () => {
-  it('sits on the roof and is inset from every edge', () => {
-    const box = parapetBox(TOWER);
-    // 0.3 m inset per edge, so 0.6 m off each full dimension.
-    expect(box.max.x - box.min.x).toBeCloseTo(TOWER.w - 0.6, 10);
-    expect(box.max.z - box.min.z).toBeCloseTo(TOWER.d - 0.6, 10);
-    // Base flush with the structural roof, top 0.45 m above it.
-    expect(box.min.y).toBe(TOWER.h);
-    expect(box.max.y).toBeCloseTo(TOWER.h + 0.45, 10);
-    expect(roofTopY(TOWER)).toBeCloseTo(TOWER.h + 0.45, 10);
+  it('is a RING of four bars at the edge, not a slab over the roof', () => {
+    const bars = parapetBoxes(TOWER);
+    expect(bars).toHaveLength(4);
+
+    for (const box of bars) {
+      // Every bar sits on the structural roof and rises 0.45 m.
+      expect(box.min.y).toBe(TOWER.h);
+      expect(box.max.y).toBeCloseTo(TOWER.h + 0.45, 10);
+    }
+
+    // THE POINT OF THE RING: the roof centre is clear, so the painted helipad
+    // is visible and landable. A slab here is what hid it.
+    const centre = new THREE.Vector3(TOWER.x, TOWER.h + 0.2, TOWER.z);
+    for (const box of bars) expect(box.containsPoint(centre)).toBe(false);
+
+    // And the walkable roof is the roof itself, no longer a lid above it.
+    expect(roofTopY(TOWER)).toBe(TOWER.h);
   });
 
-  it('criterion 20: a hero landing on the tower roof stands ON the parapet, not inside it', () => {
-    const boxes = [
-      new THREE.Box3(
-        new THREE.Vector3(TOWER.x - TOWER.w / 2, 0, TOWER.z - TOWER.d / 2),
-        new THREE.Vector3(TOWER.x + TOWER.w / 2, TOWER.h, TOWER.z + TOWER.d / 2),
-      ),
-      parapetBox(TOWER),
-    ];
+  it('the ring reaches every edge and closes at the corners', () => {
+    const bars = parapetBoxes(TOWER);
+    const union = new THREE.Box3();
+    for (const box of bars) union.union(box);
+
+    // Flush with the building footprint on all four sides.
+    expect(union.min.x).toBeCloseTo(TOWER.x - TOWER.w / 2, 10);
+    expect(union.max.x).toBeCloseTo(TOWER.x + TOWER.w / 2, 10);
+    expect(union.min.z).toBeCloseTo(TOWER.z - TOWER.d / 2, 10);
+    expect(union.max.z).toBeCloseTo(TOWER.z + TOWER.d / 2, 10);
+
+    // No gap at a corner: the N bar spans the full width, so it overlaps the
+    // ends of the E and W bars in X.
+    const [north, , east] = bars;
+    expect(north.max.x).toBeGreaterThanOrEqual(east.max.x);
+  });
+
+  it('criterion 20: a hero landing on the tower roof stands on the ROOF', () => {
+    const boxes = [structuralBox(TOWER), ...parapetBoxes(TOWER)];
 
     // Descend onto the roof centre from well above it.
     const pos = new THREE.Vector3(TOWER.x, TOWER.h - 5, TOWER.z);
     const r = resolveCapsule(pos, R, H, boxes, { previousY: 200 });
 
     expect(r.onGround).toBe(true);
-    // The VISIBLE roof surface. Landing at TOWER.h would put the hero 0.45 m
-    // inside the parapet slab, which is exactly the regression this box exists
-    // to prevent.
-    expect(pos.y).toBeCloseTo(roofTopY(TOWER), 10);
+    expect(pos.y).toBeCloseTo(TOWER.h, 10);
     expect(r.pushed).toBe(false);
   });
 
-  it('without the parapet collider the same landing is 0.45 m too low', () => {
-    // Pinned as a guard: if someone removes the second Box3, the test above
-    // starts failing and this one explains why.
-    const structuralOnly = [
-      new THREE.Box3(
-        new THREE.Vector3(TOWER.x - TOWER.w / 2, 0, TOWER.z - TOWER.d / 2),
-        new THREE.Vector3(TOWER.x + TOWER.w / 2, TOWER.h, TOWER.z + TOWER.d / 2),
-      ),
-    ];
-    const pos = new THREE.Vector3(TOWER.x, TOWER.h - 5, TOWER.z);
-    resolveCapsule(pos, R, H, structuralOnly, { previousY: 200 });
-    expect(roofTopY(TOWER) - pos.y).toBeCloseTo(0.45, 10);
+  it('landing on the roof centre is not disturbed by the ring at all', () => {
+    // The slab version needed its collider to avoid sinking 0.45 m. The ring
+    // needs nothing: the structural box alone already lands the hero correctly,
+    // and adding the ring changes the result by zero.
+    const withRing = new THREE.Vector3(TOWER.x, TOWER.h - 5, TOWER.z);
+    resolveCapsule(withRing, R, H, [structuralBox(TOWER), ...parapetBoxes(TOWER)], {
+      previousY: 200,
+    });
+    const without = new THREE.Vector3(TOWER.x, TOWER.h - 5, TOWER.z);
+    resolveCapsule(without, R, H, [structuralBox(TOWER)], { previousY: 200 });
+
+    expect(withRing.y).toBeCloseTo(without.y, 10);
   });
 
-  it('standing on the parapet top is not shoved sideways by either box', () => {
-    const boxes = [
-      new THREE.Box3(
-        new THREE.Vector3(TOWER.x - TOWER.w / 2, 0, TOWER.z - TOWER.d / 2),
-        new THREE.Vector3(TOWER.x + TOWER.w / 2, TOWER.h, TOWER.z + TOWER.d / 2),
-      ),
-      parapetBox(TOWER),
-    ];
-    // Two metres in from the parapet's inner edge — comfortably "on the roof",
-    // and close enough to the wall that a bad vertical-overlap gate would show.
-    const pos = new THREE.Vector3(TOWER.x + TOWER.w / 2 - 2.3, roofTopY(TOWER), TOWER.z);
+  it('standing well inside the ring is not shoved sideways', () => {
+    const boxes = [structuralBox(TOWER), ...parapetBoxes(TOWER)];
+    // Two metres in from the coping's inner face.
+    const pos = new THREE.Vector3(TOWER.x + TOWER.w / 2 - 2.6, TOWER.h, TOWER.z);
     const before = pos.clone();
-    const r = resolveCapsule(pos, R, H, boxes, { previousY: roofTopY(TOWER) });
+    const r = resolveCapsule(pos, R, H, boxes, { previousY: TOWER.h });
     expect(r.onGround).toBe(true);
     expect(pos.x).toBeCloseTo(before.x, 10);
     expect(pos.z).toBeCloseTo(before.z, 10);
+  });
+
+  it('the coping stops the hero walking off the edge from inside', () => {
+    // What a real parapet is for, and a straight gain over the slab.
+    const boxes = [structuralBox(TOWER), ...parapetBoxes(TOWER)];
+    const innerFace = TOWER.x + TOWER.w / 2 - 0.6; // coping inner face, x = 7.4
+    const pos = new THREE.Vector3(innerFace - 0.2, TOWER.h, TOWER.z);
+    const r = resolveCapsule(pos, R, H, boxes, { previousY: TOWER.h });
+
+    expect(r.pushed).toBe(true);
+    // Pushed back INWARD, and left clear of the coping rather than inside it.
+    expect(pos.x).toBeLessThanOrEqual(innerFace - R + 1e-9);
+  });
+
+  it('KNOWN: standing on the coping itself ejects outward, off the roof', () => {
+    // Pinned because it is a real behaviour, not because it is desirable. A
+    // capsule whose centre is past the coping's midline takes the shorter way
+    // out, which is over the edge. It needs the hero to be standing ON the
+    // 0.6 m coping rather than on the roof, and the hero can fly.
+    //
+    // This is much narrower than the slab version it replaced, where the whole
+    // 0.3 m outer lip did it. The real fix is step-up logic, already Phase 2.
+    const boxes = [structuralBox(TOWER), ...parapetBoxes(TOWER)];
+    const pos = new THREE.Vector3(TOWER.x + TOWER.w / 2 - 0.1, TOWER.h, TOWER.z);
+    resolveCapsule(pos, R, H, boxes, { previousY: TOWER.h });
+    expect(pos.x).toBeGreaterThan(TOWER.x + TOWER.w / 2);
   });
 });
 
@@ -127,10 +169,10 @@ describe('G2 rooftop unit placement', () => {
     let u = 0;
     for (const b of BLOCK.buildings) {
       const count = b.kind === 'tower' ? 3 : 2;
-      const cap = parapetBox(b);
+      const cap = roofInnerBox(b);
       for (let k = 0; k < count; k++, u++) {
         const unit = units[u];
-        expect(unit.y).toBeCloseTo(roofTopY(b), 10); // rests on the parapet slab
+        expect(unit.y).toBeCloseTo(roofTopY(b), 10); // rests on the roof itself
         expect(unit.x - 0.6).toBeGreaterThanOrEqual(cap.min.x);
         expect(unit.x + 0.6).toBeLessThanOrEqual(cap.max.x);
         expect(unit.z - 0.6).toBeGreaterThanOrEqual(cap.min.z);
@@ -231,20 +273,23 @@ describe('StreetBlock, built', () => {
     contexts = createdContexts.slice();
   });
 
-  it('registers a structural box AND a parapet box for every building', () => {
+  it('registers a structural box AND four parapet bars for every building', () => {
     const units = hvacUnits().length;
-    expect(collision.buildings.length).toBe(BLOCK.buildings.length * 2 + units);
+    expect(collision.buildings.length).toBe(BLOCK.buildings.length * 5 + units);
 
-    // Every building's parapet box must be present, top at b.h + 0.45.
+    // Every bar of every building's coping ring must be present.
     for (const b of BLOCK.buildings) {
-      const want = parapetBox(b);
-      const found = collision.buildings.some(
-        (box) =>
-          Math.abs(box.min.x - want.min.x) < 1e-9 &&
-          Math.abs(box.max.y - want.max.y) < 1e-9 &&
-          Math.abs(box.max.z - want.max.z) < 1e-9,
-      );
-      expect(found).toBe(true);
+      for (const want of parapetBoxes(b)) {
+        const found = collision.buildings.some(
+          (box) =>
+            Math.abs(box.min.x - want.min.x) < 1e-9 &&
+            Math.abs(box.min.z - want.min.z) < 1e-9 &&
+            Math.abs(box.max.x - want.max.x) < 1e-9 &&
+            Math.abs(box.max.z - want.max.z) < 1e-9 &&
+            Math.abs(box.max.y - want.max.y) < 1e-9,
+        );
+        expect(found).toBe(true);
+      }
     }
   });
 

@@ -625,9 +625,16 @@ describe('Hero visual orientation — B1 cape, B4 body pitch', () => {
     const head = worldAxis(hero3d.bodyPivot, 0, 1, 0);
     const forward = forwardOf(state);
     expect(head.dot(forward)).toBeGreaterThan(0.5);
-    // ...and the head must still be the high end of the body. A 90° over-rotation
-    // would satisfy the dot test alone.
-    expect(head.y).toBeGreaterThan(0.5);
+    // ...and must not have over-rotated PAST horizontal into a backflip, which
+    // would satisfy the dot test on its own.
+    //
+    // The bound here is 0, not 0.5. It was 0.5 while PITCH_SPEED_DIVISOR was
+    // 8.0, which capped a vertical dive at ~44° — and a human then reported the
+    // dive "could still use a bit more lean downwards". At 5.0 the same dive
+    // reaches ~70°, so the head is only just the high end of the body. That is
+    // the requested steepness, not a regression; the assertion below is what
+    // still catches a genuine over-rotation.
+    expect(head.y).toBeGreaterThan(0);
   });
 
   it('B4: the hero climbs NOSE-UP', () => {
