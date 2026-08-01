@@ -171,6 +171,31 @@ its process rules, budget facts and trap warnings all still apply. **Budget from
 (49 main / 34 shadow), not from §BGT-1's ~69**, and remember run 2's own props line is ~35 calls
 before the absorption gives any back.
 
+### There is now a playtester build — `npm run build:standalone`
+
+Added at the end of session 9. Emits `kodaman3d/dist-standalone/kodaman3d.html`: **the whole game as
+one 0.6 MB self-contained file** that opens by double-click, nothing to install, nothing to fetch.
+Stable path, overwritten in place, **gitignored** (build artifact; a fresh 0.6 MB copy per iteration
+would bloat the history of a repo with an open PR). **Regenerate it after any change you want a
+tester to see.**
+
+**Debug surfaces start HIDDEN in that build only** — `VITE_PLAYTEST=1` → `Game.js` → `DebugHud`'s
+`startHidden`. F1 still reveals the lil-gui panel, stats meter and state readout, so a tester can be
+talked through showing them. **The dev server is unchanged**; both were verified.
+
+⚠️ **This works ONLY because the build has no asset files** — every texture is painted procedurally
+into a canvas and the env map is PMREM-baked from a synthetic sky. **Locked decisions 15/18 bring
+Quaternius glTF in for the hero rig, and that ends.** The script has a hard guard that fails loudly
+rather than emitting a file that works here and 404s on the tester's machine; when it fires, inline
+the assets as base64 data URIs.
+
+**A question already answered, so it is not re-litigated:** a tester reporting a flat **60 fps is
+vsync, not a cap and not a problem.** Nothing in the code limits frame rate — the loop renders once
+per `requestAnimationFrame` (`Game.js:165`), independent of fixed steps. GPU frame time is **0.5 ms
+median / 1.1 ms p95** against a 16.7 ms budget at 60 Hz, i.e. ~3% used. The simulation is fixed at
+60 Hz by design (`FIXED_DT`) so feel is identical at any refresh rate. **Prefer GPU frame time over
+fps in every future report** — fps cannot distinguish "capped by vsync" from "just barely managing".
+
 **Still open, and unchanged by this session:** PR #3 (open, unmerged, base `dev` — **the review and
 the merge are the user's**), the **trademark naming table** (still descriptions, not names; the
 companion at 345 references is the one the user should name personally), the **day/night cycle
