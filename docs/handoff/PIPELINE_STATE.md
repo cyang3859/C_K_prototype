@@ -71,6 +71,13 @@ Targeted `grep` only.
 | 9 | Skeletal animation | **Pulled forward into Phase 2** (was Phase 5). Accepts imported rigged assets, which supersedes the Phase 1 primitives-only constraint from Phase 2 onward. User decision 2026-07-30. |
 | 10 | The two Phase 2 districts | **A dense tower-plateau district on the 36°-rotated historic grid, paired with a mixed-height boulevard corridor on the cardinal grid.** User decision 2026-07-31, on `RESEARCH_PHASE_2_WORLD.md` §DIS-2's recommendation. The rotation difference between the two grids is the point: the same sun rakes them differently at the same hour, so `DayNightCycle.js` gets per-district visual differentiation for free. Historic Core/Broadway was the argued alternative — higher landmark density and lower authoring risk, but it shares DTLA's rotation and loses the contrast. It stays a strong candidate for a later detail pass or a third district. |
 | 11 | World edge behaviour | **A hard wall behind an atmospheric fade — both, not either.** User decision 2026-07-31, on §DIS-3. Phase 1's four-`Box3` boundary mechanism carries forward unchanged but moves out to the true edge; a radial fade driven by distance-from-centre whites out visibility well before the hero can reach it. The wall is an unreachable safety net, never the player's experience. No new rendering system — the fade is a per-frame tuning value feeding the existing `Fog`, the same shape as `Sky.update()`'s `ENV_INTENSITY` write. |
+| 12 | Hero shading model | **Stay on PBR (`MeshStandardMaterial`). No toon shading.** User decision 2026-08-01, on §ART-2. The hero keeps consuming the world's PMREM environment map — the same indirect-specular mechanism the tower-facade fix was built for. Per §ART-1 the **Superhero proportion set carries the comic-accurate read instead of the shading model**, and the user's own reference games (RDR2, Watch Dogs, Ghost of Tsushima) are stylized-realistic, not cel-shaded. `MeshToonMaterial` was the argued alternative and is rejected: it has no `envMap` property at all, so it would opt the hero out of that mechanism entirely. |
+| 13 | Outline treatment | **None. Not built, not toggled.** User decision 2026-08-01, on §ART-3. Screen-space edge detection is blocked until Phase 7 by the standing no-post-processing rule; inverted hull was the only compatible technique and costs +1 draw call per outlined material group. Skipping it keeps the hero's budget clean and avoids committing to a look before a rig exists. Revisit only if the PBR hero reads as insufficiently comic once seen in a browser. |
+| 14 | Hero material grouping | **3 material groups — suit, skin, accent/cape. Visible face, NOT a full cowl. 8 draw calls total across both passes.** User decision 2026-08-01, on §DRAW-2. Down from Phase 1's 14. The 4-call full-cowl floor was the argued alternative and is rejected: a visible face directly serves the user's "character isn't human enough" feedback, and §DRAW-2 itself calls 3 groups the art-direction-neutral target. **The 8 is a budget the Engineer must hit, not an aspiration** — a rig built object-by-object instead of merged stays at 14 and silently wastes the entire gain. |
+| 15 | Asset source | **Quaternius only for Phase 2. Mixamo is OUT of scope this phase.** User decision 2026-08-01, on §ASSET-3/§ASSET-5. Mixamo's terms permit shipping inside a game, but a permanently-archived *public* git history of Mixamo-derived `.glb` is not a scenario those terms clearly anticipate — not a violation, not unambiguously clean. Quaternius is unambiguous CC0, so this **sidesteps the question rather than answering it.** Mixamo may be reconsidered in a later phase if a specific motion is genuinely unavailable. Kenney stays reserved for future crowd/NPC work per §ASSET-4, never for the hero. |
+| 16 | Animation authoring scope | **Floor first, then decide on the enhanced tier.** User decision 2026-08-01, on §CLIP-3/§CLIP-4. Ship §CLIP-3's 4 assets (idle/walk/run sourced CC0, one custom flight hold), see the rig moving in a browser, and only then decide whether §CLIP-4's remaining ~6 are worth authoring. Every flight-specific clip is custom either way (§CLIP-5 — flying humans are not a mocap category), so this **defers the expensive half until the cheap half is proven.** The enhanced tier is deferred, NOT rejected — it is what actually answers the Ghost of Tsushima fluidity reference. |
+| 17 | Floating-origin precision test | **Run §ORG-6's synthetic test as soon as a rigged hero exists in Phase 2. Do not defer to Phase 5.** User decision 2026-08-01. It is **a test, not a system** — no `FloatingOrigin.js`, nothing beyond the rig being built anyway. Spawn the rigged hero at 0 / 1,024 / 2,048 / 3,072 / 6,144 m, apply identical bind and animated poses, diff world-space vertex positions against an origin-computed pose rigidly translated. Run 1 deferred this only because no skinned mesh existed to test; locked decision 9 removes that precondition. Running it late risks discovering jitter after the animation work is already built on the rig. |
+| 18 | Quaternius tiers | **The "60–70% free" figure is a CONTENT/FORMAT tier, not a licence split. Everything is CC0.** Orchestrator-verified 2026-08-01 — see the §ASSET-2 correction in the session 7 block. Free tiers ship **glTF/GLB**, which is the only format this project needs. **Start on the free tiers; the paid tiers are a $9.99–$20 content upgrade, not a licence unlock, and can be bought later without rework.** |
 
 ## Model assignment
 
@@ -118,14 +125,29 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ## >>> RESUME HERE — session 7, 2026-08-01 <<<
 
-**PHASE 2 RESEARCH IS COMPLETE. Both runs have landed and both have been spot-checked against the
-code.** The pipeline's next stage is a **decision gate, not another research run.**
+**PHASE 2 RESEARCH IS COMPLETE, spot-checked, and its decision gate is CLOSED.** Both runs landed,
+all seven of run 2's user decisions were made this session and are locked as **decisions 12–18**, and
+the one open licensing question (§ASSET-2) was verified live and closed. **Nothing in either research
+document is waiting on the user any more.**
 
-**Do this first next session: put the consolidated user-decision list to the user.** Run 1 and run 2
-each closed with one; together they are the input to whatever comes next. **Seven of them are run 2's
-and they are listed verbatim in `RESEARCH_PHASE_2_CHARACTER.md` §"Summary of what needs a user
-decision" (line 892).** Do not start Design or Engineer work before at least the art-direction calls
-(toon vs PBR, outline, head material) are made — they change what gets specified.
+**Do this first next session: pick the Phase 2 build path.** Research is done and the decisions that
+gate specification are made, so the next stage is **Design or Engineer, not more research.** The open
+question is which, and it is a genuine fork worth putting to the user rather than assuming:
+
+1. **Design first** — spawn the Design agent (Sonnet) for a character/animation spec, the way
+   `DESIGN_SPEC_PHASE_1_BUILDINGS.md` preceded the Phase 1 building work, then gate it through Review
+   for the budget/feasibility check per `DESIGN_AGENT_BRIEF.md`. Decisions 12/13/14 are exactly the
+   art-direction inputs such a spec needs, and they are now settled.
+2. **Engineer first** — go straight to the glTF/rig pipeline, since decisions 14–18 arguably specify
+   enough already (8 draw calls, Quaternius free tier, 4 clips, run the ORG-6 test). Faster to
+   something visible in a browser; risks specifying-by-implementing.
+3. **World first instead** — run 1's output (`RESEARCH_PHASE_2_WORLD.md`) is equally ready and has its
+   own decisions locked (10, 11). The character work and the world work are **independent**; nothing
+   forces character to go first.
+
+**Whichever is chosen, two things carry into it as hard requirements, not suggestions:** the **8
+draw calls both passes** of decision 14 (a rig built object-by-object silently stays at 14 and wastes
+the whole gain), and **decision 17's ORG-6 precision test as soon as any rigged mesh exists.**
 
 **Nothing is half-finished.** Everything is committed and **pushed** — `origin/feat/3d-open-world` is
 in sync as of this session. Phase 1 is untouched and still complete, verified and merge-ready.
@@ -233,6 +255,49 @@ of writing briefs that invite this is now three-for-three and should continue.
    error compounding). **It revises run 1's "defer to Phase 5" recommendation** — the precondition
    that justified deferring (no skinned mesh exists) stops holding this phase. It specifies the exact
    synthetic test that would close it.
+
+### All seven of run 2's user decisions are MADE — locked as decisions 12–18
+
+The user walked the full list in one sitting. **The Phase 2 decision gate is closed. Nothing in run
+2's document is awaiting a user answer any more.** See the locked-decisions table above for the
+binding text of each; the short version:
+
+| # | Decision | Chosen |
+|---|---|---|
+| 12 | Shading | PBR, keep the env map. No toon. |
+| 13 | Outline | None. |
+| 14 | Material grouping | 3 groups, visible face, **8 draw calls both passes** |
+| 15 | Asset source | Quaternius only; Mixamo out this phase |
+| 16 | Clip scope | Floor (4 assets) first, enhanced tier deferred not rejected |
+| 17 | ORG-6 precision test | Run it as soon as a rig exists |
+| 18 | Quaternius tiers | Free tiers, glTF; paid is a content upgrade, not a licence unlock |
+
+**They cohere as a set, which is worth noting for whoever specifies the work:** 12, 13 and 14 all
+push the same direction — let *proportion and silhouette* carry the comic read rather than shading
+tricks — and 15 plus 18 mean the entire Phase 2 asset path is CC0 and costs nothing to start.
+
+### Orchestrator correction to §ASSET-2 — verified live, 2026-08-01
+
+**Run 2 flagged Quaternius's "60–70% of my pack is completely free" line as a possible licence
+ambiguity and left it open. It is not a licence ambiguity, and the document's worry can be closed.**
+Checked directly against the vendor's own pack and itch.io pages this session:
+
+| Pack | Licence | Free tier | Paid |
+|---|---|---|---|
+| Universal Base Characters | CC0 throughout | ~60–70%, in **FBX / OBJ / glTF** | $20 — full set + `.BLEND` + engine projects |
+| Universal Animation Library | CC0 throughout | **45 animations**, FBX + **GLB** | $9.99 → 120+; $14.99 → `.BLEND` source |
+| Universal Animation Library 2 | CC0 throughout | **42 animations**, OBJ/FBX/glTF | $14.99+ → `.BLEND` source, 110+ |
+
+**Three things this establishes.** First, **CC0 covers the whole pack in every case** — paying buys
+more content and the `.BLEND` sources, it does not buy different rights. Second, **glTF/GLB ships in
+the free tier of all three**, and that is the only format this project consumes. Third, **the
+Superhero proportion set §ASSET-1 recommends is confirmed to exist** — the pack ships 6 characters
+across Superhero / Regular / Teen proportions, male and female.
+
+**Consequence: §CLIP-3's sourced clips (idle, walk, run) are bread-and-butter locomotion and will
+almost certainly sit inside a 42–45-clip free standard tier** — verify at implementation time, but
+plan on zero spend. If a specific clip turns out to be paywalled, $9.99 unlocks 120+ on the original
+library. That is a rounding error against the risk of designing around a constraint that isn't real.
 
 ### Cost log — session 7
 
