@@ -145,14 +145,89 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ## >>> RESUME HERE — session 9, 2026-08-01 <<<
 
-**The next pipeline action is the ENGINEER.** Review's feasibility gate on
-`DESIGN_SPEC_PHASE_2_DISTRICTS.md` is **done and APPROVED WITH CORRECTIONS**, both corrections are
-applied, and the spec's §12 taste decisions are all made (decisions 19–22). **Nothing blocks the
-district build any more.** The Engineer runs on **Opus**, per the standing model rule.
+**THE TWO DISTRICTS ARE BUILT.** Review's gate passed, all four §12 taste decisions were made
+(decisions 19–22), and the Engineer's run 1 landed. **147/147 tests**, working tree clean apart from
+the pre-existing untracked `KODAMAN_HANDOFF.md`, `kodaman_prototype.html` zero diff, `main` untouched.
+
+**The next pipeline action is a decision, not an agent** — see "Three things need you" below. After
+that it is either **Engineer run 2** (the props/vegetation half) or a **QA/browser pass** on what
+exists.
 
 | Stage | Model | Status | Output |
 |---|---|---|---|
 | Review — Phase 2 districts feasibility gate | Sonnet | **done** — 101,218 tokens, 18 tool calls | `REVIEW_DESIGN_SPEC_PHASE_2_DISTRICTS.md` (222 lines) |
+| Engineer — Phase 2 districts, run 1 of 2 | **Opus** | **done** — 293,993 tokens, 84 tool calls, 5 commits | `ENGINEER_PHASE_2_DISTRICTS.md`; 6 new modules, 108→**147 tests** |
+
+### The build, measured — not estimated
+
+| | Phase 1 | Phase 2 run 1 | Δ | Ceiling |
+|---|---:|---:|---:|---:|
+| Draw calls, graph walk (main/shadow) | 57 (32/25) | **83 (49/34)** | +26 (+17/+9) | 150 |
+| Measured `info.render.calls`, worst viewpoint | 53 | **81** | | 150 |
+| Triangles | 11,324 | 14,724 | +3,400 | ~500k |
+| GPU frame time, whole world | — | **0.5 ms median / 1.1 ms p95** | | |
+
+**The +26 is exactly §BGT-1's three district lines** — ground/road 8, facade families 14, landmarks 4.
+`BUD-2` was avoided *and measured*: 4 merged surfaces per district, not 7 per tile (the trap's number
+was 448). An A/B toggle measured all 68 buildings / 170 massing boxes at **13 calls**.
+
+**Scoped as run 1 of 2 by the orchestrator, following the spec's own §10 priority order** rather than
+an invented cut line. Run 1 = items 1–3 (the "do not cut" tier): district scaffolding, 7 facade
+families, 5 massing recipes, the §6 ground/road merge, both landmarks. **Run 2 = items 4–11**:
+vegetation, rooftop detail, awnings, blade signs, streetlamps, props, parked cars, utility poles, the
+terrain landmark, the cut-priority tier. Brief: `ENGINEER_BRIEF_PHASE_2_DISTRICTS.md`.
+
+**Orchestrator spot-checks — all confirmed:** 147/147 tests; tree clean; `kodaman_prototype.html`
+zero diff; no `.playwright-mcp/` left behind; locked decision 22 enforced by a **byte-equality test**
+(`districts.test.js:60-63`) rather than a promise; the sign-mast text is the literal string
+`PLACEHOLDER` (`landmarks.js:345`); and the `WEBGL_multi_draw` finding below verified at source.
+
+### ⚠️ A silent 10× budget risk the whole §BUD-3 strategy depends on
+
+**`BatchedMesh` falls back to a per-geometry loop of REAL draw calls when `WEBGL_multi_draw` is
+absent** — verified at `node_modules/three/src/renderers/WebGLRenderer.js:1303-1319`: no extension
+means a `for` loop issuing one `renderer.render()` per geometry. **~170 calls instead of 7.**
+
+The extension was measured **present** in this environment, so the build is fine here. But **this is
+an unstated hardware dependency of the entire batching strategy** — §BUD-3, §BGT-1 and this build all
+assume it. On a GPU or driver lacking it the district budget silently multiplies. **This belongs in
+`KNOWLEDGE_BASE.md` and is a real candidate for a runtime capability check.**
+
+### Three things need you
+
+1. **§BGT-1's ~69 has no line for Phase 1's block, which is why the build is 83 and headroom is 67,
+   not 81.** The brief told the Engineer to preserve the Phase 1 block; §BGT-1 budgeted as though the
+   two districts *are* the world. **Both are defensible; they were never reconciled.** It matters
+   because run 2's props/terrain line is ~35 calls: **83 + 35 ≈ 118, leaving ~32 for CSM** rather than
+   the ~81 the spec reserved for it, and CSM's cost is still the biggest unmeasured unknown in the
+   project. **Decide before run 2 spends that line** — the cleanest resolution is probably whether the
+   Phase 1 block is eventually absorbed into or replaced by the districts.
+2. **The sign-mast needs a name and signage text.** It currently reads the literal word
+   `PLACEHOLDER`. Locked decisions 6 and 20 reserve all naming to the user. Joins the trademark
+   naming table on the same list.
+3. **A human browser look at whether the two districts read as two distinct places.** The Engineer
+   measured everything measurable; this is the genuinely human part, and it is the exact question the
+   two-district pairing (locked decision 10) exists to answer.
+
+### Two pre-existing issues the build surfaced but correctly did not touch
+
+- **The new districts cast no shadows.** `Sky.js`'s shadow frustum is ±60 m in what is now a 1,220 m
+  world, so it excludes them entirely. **Pre-existing, and CSM is the fix** — out of run 1's scope.
+  The Engineer measured around it by widening the frustum in-browser.
+- **Fog is 120–900 m against a 1,725 m sightline.** Deliberately untouched: **locked decision 11 makes
+  that exact `Fog` object the world-edge-fade mechanism**, so retuning it now would pre-empt a locked
+  design decision.
+
+### Where the spec was wrong — four findings, all handled
+
+- **FAM-5's terracotta landed on every roof.** §4 asks for a `band` re-tint, but `band` is also the
+  pixel `scaleBoxUVs` collapses every flat roof onto. **Caught in a screenshot, not in review** — a
+  good argument for the Playwright-first rule. Rebuilt as a separate cornice string course, which
+  makes FAM-5 a pure *addition* to `lowriseB` and therefore safer for decision 22 than what was asked.
+- **§DA-2's 32 m depths do not fit the 34.76 m slot** the S-470-1 grid yields. Built at 24–30; the
+  landmark keeps its full 22×32 on the central lot.
+- **MAS-3 is 60 triangles, not 24–48** — decision 19's sculpted crown postdates the spec. +12 tri.
+- **§MAS-6 assumed ~80 buildings; the grid holds 68.** Measured 2,212 tri against its estimated 2,376.
 
 **It re-derived every draw-call and triangle figure independently rather than checking the spec's
 arithmetic for plausibility** — §4, §6, §8, §9/§BGT-1 and §5/§MAS-6 all confirmed: 14 calls for
@@ -192,9 +267,10 @@ continue.
 | Agent | Tokens |
 |---|---|
 | Review — Phase 2 districts feasibility gate (Sonnet) | 101,218 |
-| **Session 9 total so far** | **~101,218** |
+| Engineer — Phase 2 districts, run 1 (Opus) | 293,993 |
+| **Session 9 total** | **~395,211** |
 
-Cross-session observable total: **~2,342,000.** Well inside the 400k prep-to-pause mark. Everything
+Cross-session observable total: **~2,636,000.** **Approaching the 400k prep-to-pause mark at ~395k — the user has been told.** State is fully committed and pushed, so a pause costs nothing and strands nothing. Everything
 else this session — the decisions, the corrections, the spot-checks, the `StreetBlock.js` comment fix
 — was inline orchestrator work. Report raw counts only, never a percentage, and **never attempt to
 look up account usage.**
