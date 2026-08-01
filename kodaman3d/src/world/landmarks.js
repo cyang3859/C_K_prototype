@@ -28,15 +28,24 @@ import { massingBoxes } from './massing.js';
  * Each landmark's several parts are merged into ONE `BufferGeometry` with ONE
  * material, so "its own mesh" really does mean 2 calls and not 2 per part.
  *
- * ⚠️ NAMING AND SIGNAGE TEXT ARE NOT THIS CODE'S TO INVENT (locked decision 6,
- * restated in decision 20 for the mast specifically). The mast's sign carries
- * the literal string "PLACEHOLDER" — chosen so it cannot be mistaken for a
- * proposal, and so that nobody has to guess later whether a plausible-looking
- * word was meant seriously. The user owns the real text.
+ * NAMING AND SIGNAGE TEXT ARE NOT THIS CODE'S TO INVENT (locked decision 6,
+ * restated in decision 20 for the mast specifically). The mast's sign text was
+ * supplied and approved by the user on 2026-08-01 and is locked as decision 23;
+ * it is the only name anywhere in `kodaman3d/`. Everything else in this project
+ * is still generic on purpose, pending the trademark naming table.
  */
 
 /** Atlas edge, px. Same size as Phase 1's bespoke tower atlas. */
 const ATLAS = 1024;
+
+/**
+ * The mast's sign text. USER-APPROVED, locked decision 23 — see the module note.
+ *
+ * Exported so a test can pin it: the point is not that this particular string is
+ * correct, but that a name here can only ever arrive by user sign-off. A future
+ * edit that quietly swaps it should fail a test, not pass review.
+ */
+export const MAST_SIGN_TEXT = 'AKC ENTERPRISE';
 
 /**
  * Atlas regions, in `BoxGeometry`'s face order and the same [uMin, uMax, vMin,
@@ -302,10 +311,12 @@ function buildSignMast(spec, register) {
 /**
  * The mast's atlas: brushed steel for the structure, a sign face for the panels.
  *
- * ⚠️ THE SIGN TEXT IS THE LITERAL WORD "PLACEHOLDER". Locked decision 6 reserves
- * all naming to the user and decision 20 restates it for this structure
- * specifically. Do not replace this with something that reads plausibly — a
- * plausible placeholder is how an un-approved name ships.
+ * THE SIGN READS "AKC ENTERPRISE" — approved by the user 2026-08-01, locked as
+ * decision 23. Locked decision 6 reserves all naming to the user, so this is the
+ * only authority under which a name may appear here. It replaced the literal
+ * string "PLACEHOLDER", which was deliberately implausible so that an unapproved
+ * name could never ship by looking reasonable. Do not change it, and do not add
+ * further names anywhere without the same sign-off.
  */
 function paintMastAtlas(register) {
   const S = ATLAS;
@@ -338,11 +349,32 @@ function paintMastAtlas(register) {
   fillRect(diffuse, `#${hex6(0x8c2f2a)}`, bx, by, bw, 18);
   fillRect(diffuse, `#${hex6(0x8c2f2a)}`, bx, by + bh - 18, bw, 18);
 
+  // FIT THE TEXT TO THE PANEL, rather than trusting a fixed font size.
+  //
+  // The delivered code hard-coded `bh * 0.11` (~84 px), which silently overflows
+  // the 512 px panel: at that size "AKC ENTERPRISE" is ~700 px wide, so the sign
+  // rendered as clipped fragments ("C E...PRI") with the ends running off the
+  // face. It was already marginal with the "PLACEHOLDER" string it replaced —
+  // the name change only made an existing defect visible.
+  //
+  // Caught in a screenshot, not in review or by a test, which is the second time
+  // this run that only a browser would have found it (see the FAM-5 terracotta
+  // note in ENGINEER_PHASE_2_DISTRICTS.md §3.1).
+  //
+  // Measuring instead of guessing also means a future approved name of a
+  // different length cannot silently reintroduce this.
+  const inset = bw * 0.86; // leave a margin so the text never touches the border
   diffuse.fillStyle = `#${hex6(0x2a2723)}`;
-  diffuse.font = `bold ${Math.round(bh * 0.11)}px sans-serif`;
   diffuse.textAlign = 'center';
   diffuse.textBaseline = 'middle';
-  diffuse.fillText('PLACEHOLDER', bx + bw / 2, by + bh / 2);
+  let fontPx = Math.round(bh * 0.11);
+  diffuse.font = `bold ${fontPx}px sans-serif`;
+  const measured = diffuse.measureText(MAST_SIGN_TEXT).width;
+  if (measured > inset) {
+    fontPx = Math.max(8, Math.floor(fontPx * (inset / measured)));
+    diffuse.font = `bold ${fontPx}px sans-serif`;
+  }
+  diffuse.fillText(MAST_SIGN_TEXT, bx + bw / 2, by + bh / 2);
 
   // Region C — the panels' thin top and bottom edges.
   fillRect(diffuse, `#${hex6(0x54585f)}`, 0, 0, S, S * 0.25);

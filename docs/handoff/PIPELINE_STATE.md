@@ -99,6 +99,9 @@ Targeted `grep` only.
 | 21 | Vegetation species split | **District A swaps to Canary Island date palm; District B keeps Phase 1's shipped Mexican fan palm.** User decision 2026-08-01, on §12 item 3 / §PROP-2. District differentiation is the point of the two-district pairing, this is cheap to author, and both species are confirmed in `RESEARCH_LA_WORLDBUILDING.md`. **Note this is a real change to what Phase 1 currently renders**, not a new-content-only choice — the shipped block's palms change species. |
 | 22 | Shipped facade constants | **Leave `towerShared` / `midriseA` / `midriseB` exactly as they ship. Do NOT nudge toward glassiness.** User decision 2026-08-01, on §12 item 4 / §MAT-1. Spot-check 5 measured the far towers at **+780% / +637% mean luminance** under the env map at these exact values; the dark-tower defect is closed and there is no problem left for a constants change to solve. Changing browser-verified values with no defect driving them is how regressions enter. **This closes the metalness-raise question for the third and last time** — sessions 5 and 8 both closed it on the same reasoning, once by eye and once on measurement. The option stays physically defensible if a later phase finds a real reason; "it would be cheap right now" is not one. |
 
+| 23 | The mast's name | **`AKC ENTERPRISE`.** User-supplied and approved 2026-08-01, on the sign/observation mast of locked decision 20. **This is the ONLY name anywhere in `kodaman3d/`** — everything else stays generic pending the trademark naming table, and locked decision 6 still reserves every future name to the user. It replaced the literal string `PLACEHOLDER`, which was deliberately implausible so an unapproved name could not ship by looking reasonable; that worked, and the question reached the user instead of being settled by an agent. The text now lives in one exported constant, `MAST_SIGN_TEXT` (`landmarks.js`), **pinned by a test** (`districts.test.js`) — not because this string is aesthetically load-bearing, but so a name can only ever change by the same sign-off that put it there. |
+| 24 | Phase 1's block is ABSORBED into the districts | **The Phase 1 `StreetBlock` does not survive as a separate third area. Its content is folded into District B and the standalone block goes away.** User decision 2026-08-01, resolving the §BGT-1 reconciliation the Engineer's run 1 surfaced. **The spec's ~69-call rollup budgeted as though the two districts ARE the world; the build preserved Phase 1's block as well, which is why it measured 83 with 67 headroom rather than 81.** Left unreconciled, run 2's ~35-call props line would have landed the world near ~118 and left only ~32 for CSM — whose cost is still the biggest unmeasured unknown in the project. **District B is the natural home: it is the cardinal-grid mixed-height boulevard corridor, which is exactly what the Phase 1 block already is.** ⚠️ **This is real engineering work, not bookkeeping** — the block carries the hero spawn, the browser-verified 90 m helipad tower, its collider registrations, and most of `tests/world.test.js`. **None of that may be lost in the move**; the helipad tower in particular has been signed off by a human across five browser passes. Scoped into **Engineer run 2**, ahead of the props line it pays for. |
+
 ## Model assignment
 
 Per user instruction: **all agents run Sonnet except the Engineer agent, which runs Opus.**
@@ -193,21 +196,19 @@ an unstated hardware dependency of the entire batching strategy** — §BUD-3, �
 assume it. On a GPU or driver lacking it the district budget silently multiplies. **This belongs in
 `KNOWLEDGE_BASE.md` and is a real candidate for a runtime capability check.**
 
-### Three things need you
+### Three things needed the user — TWO ARE ANSWERED
 
-1. **§BGT-1's ~69 has no line for Phase 1's block, which is why the build is 83 and headroom is 67,
-   not 81.** The brief told the Engineer to preserve the Phase 1 block; §BGT-1 budgeted as though the
-   two districts *are* the world. **Both are defensible; they were never reconciled.** It matters
-   because run 2's props/terrain line is ~35 calls: **83 + 35 ≈ 118, leaving ~32 for CSM** rather than
-   the ~81 the spec reserved for it, and CSM's cost is still the biggest unmeasured unknown in the
-   project. **Decide before run 2 spends that line** — the cleanest resolution is probably whether the
-   Phase 1 block is eventually absorbed into or replaced by the districts.
-2. **The sign-mast needs a name and signage text.** It currently reads the literal word
-   `PLACEHOLDER`. Locked decisions 6 and 20 reserve all naming to the user. Joins the trademark
-   naming table on the same list.
-3. **A human browser look at whether the two districts read as two distinct places.** The Engineer
-   measured everything measurable; this is the genuinely human part, and it is the exact question the
-   two-district pairing (locked decision 10) exists to answer.
+1. ~~The §BGT-1 headroom reconciliation~~ — **ANSWERED, locked as decision 24: absorb Phase 1's block
+   into District B.** This is now **the first item of Engineer run 2**, ahead of the props line it
+   pays for. It is real engineering work, not bookkeeping — see decision 24 for what must not be lost
+   in the move.
+2. ~~The mast's name~~ — **ANSWERED, locked as decision 23: `AKC ENTERPRISE`.** Applied, pinned by a
+   test, 148/148.
+3. **STILL OPEN — a human browser look at whether the two districts read as two distinct places.**
+   The Engineer measured everything measurable; this is the genuinely human part, and it is the exact
+   question the two-district pairing (locked decision 10) exists to answer. See
+   `BROWSER_SPOT_CHECK_6.md` — **every measurable result in it is already filled in**, so what is left
+   is only the judgement call.
 
 ### Two pre-existing issues the build surfaced but correctly did not touch
 

@@ -107,7 +107,8 @@ Both are standalone merged `Mesh`es with one material each, because `BatchedMesh
 material override. A test asserts they are `isMesh && !isBatchedMesh` with a non-array material, so
 "its own mesh" really means 2 calls and not 2 per part.
 
-**⚠️ The mast's sign reads the literal string `PLACEHOLDER`.** See §6.2.
+**The mast's sign reads `AKC ENTERPRISE`** — user-approved 2026-08-01, locked as decision 23. It read
+`PLACEHOLDER` as delivered; see §6.2.
 
 ### AC-6 — Measured draw calls with the split — **PASS**, see §0 and §2.
 
@@ -370,10 +371,18 @@ Phase 1 block as consuming part of §8's prop budget rather than as a separate l
 
 ### 6.2 — The mast's name and signage text (locked decisions 6 and 20)
 
-The sign panels carry the literal string **`PLACEHOLDER`**. Chosen so it cannot be mistaken for a
-proposal — a plausible-looking placeholder is how an un-approved name ships. Decision 20 reserves the
-mast's name, signage text and specific art to the user. Nothing here proposes any of them, and the
-code comment says so at the point where a future agent would be tempted.
+**RESOLVED 2026-08-01 by the user: the sign reads `AKC ENTERPRISE`, locked as decision 23.**
+
+As delivered the panels carried the literal string **`PLACEHOLDER`**, chosen so it could not be
+mistaken for a proposal — a plausible-looking placeholder is how an un-approved name ships. That was
+the right call and it worked: the question reached the user instead of being quietly settled by an
+agent. Decision 20 reserved the mast's name, signage text and specific art to the user, and the name
+arrived by exactly that route.
+
+The string now lives in one exported constant, `MAST_SIGN_TEXT` (`landmarks.js`), **pinned by a test**
+(`districts.test.js`). The point of the test is not that this text is aesthetically right — it is that
+a name here can only ever change by the same sign-off that put it there. **This is the only name
+anywhere in `kodaman3d/`**; everything else stays generic pending the trademark naming table.
 
 ### 6.3 — The districts cast no shadows, and the fix is out of this run's scope
 

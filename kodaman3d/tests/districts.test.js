@@ -26,6 +26,7 @@ import {
 import { CollisionWorld } from '../src/world/Collision.js';
 import { District } from '../src/world/District.js';
 import { FACADE_VARIANTS } from '../src/world/StreetBlock.js';
+import { MAST_SIGN_TEXT } from '../src/world/landmarks.js';
 import { installCanvasStub } from './support/canvas2d.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
 
@@ -510,6 +511,19 @@ describe('District, built', () => {
     b.geometry.computeBoundingBox();
     expect(a.geometry.boundingBox.max.y).toBeCloseTo(150, 6);
     expect(b.geometry.boundingBox.max.y).toBeCloseTo(75, 6);
+  });
+
+  it('the mast sign carries only the user-approved name (decisions 6/20/23)', () => {
+    // Locked decision 6 reserves ALL naming to the user, and decision 20
+    // restates it for this structure. This string arrived by explicit sign-off
+    // on 2026-08-01 and is locked as decision 23.
+    //
+    // The assertion is not that this particular text is aesthetically right --
+    // it is that a name here can only ever change by the same route it arrived.
+    // A future edit that quietly swaps it should fail a test rather than pass
+    // unnoticed, which is the whole reason the placeholder it replaced was
+    // deliberately implausible.
+    expect(MAST_SIGN_TEXT).toBe('AKC ENTERPRISE');
   });
 
   it('the grid group carries the district rotation, not the ground plane', () => {
