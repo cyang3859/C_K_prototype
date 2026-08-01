@@ -140,6 +140,14 @@ is the user's call whether it is worth doing.
 That is Phase 2 input, not a Phase 1 defect — it is the same "too blocky and rigid / empty
 world" note they already deferred themselves. Recorded, not acted on.
 
+**Spot-check 4 (the cape fix) passed 2026-07-31.** Dash flight and the mid-air pose both show
+clear separation between cape and torso — two distinct shapes, no merging. The standing pose was
+screenshotted from the front, so the cape is edge-on there and the shot cannot fully exercise
+"hangs as a sheet against the back"; what it does confirm is **no interpenetration**, which is
+the fix, and no sign of the wind-tunnel overcorrection. Judged a pass on that basis, with the
+limitation recorded rather than papered over. `CAPE_MIN_STANDOFF` stayed at its 0.4 default —
+the user did not retune it.
+
 ### Next, and nothing is blocking
 
 Tests **105/105**, build clean, `kodaman_prototype.html` zero diff, nothing pushed, `main`
