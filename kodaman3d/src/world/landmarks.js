@@ -279,15 +279,44 @@ function buildSignMast(spec, register) {
   remapUVs(pod, REGION_A);
   parts.push(pod);
 
-  // Four sign panels climbing the mast, alternating which face they present, so
-  // the mast reads from all four approaches down the boulevard.
+  // Four sign levels climbing the mast, alternating which pair of faces they
+  // present, so the mast reads from all four approaches down the boulevard.
+  //
+  // EACH LEVEL IS TWO BOARDS FLANKING THE COLUMN, NOT ONE BOARD THROUGH IT.
+  //
+  // The delivered version centred a single 7 m board on the mast axis. But the
+  // column is tapered from r = 2.4 m to r = 0.9 m, so down at the sign levels it
+  // is over 4 m across — it covered the middle ~60% of the board and bisected the
+  // name, which read as "AKC" ... "RISE" with the middle swallowed. Scaling the
+  // text to fit the panel (see `paintMastAtlas`) fixed the text overflowing its
+  // panel, but could not fix the panel being occluded by the thing it is mounted
+  // on. Reported from a screenshot by the user.
+  //
+  // So each board now starts OUTSIDE the column's radius at its own height and
+  // projects clear of it, the way real projecting/blade signage is actually
+  // mounted. Two per level, on opposite sides, so no approach ever sees only the
+  // back of a board.
+  //
+  // Cost: 8 boxes instead of 4, +48 triangles, and ZERO extra draw calls — the
+  // whole mast is merged into one geometry with one material, which is what makes
+  // §BGT-1's 2-calls-per-landmark line hold.
   const signH = 9;
+  const boardW = 7;
+  const boardT = 0.4;
   for (let i = 0; i < 4; i++) {
-    const panel = new THREE.BoxGeometry(0.4, signH, 7);
-    atlasBoxUVs(panel, [REGION_B, REGION_B, REGION_C, REGION_C, REGION_B, REGION_B]);
-    if (i % 2 === 1) panel.rotateY(Math.PI / 2);
-    panel.translate(0, h * 0.2 + i * (signH + 2.5), 0);
-    parts.push(panel);
+    const y = h * 0.2 + i * (signH + 2.5);
+    // The column's radius at this height, so the gap is right at every level
+    // rather than tuned for one of them.
+    const radiusHere = 2.4 + (0.9 - 2.4) * (y / h);
+    const offset = radiusHere + 0.2 + boardW / 2;
+    for (const side of [1, -1]) {
+      const panel = new THREE.BoxGeometry(boardT, signH, boardW);
+      atlasBoxUVs(panel, [REGION_B, REGION_B, REGION_C, REGION_C, REGION_B, REGION_B]);
+      panel.translate(0, 0, side * offset);
+      if (i % 2 === 1) panel.rotateY(Math.PI / 2);
+      panel.translate(0, y, 0);
+      parts.push(panel);
+    }
   }
 
   const merged = mergeGeometries(parts);
@@ -363,18 +392,46 @@ function paintMastAtlas(register) {
   //
   // Measuring instead of guessing also means a future approved name of a
   // different length cannot silently reintroduce this.
-  const inset = bw * 0.86; // leave a margin so the text never touches the border
+  // SET THE NAME ON ONE LINE PER WORD, EACH SIZED TO FILL THE BOARD'S WIDTH.
+  //
+  // Three things had to be got right here and only the first was obvious.
+  //
+  // 1. The original hard-coded `bh * 0.11` (~84 px) overflowed the 512 px face —
+  //    "AKC ENTERPRISE" measures ~883 px at 100 px bold, so both ends ran off and
+  //    the sign rendered as clipped fragments.
+  // 2. Shrinking to fit fixed the overflow but left the name small: the sign face
+  //    is PORTRAIT (512 x 768 px, on a 7 m x 9 m board) and a single line of text
+  //    can only ever use one strip of it, however well fitted.
+  // 3. So the name is set one word per line. Each line is then sized from its own
+  //    measured width, which fills the board in both directions and makes the
+  //    glyphs several times larger than a single fitted line could be.
+  //
+  // Sizing from `measureText` rather than from a fraction of the atlas means a
+  // future approved name of any length or word count still fits — the failure in
+  // (1) came precisely from a constant that happened to suit the old string.
+  const inset = bw * 0.9; // margin so the text never touches the border
+  const lines = MAST_SIGN_TEXT.trim().split(/\s+/);
+  const probePx = 100;
+  const lineGap = 1.18; // baseline-to-baseline, as a multiple of font size
+  // Each line fills the width; the whole block is then capped so it cannot grow
+  // past the face's height when the name is short (one big word) or tall (many).
+  const byWidth = lines.map((w) => {
+    diffuse.font = `bold ${probePx}px sans-serif`;
+    const m = diffuse.measureText(w).width || inset;
+    return probePx * (inset / m);
+  });
+  const maxByHeight = (bh * 0.72) / (lines.length * lineGap);
+  const fontPx = Math.max(8, Math.floor(Math.min(...byWidth, maxByHeight)));
+
   diffuse.fillStyle = `#${hex6(0x2a2723)}`;
+  diffuse.font = `bold ${fontPx}px sans-serif`;
   diffuse.textAlign = 'center';
   diffuse.textBaseline = 'middle';
-  let fontPx = Math.round(bh * 0.11);
-  diffuse.font = `bold ${fontPx}px sans-serif`;
-  const measured = diffuse.measureText(MAST_SIGN_TEXT).width;
-  if (measured > inset) {
-    fontPx = Math.max(8, Math.floor(fontPx * (inset / measured)));
-    diffuse.font = `bold ${fontPx}px sans-serif`;
-  }
-  diffuse.fillText(MAST_SIGN_TEXT, bx + bw / 2, by + bh / 2);
+  const step = fontPx * lineGap;
+  const startY = by + bh / 2 - ((lines.length - 1) * step) / 2;
+  lines.forEach((line, i) => {
+    diffuse.fillText(line, bx + bw / 2, startY + i * step);
+  });
 
   // Region C — the panels' thin top and bottom edges.
   fillRect(diffuse, `#${hex6(0x54585f)}`, 0, 0, S, S * 0.25);

@@ -48,24 +48,29 @@ review or by the test suite. **That is the strongest evidence so far for the Pla
 
 ---
 
-## ⚠️ THE ONE THING THAT NEEDS A HUMAN
+## The signage was unreadable — reported by the user, now fixed
 
-**Does the sign read acceptably with the mast pole running in front of it?**
+**The user's own screenshot settled the question this document had left open**, and the answer was
+that the sign was not acceptable. It took **three** distinct fixes, only the first of which was
+diagnosed before the screenshot:
 
-The mast's structural pole passes directly over the centre of the sign face, so head-on the name
-reads as `AKC` … `RISE` with the middle occluded. From an angle the sign is legible and the mast
-reads well as a landmark silhouette.
+| # | Defect | Fix | Evidence |
+|---|---|---|---|
+| 1 | Text overflowed its 512 px face — `AKC ENTERPRISE` measures **883 px** at 100 px bold, so both ends ran off | Size the font from `measureText` instead of a hard-coded `bh * 0.11` | text width 455 px of 512 |
+| 2 | **The column bisected the board.** A single 7 m board was centred on a mast tapering 2.4 → 0.9 m radius, so 4+ m of steel covered its middle third and the name read `AKC` … `RISE` | **Two boards per level, flanking the column**, each starting outside its radius at that height — how projecting signage is actually mounted | +48 triangles, **0 extra draw calls** |
+| 3 | The name still sat small: the face is **portrait** (512 × 768 px on a 7 × 9 m board), so one line can only ever use a strip of it | **One word per line**, each sized from its own measured width | text block **39 px → 138 px** tall, glyphs ~**1.9×** larger |
 
-This is a **taste call, not a defect**, and it is deliberately not being decided by an agent:
+**Draw calls after all three: 34 at that viewpoint — unchanged.** The whole mast is still one merged
+geometry with one material, so §BGT-1's 2-calls-per-landmark line holds. 148/148 tests.
 
-- **Real sign masts genuinely do have structure in front of the panels**, so this may simply read as
-  authentic — and the mast's job per `DEN-6` is to be a *silhouette* visible across the world, not a
-  legible nameplate.
-- The alternative is to offset the sign panels clear of the pole, or widen them, which is a small
-  change to `landmarks.js` and costs no draw calls.
+**Numbers, not impressions, at every step.** Fix 2 was diagnosed by comparing the board's 7 m width
+against the column's radius *at that height*; fix 3 by reading the atlas back with `getImageData` and
+measuring the text's bounding box, which is what showed the texture was already correct and the
+problem was the board's aspect ratio. Before: `mast-sign.png`. After: `mast-twoline.png`.
 
-**Look at `mast-sign-fixed.png` (head-on) and `mast-angled2.png` (angled) and say which you prefer.**
-Nothing is blocked on the answer — run 2 can proceed either way.
+**Sizing from measurement rather than constants is the durable part** — the original failure came
+precisely from a constant that happened to suit the old `PLACEHOLDER` string. A future approved name
+of any length or word count now fits without another round of this.
 
 ---
 
