@@ -27,6 +27,10 @@ The Design agent was added 2026-07-30 (session 3) after the human QA pass. See
 prompt.
 
 **Read these in order to get current:**
+0. **`KNOWLEDGE_BASE.md` (478 lines) — START HERE as of 2026-07-31.** The Overview agent's
+   consolidated map: module wireframe, app lifecycle, the flight FSM written from the code, the
+   settled decisions, and an index of every other document with when to read it. It exists
+   precisely so nobody has to read the fourteen-document pile cold.
 1. This file — decisions, status, resume pointer
 2. `QA_HUMAN_RESULTS.md` — the human test pass; 3 confirmed bugs + 1 suspected, assigned
 3. `REVIEW_FLAGS.md` — 12 adjudicated flags; the rulings are decisions already made
@@ -101,7 +105,8 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Browser spot-check 2 | user | **done** — all steps pass; 2 feel notes, 1 palette defect | results in this file |
 | Flight lean + 12 m helipad | orchestrator, inline | **done** — commit `fd33b41`, 99/99 tests | not yet seen in a browser |
 | Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
-| Overview | Sonnet | not started | `KNOWLEDGE_BASE.md`, wireframe |
+| Overview | Sonnet | **done** — 127,078 tokens | `KNOWLEDGE_BASE.md` (478 lines) |
+| envMap — PMREM sky environment | orchestrator, inline | **done** — commit `6a07c13`, 108/108 | `BROWSER_SPOT_CHECK_5.md` awaiting a human |
 
 Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
 
@@ -158,10 +163,19 @@ untouched. The queue is unchanged apart from the cape moving to "fixed, unverifi
    opened 2026-07-31. 47 files, +16,809, base `dev`, **open and unmerged — the review and the
    merge are the user's.** `main` untouched, as it must stay. The branch is now pushed, so
    `origin/feat/3d-open-world` exists and further commits go up with a plain `git push`.
-3. **The Overview agent** — the last pipeline stage, never run. Worth doing before Phase 2
-   research, which otherwise has to read fourteen documents.
-4. **The envMap**, only if the user wants the distant towers fixed.
-5. **Phase 2 research**, then the trademark naming table.
+3. ~~**The Overview agent**~~ **DONE** — `KNOWLEDGE_BASE.md`, 478 lines, Sonnet, 127,078 tokens.
+   **Read it first from now on**, ahead of this file: it is the consolidated map of the build,
+   the app lifecycle, the flight FSM, and the other 21 documents. It wrote the FSM tables from
+   the code rather than from prose, and it found the stale body-pitch finding above.
+   **The pipeline is now complete — all six stages have run at least once.**
+4. ~~**The envMap**~~ **DONE** — `6a07c13`. PMREM baked from a synthetic sky, no asset file, zero
+   draw calls. **Not visually verified**; `BROWSER_SPOT_CHECK_5.md` is written and waiting.
+   Tower metalness deliberately left at the palette pass's reduced values.
+5. **Phase 2 research** — now unblocked and the natural next big step. Locked decisions 7, 8 and
+   9 are the binding scope; the user's deferred design feedback is the input. Hand the researcher
+   `KNOWLEDGE_BASE.md` rather than the fourteen-document pile.
+6. **The trademark naming table** — still descriptions, not names. Blocks Phase 2 content
+   porting. The companion at 345 references is the one the user should name personally.
 
 **Phase 1 has no open visual defects.** Every bug found across four browser passes is fixed and
 re-verified by eye. The only known cosmetic issue left is the distant-tower flatness in item 4,
@@ -316,7 +330,17 @@ Worst case with nothing culled, from a scene-graph walk:
 pass or both.** Getting this wrong in the other direction — setting a ceiling that silently
 assumes single-pass — would repeat the same mistake with a bigger world.
 
-### OPEN FINDING — body pitch ignores horizontal speed
+### ~~OPEN FINDING — body pitch ignores horizontal speed~~ — CLOSED, and this entry was stale
+
+**The Overview agent caught this 2026-07-31 and it was right.** The finding below describes a
+fix as missing that the code already implements: `LocomotionController._updateOrientation` now
+carries the full two-term model — a `sqrt`-curved speed lean from horizontal speed, plus the
+original vertical term faded out as horizontal speed rises. Verified by reading the code.
+Spot-check 3 step 1 confirmed it by eye and the user passed it.
+
+Kept below only for the reasoning, which is still worth having. **Do not act on it.**
+
+Original entry follows.
 
 Raised while fixing B5, **not yet acted on, needs a user decision.**
 
@@ -419,6 +443,20 @@ The first Opus research agent's spend before it died is not reported.
 it. Slowing down; awaiting the user's call on whether to run QA now or pause first.
 
 Cross-session observable total: **~771,000.**
+
+**Session 5 — 2026-07-31.**
+
+| Agent | Tokens |
+|---|---|
+| Overview — `KNOWLEDGE_BASE.md` (Sonnet) | 127,078 |
+| **Session 5 total** | **127,078** |
+
+Everything else this session was done inline by the orchestrator: the cape fix, the envMap, PR #3,
+and three browser guides. Cross-session observable total: **~1,564,000.**
+
+The Overview agent **obeyed the no-fanout rule** — worth recording, since the previous two agents
+did not. It also caught a real doc/code contradiction rather than propagating it, which is the
+behaviour the brief asked for and the thing this project has most often failed at.
 
 **Session 4 — ended 2026-07-30, closed deliberately by the user.**
 
