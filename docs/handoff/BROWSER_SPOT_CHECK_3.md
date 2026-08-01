@@ -1,10 +1,10 @@
 # Browser Spot-Check 3 — flight lean, cape, helipad
 
 **For:** the person at the keyboard.
-**Time:** ~5 minutes. This is a short one.
-**Covers:** three changes made after your last pass, none of which has been seen by a human.
+**Time:** ~7 minutes. This is a short one.
+**Covers:** everything changed since your last pass. None of it has been seen by a human.
 
-Tests are 99/99 and the build is clean, but all three of these are things only an eye can
+Tests are 102/102 and the build is clean, but all of these are things only an eye can
 judge — and one of them is a **feel** change you can now tune yourself without going through me.
 
 ---
@@ -56,7 +56,8 @@ Two sliders are now live in **lil-gui → Flight**:
 
 - **`MAX_FORWARD_PITCH`** — how flat the hero gets at full dash. Currently 1.5 rad (86°).
 - **`PITCH_SPEED_DIVISOR`** — how hard vertical speed tips the body on climbs and vertical
-  dives. **Lower tips harder.** Currently 8.
+  dives. **Lower tips harder.** Currently **5** — it was 8 when you last flew, dropped so that
+  dives commit properly (step 4).
 - **`MIN_FORWARD_PITCH`** — the nose-up limit while climbing. Currently -0.6 rad (34°).
 
 **Do:** Fly with the panel open and drag them until it feels right.
@@ -88,23 +89,27 @@ Your note last time: head-first was right, but *"the angle could use a bit more 
 **Do:** Get some forward speed, then dive.
 
 **Pass:** A dive carrying forward speed is now **much steeper** — close to fully committed,
-head leading.
+head leading. A straight vertical dive reaches roughly **70°**, where before it stopped at ~44°.
 
-**Fail:** Still shallow. If so, `PITCH_SPEED_DIVISOR` in step 2 is the slider — lower it.
+**Fail:** Still shallow. If so, `PITCH_SPEED_DIVISOR` in step 2 is the slider — lower it further.
 
 > Result:
 
 ---
 
-## 5. The helipad
+## 5. The helipad — the real fix
 
-You could not find it last time. It was 3.5 m on a 20 × 28 m roof — a few pixels from altitude.
-It is now **12 m**, the real proportion for a roof that size.
+You could not find it last time even after it went from 3.5 m to 12 m, and the reason turned out
+to have nothing to do with size. **The parapet was a solid slab covering the entire roof**, laid
+directly over the face the roof texture paints the helipad onto. It was hidden at every size.
+
+The parapet is now **four bars around the roof edge** — actual coping, which is what a real
+parapet is. Same one draw call. The roof centre is clear.
 
 **Do:** Fly above the tallest tower (90 m, north side of the boulevard) and look down.
 
 **Pass:** An obvious yellow ring with an **H**, clearly circular, reading as somewhere you could
-actually land.
+actually land. A low wall runs around the roof edge, not across the middle.
 
 **Fail:** Still invisible. Squashed into an ellipse. Or now so large it overruns the roof edges.
 
@@ -112,7 +117,27 @@ actually land.
 
 ---
 
-## 6. The dark tower facade
+## 6. Roof art in general, and landing on it
+
+Same change as step 5, but the slab was hiding **every** roof's art, not just the helipad — grime,
+speckle, mechanical-unit staining. And the hero used to land on top of the slab; now it lands on
+the actual roof.
+
+**Do:** Fly low over several different roofs and look at them. Then land on the tall tower —
+this is re-confirming a test that passed before the change, so it matters.
+
+**Pass:** Roofs carry visible surface detail rather than reading as blank lids. You land solidly
+on the roof surface with the HVAC boxes sitting on the same plane you are standing on, and the
+coping ring stops you walking off the edge.
+
+**Fail:** You fall through the roof, land floating above it, or the HVAC boxes are sunk into it
+or hovering over it. Or the coping does not stop you at the edge.
+
+> Result:
+
+---
+
+## 7. The dark tower facade
 
 Added after this guide was written — the palette fix landed, so it is in this pass after all.
 
