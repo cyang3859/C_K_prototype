@@ -130,24 +130,26 @@ all seven of run 2's user decisions were made this session and are locked as **d
 the one open licensing question (§ASSET-2) was verified live and closed. **Nothing in either research
 document is waiting on the user any more.**
 
-**Do this first next session: pick the Phase 2 build path.** Research is done and the decisions that
-gate specification are made, so the next stage is **Design or Engineer, not more research.** The open
-question is which, and it is a genuine fork worth putting to the user rather than assuming:
+**The user chose the world half, and Design first within it. That spec has landed and been
+spot-checked.** See the session 7 block below for what it specifies and the one error corrected in it.
 
-1. **Design first** — spawn the Design agent (Sonnet) for a character/animation spec, the way
-   `DESIGN_SPEC_PHASE_1_BUILDINGS.md` preceded the Phase 1 building work, then gate it through Review
-   for the budget/feasibility check per `DESIGN_AGENT_BRIEF.md`. Decisions 12/13/14 are exactly the
-   art-direction inputs such a spec needs, and they are now settled.
-2. **Engineer first** — go straight to the glTF/rig pipeline, since decisions 14–18 arguably specify
-   enough already (8 draw calls, Quaternius free tier, 4 clips, run the ORG-6 test). Faster to
-   something visible in a browser; risks specifying-by-implementing.
-3. **World first instead** — run 1's output (`RESEARCH_PHASE_2_WORLD.md`) is equally ready and has its
-   own decisions locked (10, 11). The character work and the world work are **independent**; nothing
-   forces character to go first.
+**Do this first next session: Review's feasibility gate on `DESIGN_SPEC_PHASE_2_DISTRICTS.md`.** That
+is the pipeline's next stage per `DESIGN_AGENT_BRIEF.md` — Design→Review→Engineer, and Review's gate
+is **budget and feasibility ONLY. It gets no vote on taste.** It may send the spec back for exceeding
+the draw-call/triangle budget, requiring renderer features the locked stack lacks, requiring assets
+with no pipeline, or breaking a locked decision — **and for nothing else.**
 
-**Whichever is chosen, two things carry into it as hard requirements, not suggestions:** the **8
-draw calls both passes** of decision 14 (a rig built object-by-object silently stays at 14 and wastes
-the whole gain), and **decision 17's ORG-6 precision test as soon as any rigged mesh exists.**
+**Four user decisions are outstanding on the spec** (its §12): District A's landmark cap style,
+District B's landmark identity (sign-mast vs building), the vegetation-species swap, and whether to
+nudge the *shipped* facade constants now that the env map is live. **None of them block Review** —
+they are taste and content calls, and Review's gate does not touch taste. They do block Engineer.
+
+**Two things carry forward as hard requirements into whatever builds this:** the **8 draw calls both
+passes** of decision 14 (a rig built object-by-object silently stays at 14 and wastes the whole gain),
+and **decision 17's ORG-6 precision test as soon as any rigged mesh exists.**
+
+**The character half remains unstarted and fully briefed** — decisions 12–18 settle its art direction,
+and `RESEARCH_PHASE_2_CHARACTER.md` is its research. The two halves are independent.
 
 **Nothing is half-finished.** Everything is committed and **pushed** — `origin/feat/3d-open-world` is
 in sync as of this session. Phase 1 is untouched and still complete, verified and merge-ready.
@@ -299,18 +301,68 @@ almost certainly sit inside a 42–45-clip free standard tier** — verify at im
 plan on zero spend. If a specific clip turns out to be paywalled, $9.99 unlocks 120+ on the original
 library. That is a rounding error against the risk of designing around a constraint that isn't real.
 
+### The world half started — Design went first, and its spec has landed
+
+**User chose the world half over the character half** (2026-08-01), then **Design first** within it.
+The sequencing argument, worth keeping because it generalizes: **the batch key is a design output.**
+`BUD-3` groups buildings into `BatchedMesh` instances keyed by *facade material family*, and `DEN-2`'s
+massing recipes are applied per building via data — so both are things Design defines and the
+Engineer consumes. Building first would have specified them by implementing them, which is precisely
+how Phase 1 ended up blocky (the Design agent was only added *after* human QA reported it).
+
+| Stage | Model | Status | Output |
+|---|---|---|---|
+| Design — Phase 2 districts | Sonnet | **done** — 261,652 tokens, 90 tool calls | `DESIGN_SPEC_PHASE_2_DISTRICTS.md` (760 lines) |
+
+Brief: `DESIGN_BRIEF_PHASE_2_DISTRICTS.md`, written to the charter's five-part Research→Design
+contract. **It had to override three stale rows in `DESIGN_AGENT_BRIEF.md`'s "Hard constraints"
+table** — that table still says *45 measured / 60 ceiling* and *primitives-only*, and the charter's
+own spawn prompt calls it binding. Left uncorrected the agent would have designed to **less than half
+the real budget.** The override is a visible table in the brief, not a quiet restatement.
+
+**⚠️ `DESIGN_AGENT_BRIEF.md` ITSELF IS STILL UNCORRECTED.** Only the Phase 2 brief overrides it. **Any
+future Design spawn must carry the same override or repeat the mistake.** Fixing the charter at
+source is a cheap, unclaimed piece of work.
+
+It obeyed both process rules — no subagents, wrote incrementally. Code untouched, 108/108 tests.
+
+**What it specified:** 7 facade families (3 District A, 4 District B — **4 of the 5 shipped Phase 1
+variants reused unchanged or single-hex retinted**, which is why the count lands inside `BUD-3`'s
+band), 5 massing recipes at ~2,376 triangles across an assumed 80-building population, and a
+district-merged ground/road scheme that satisfies `BUD-2`.
+
+### Orchestrator spot-checks — one real error found and corrected
+
+| Claim | Verdict |
+|---|---|
+| `MAT-1` — `StreetBlock.js`'s `FACADE_VARIANTS` comment claiming "no environment map" is stale | **Confirmed** — `StreetBlock.js:205-208` says "There is NO ENVIRONMENT MAP in this project"; the PMREM env map shipped in `6a07c13`. **A stale *code comment*, the more dangerous kind — the next engineer to read it would believe it.** Its lines 225-229 even name the env map as the precondition for raising metalness, and that precondition is now met |
+| 7 families → 14 calls both passes, inside `BUD-3` | **Confirmed** — arithmetic correct, and 5 variants do ship (`lowriseA/B`, `midriseA/B`, `towerShared`), so the reuse claim holds |
+| Hero budgeted at 14, "carried unchanged, decision 14" | **WRONG — corrected in place.** Locked decision 14 says **8**, explicitly "down from Phase 1's 14." **The spec conflated the decision's *number* with a *value*.** §BUD-6's 14 is right for run 1's time, so only the spec's own column was wrong |
+| Code untouched, tests green | **Confirmed** — 108/108, `git status` clean apart from known untracked |
+
+**The correction is annotated in the document, not silently applied** (§BGT-1). Hero → 4 main / 4
+shadow / 8 total; subtotal **~75 → ~69**; headroom **75 → 81**. §11's dependent figures updated too.
+**The error was conservative — it over-budgeted, so nothing specified was ever at risk.**
+
 ### Cost log — session 7
 
 | Agent | Tokens |
 |---|---|
 | Research — Phase 2 character, run 2 (Sonnet) | 215,614 |
-| **Session 7 total** | **~215,614** |
+| Design — Phase 2 districts (Sonnet) | 261,652 |
+| **Session 7 total** | **~477,266** |
 
-Cross-session observable total: **~1,979,000.** Everything else — the spot-checks, the state
-updates, the push — was inline orchestrator work.
+Cross-session observable total: **~2,241,000.** Everything else — the spot-checks, the corrections,
+the briefs, the state updates, the pushes — was inline orchestrator work.
 
-**Past the 400k prep-to-pause mark? No — this session is at ~216k.** Report raw subagent token counts
-only, never a percentage of a ceiling, and **never attempt to look up account usage.**
+### ⚠️ PAST THE 400k PREP-TO-PAUSE MARK — at ~477k
+
+**The standing rule is: begin prepping to pause near 400k, and do not pause until the user says so.**
+That mark is passed. **The user has been told and has not yet decided.** State is fully committed and
+pushed after every step this session, so a pause costs nothing and strands nothing.
+
+Report raw subagent token counts only, never a percentage of a ceiling, and **never attempt to look
+up account usage** — no tool exposes it and the user has asked that it stop.
 
 ---
 
