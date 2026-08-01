@@ -146,9 +146,40 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 9, 2026-08-01 <<<
+## >>> RESUME HERE — session 9 closed 2026-08-01, deliberately, by the user <<<
 
-**THE TWO DISTRICTS ARE BUILT.** Review's gate passed, all four §12 taste decisions were made
+**Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` in
+sync, **0 unpushed commits**, working tree clean apart from the pre-existing untracked
+`KODAMAN_HANDOFF.md`. **148/148 tests.** `main` untouched at `5f62309`. `kodaman_prototype.html`
+**zero diff**. No agent was running when the session ended and **nothing was interrupted or
+stranded**. 12 commits this session.
+
+### Do this first next session: **Engineer run 2.**
+
+Everything it needs is decided and written. Its scope, in order:
+
+1. **Absorb Phase 1's block into District B (locked decision 24)** — do this FIRST, because it is
+   what pays for the props line. **Real engineering, not bookkeeping:** the block carries the hero
+   spawn, the browser-verified 90 m helipad tower, its collider registrations and most of
+   `tests/world.test.js`. **None of that may be lost.**
+2. **Then the spec's §10 priority items 4–11** — vegetation (decision 21: Canary palm in A, Mexican
+   fan in B), rooftop HVAC and parapet rings, awnings and blade signs, streetlamps, small props,
+   parked cars, utility poles, the terrain landmark, and the cut-priority tier.
+
+**Model: Opus.** Brief run 1 from `ENGINEER_BRIEF_PHASE_2_DISTRICTS.md` — it is a good template and
+its process rules, budget facts and trap warnings all still apply. **Budget from the real measured 83
+(49 main / 34 shadow), not from §BGT-1's ~69**, and remember run 2's own props line is ~35 calls
+before the absorption gives any back.
+
+**Still open, and unchanged by this session:** PR #3 (open, unmerged, base `dev` — **the review and
+the merge are the user's**), the **trademark naming table** (still descriptions, not names; the
+companion at 345 references is the one the user should name personally), the **day/night cycle
+length** (a feel call needing `DayNightCycle.js` to exist first), and **CSM's real shadow cost** —
+still the biggest unmeasured unknown in the project.
+
+---
+
+## Session 9 detail — the two districts are built Review's gate passed, all four §12 taste decisions were made
 (decisions 19–22), and the Engineer's run 1 landed. **147/147 tests**, working tree clean apart from
 the pre-existing untracked `KODAMAN_HANDOFF.md`, `kodaman_prototype.html` zero diff, `main` untouched.
 
@@ -196,7 +227,38 @@ an unstated hardware dependency of the entire batching strategy** — §BUD-3, �
 assume it. On a GPU or driver lacking it the district budget silently multiplies. **This belongs in
 `KNOWLEDGE_BASE.md` and is a real candidate for a runtime capability check.**
 
-### Three things needed the user — TWO ARE ANSWERED
+### The mast signage took three fixes, and the user found the defect
+
+`AKC ENTERPRISE` shipped unreadable, and **the user's own screenshot caught it** after the assistant's
+Playwright pass had already signed the landmark off. Three distinct defects, only the first diagnosed
+before that screenshot:
+
+1. **Text overflowed its 512 px face** — the name measures **883 px** at 100 px bold. The font was
+   hard-coded at `bh * 0.11`. Fixed by sizing from `measureText`.
+2. **The column bisected the board** — the real cause. A single 7 m board sat centred on a mast
+   tapering 2.4 → 0.9 m radius, so 4+ m of steel covered its middle third and the name read
+   `AKC` … `RISE`. Fixed with **two boards per level flanking the column**, each starting outside its
+   radius *at that height*. **+48 triangles, ZERO extra draw calls** — the mast is still one merged
+   geometry with one material, so §BGT-1's 2-calls-per-landmark line holds.
+3. **The name still sat small** — the face is **portrait** (512 × 768 px on a 7 × 9 m board), so one
+   line can only use a strip of it. Fixed by setting **one word per line**, each sized from its own
+   measured width. Text block **39 px → 138 px** tall, glyphs ~**1.9×** larger.
+
+**Two lessons worth carrying.** First, **2 and 3 were found by measurement, not by looking harder** —
+3 in particular was diagnosed by reading the atlas back with `getImageData` and measuring the text's
+bounding box, which showed the texture was *already* correct at 88% of face width and the board's
+aspect ratio was the problem. Enlarging text that was already the right size would have wasted
+several rounds. Second, **the original failure came from a constant that happened to suit the old
+`PLACEHOLDER` string** — which is why everything now sizes from measurement and any future approved
+name fits without another round of this.
+
+**A caveat about this session's Playwright pass, worth being honest about:** it verified the mast
+*existed* and that the sign text was *present*, and called the landmark a pass. It did not verify the
+name was **legible**. A human caught in one screenshot what an automated pass had signed off. The
+Playwright-first rule is still right — it caught FAM-5's terracotta, which no human would have hunted
+for — but **"the object renders" is not the same check as "the object reads."**
+
+### Three things needed the user — ALL THREE ARE ANSWERED
 
 1. ~~The §BGT-1 headroom reconciliation~~ — **ANSWERED, locked as decision 24: absorb Phase 1's block
    into District B.** This is now **the first item of Engineer run 2**, ahead of the props line it
@@ -204,11 +266,13 @@ assume it. On a GPU or driver lacking it the district budget silently multiplies
    in the move.
 2. ~~The mast's name~~ — **ANSWERED, locked as decision 23: `AKC ENTERPRISE`.** Applied, pinned by a
    test, 148/148.
-3. **STILL OPEN — a human browser look at whether the two districts read as two distinct places.**
-   The Engineer measured everything measurable; this is the genuinely human part, and it is the exact
-   question the two-district pairing (locked decision 10) exists to answer. See
-   `BROWSER_SPOT_CHECK_6.md` — **every measurable result in it is already filled in**, so what is left
-   is only the judgement call.
+3. ~~A human look at whether the districts read as two distinct places~~ — **ANSWERED: they do.** Run
+   under Playwright and recorded in `BROWSER_SPOT_CHECK_6.md`. **District A reads as a dense tower
+   plateau with streets visibly diagonal on the 36° grid; District B as an orthogonal mixed-height
+   boulevard corridor** with centrelines, crosswalks and cream/steel-blue/bronze facades. **Locked
+   decision 10's central bet — that the rotation difference alone would make the two districts read as
+   different places — is confirmed.** The user then reviewed the mast and found the signage defect
+   above.
 
 ### Two pre-existing issues the build surfaced but correctly did not touch
 
@@ -271,7 +335,7 @@ continue.
 | Engineer — Phase 2 districts, run 1 (Opus) | 293,993 |
 | **Session 9 total** | **~395,211** |
 
-Cross-session observable total: **~2,636,000.** **Approaching the 400k prep-to-pause mark at ~395k — the user has been told.** State is fully committed and pushed, so a pause costs nothing and strands nothing. Everything
+Cross-session observable total: **~2,636,000.** **At ~395k, just under the 400k prep-to-pause mark — the user was told and chose to close here.** State is fully committed and pushed, so a pause costs nothing and strands nothing. Everything
 else this session — the decisions, the corrections, the spot-checks, the `StreetBlock.js` comment fix
 — was inline orchestrator work. Report raw counts only, never a percentage, and **never attempt to
 look up account usage.**
