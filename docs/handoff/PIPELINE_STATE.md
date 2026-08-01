@@ -107,7 +107,54 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE <<<
+## >>> RESUME HERE — session 5 <<<
+
+**Spot-check 3 was run by the user 2026-07-31. Six of seven steps pass.** Flight lean, the
+tuning sliders, the dive angle, the helipad, and roof art + landing on the real roof are all
+confirmed by eye. The parapet-ring change is verified: screenshots show the yellow ring and
+**H** clearly, the coping running around the roof edge, and the hero standing on the roof plane
+with the HVAC boxes at his feet.
+
+**Step 3 — the cape — FAILED, and the diagnosis was wrong.** It had been recorded here as a
+speed case: "with the body flat, the cape's world lift is colinear with the torso." That is
+real, but it is the *second* cause. The first is that **`CAPE_Z` was 0.14 while the torso is a
+capsule of radius 0.28** — the anchor sat ~0.07 m *inside* the chest, so the cape was buried
+from the first frame, at zero speed, with no lift involved at all. Both are fixed in `e382edb`:
+`CAPE_Z` 0.14 → 0.32, plus a new `CAPE_MIN_STANDOFF` (0.4 rad, faded in by body pitch, live in
+lil-gui). **Not verified visually.**
+
+**Why three passing tests did not catch it.** All three B1 cape tests ask about **direction** —
+does the hem point away from travel. A cape can trail perfectly backward while buried in the
+chest it trails from. Two new tests measure **clearance** against the real capsule the torso is
+built from, sampled down the cape rather than at the hem. Both were confirmed to fail on the
+shipped values before the fix landed. **Lesson: a direction assertion is not a position
+assertion.** Worth applying to the rest of the rig.
+
+**Step 7 — the tower facade — the user shared screenshots rather than a verdict.** Reading them:
+close up the facades now genuinely read as glass — blue-grey, visible window rhythm, banding,
+light response across the surface. The palette fix worked at that range. **At street level and
+at distance they still read as near-black slabs.** So the envMap question below is live, and it
+is the user's call whether it is worth doing.
+
+**The user also shared a street-level screenshot as general context on how the world looks.**
+That is Phase 2 input, not a Phase 1 defect — it is the same "too blocky and rigid / empty
+world" note they already deferred themselves. Recorded, not acted on.
+
+### Next, and nothing is blocking
+
+Tests **105/105**, build clean, `kodaman_prototype.html` zero diff, nothing pushed, `main`
+untouched. The queue is unchanged apart from the cape moving to "fixed, unverified":
+
+1. **A one-step browser look at the cape.** It is two unverified visual changes.
+2. **Open the PR against `dev`.** Phase 1 is complete and has never been landed.
+3. **The Overview agent** — the last pipeline stage, never run. Worth doing before Phase 2
+   research, which otherwise has to read fourteen documents.
+4. **The envMap**, only if the user wants the distant towers fixed.
+5. **Phase 2 research**, then the trademark naming table.
+
+---
+
+## Earlier resume notes (session 4 and before)
 
 **Phase 1 is BUILT, independently verified, and human-tested. It survived the test pass in good
 shape: 10 of 13 browser criteria clean, one measurement recorded, one defect, one fail.**
@@ -156,11 +203,9 @@ Write the guide before asking — see the standing preference in persistent memo
 
 #### Open, in rough priority order
 
-- **Cape clips through the body at speed.** User reported it and said "at some point." Cause is
-  known: with the body flat, the cape's world lift is colinear with the torso and the anchor
-  stands only 0.14 m off the back (`CAPE_Z`). Fix is a minimum standoff angle scaled by body
-  pitch, in `Hero._animateCape`. Deliberately not done — it is a visual judgement and stacking
-  another unverified change onto an unverified pass was the wrong trade.
+- ~~**Cape clips through the body at speed.**~~ **FIXED in `e382edb`**, and the cause recorded
+  here was only half of it. See the session 5 resume block at the top — the anchor was mounted
+  *inside* the torso capsule, which the "at speed" framing missed entirely.
 - **The envMap question.** `DESIGN_SPEC_TOWER_PALETTE.md` flags that the physically correct fix
   for glass is a real environment map, PMREM-baked from a synthetic sky, **no asset file needed**.
   It would let metalness go back up where it belongs. Touches `Renderer.js` and `Sky.js`. Only
