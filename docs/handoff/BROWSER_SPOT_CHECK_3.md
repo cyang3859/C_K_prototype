@@ -112,10 +112,29 @@ actually land.
 
 ---
 
-## Not in this pass
+## 6. The dark tower facade
 
-**The dark tower facade** — near-black with pure-black windows. You flagged it, I agree it is a
-real defect, and the Design agent is writing a palette fix for it now. It will be its own check.
+Added after this guide was written — the palette fix landed, so it is in this pass after all.
+
+The cause turned out not to be the colours. **Metalness moves brightness out of the diffuse
+term and into reflections of the environment — and this project has no environment map at all**,
+so the towers were paying the cost and getting nothing back. Metalness is down, albedo is up.
+
+**Do:** Walk and fly past the dark towers, the ones that read as black slabs last time. Compare
+them against the tan mid-rise, which already looked right.
+
+**Pass:** The towers now read as **glass** — lighter, with visible light response across the
+facade as your angle changes, and windows that are dark blue-grey rather than pure black voids.
+They should still look glossy and distinct from the matte stucco low-rises.
+
+**Fail:** Still black slabs. Or overcorrected — chalky, washed out, or no longer reading as
+glass at all.
+
+**If it is still flat**, say so rather than nudging the numbers. The physically correct fix is a
+real environment map baked from a synthetic sky, which needs no asset file and would let
+metalness go back up where it belongs. That is a bigger change and it is written up and waiting.
+
+> Result:
 
 **Still deliberately not a bug:** sidewalk and curb height at 3–7 cm, pending Phase 2 step-up
 collision.
