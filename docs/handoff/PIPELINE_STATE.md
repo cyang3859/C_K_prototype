@@ -154,11 +154,18 @@ Tests **105/105**, build clean, `kodaman_prototype.html` zero diff, nothing push
 untouched. The queue is unchanged apart from the cape moving to "fixed, unverified":
 
 1. **A one-step browser look at the cape.** It is two unverified visual changes.
-2. **Open the PR against `dev`.** Phase 1 is complete and has never been landed.
+2. ~~**Open the PR against `dev`.**~~ **DONE — [PR #3](https://github.com/cyang3859/C_K_prototype/pull/3)**,
+   opened 2026-07-31. 47 files, +16,809, base `dev`, **open and unmerged — the review and the
+   merge are the user's.** `main` untouched, as it must stay. The branch is now pushed, so
+   `origin/feat/3d-open-world` exists and further commits go up with a plain `git push`.
 3. **The Overview agent** — the last pipeline stage, never run. Worth doing before Phase 2
    research, which otherwise has to read fourteen documents.
 4. **The envMap**, only if the user wants the distant towers fixed.
 5. **Phase 2 research**, then the trademark naming table.
+
+**Phase 1 has no open visual defects.** Every bug found across four browser passes is fixed and
+re-verified by eye. The only known cosmetic issue left is the distant-tower flatness in item 4,
+which is a judgement call the user has not made rather than a defect anyone has confirmed.
 
 ---
 
