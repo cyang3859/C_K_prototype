@@ -27,18 +27,28 @@ The Design agent was added 2026-07-30 (session 3) after the human QA pass. See
 prompt.
 
 **Read these in order to get current:**
-0. **`KNOWLEDGE_BASE.md` (478 lines) — START HERE as of 2026-07-31.** The Overview agent's
-   consolidated map: module wireframe, app lifecycle, the flight FSM written from the code, the
-   settled decisions, and an index of every other document with when to read it. It exists
-   precisely so nobody has to read the fourteen-document pile cold.
-1. This file — decisions, status, resume pointer
-2. `QA_HUMAN_RESULTS.md` — the human test pass; 3 confirmed bugs + 1 suspected, assigned
-3. `REVIEW_FLAGS.md` — 12 adjudicated flags; the rulings are decisions already made
-4. `DESIGN_AGENT_BRIEF.md` — the new sixth agent; read before spawning anything design-related
-5. `ENGINEER_BRIEF.md` — the self-contained Phase 1 build order
-6. `IMPLEMENTATION_PLAN.md` — phases beyond 1
-7. `RESEARCH_FINDINGS.md` and `RESEARCH_LA_WORLDBUILDING.md` — consult by section, never
-   end-to-end
+0. **`KNOWLEDGE_BASE.md` (478 lines) — START HERE.** The Overview agent's consolidated map: module
+   wireframe, app lifecycle, the flight FSM written from the code, the settled decisions, and an
+   index of every other document with when to read it. It exists precisely so nobody has to read the
+   document pile cold. **⚠️ Written 2026-07-31 — its §8 document index does NOT list the four
+   documents added in session 7 (items 2–4 below), and its decision list stops at 11.** Everything it
+   does say is still accurate; it is incomplete, not wrong. **Refreshing it is a good cheap job for
+   the next Overview run.**
+1. This file — decisions 1–18, status, resume pointer. **The locked-decisions table is authoritative
+   over every other document**, including the knowledge base.
+2. **`RESEARCH_PHASE_2_WORLD.md`** (1,009 lines) and **`RESEARCH_PHASE_2_CHARACTER.md`** (937 lines) —
+   Phase 2's two research runs, complete and spot-checked. **Consult by finding ID, never
+   end-to-end.** IDs are unique across both (run 2 continued run 1's numbering).
+3. **`DESIGN_SPEC_PHASE_2_DISTRICTS.md`** (760 lines) — the current live deliverable, awaiting
+   Review's feasibility gate. Its §BGT-1 carries an annotated orchestrator correction.
+4. **`DESIGN_AGENT_BRIEF.md`** — the Design agent's charter. **Corrected at source 2026-08-01**;
+   safe to spawn from directly again. Read before spawning anything design-related.
+5. `QA_HUMAN_RESULTS.md` — the human test pass; 3 confirmed bugs + 1 suspected, assigned
+6. `REVIEW_FLAGS.md` — 12 adjudicated flags; the rulings are decisions already made
+7. `ENGINEER_BRIEF.md` — the self-contained Phase 1 build order
+8. `IMPLEMENTATION_PLAN.md` — phases beyond 1. **Its Phase 2 acceptance criterion 2 ("under 150") is
+   a pre-correction guess with no stated pass convention** — superseded by §BUD-6's derived ceiling.
+9. `RESEARCH_FINDINGS.md` and `RESEARCH_LA_WORLDBUILDING.md` — consult by section, never end-to-end
 
 **Never read `kodaman_prototype.html` in bulk.** 16,507 lines; it has killed agent budgets.
 Targeted `grep` only.
