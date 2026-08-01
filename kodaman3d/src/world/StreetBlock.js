@@ -200,15 +200,42 @@ const FACADE_VARIANTS = Object.freeze({
     winRough: 0.12,
     winMetal: 0.65,
   },
+  // WHY THESE ARE NOT DARKER, which is the obvious instinct for glass.
+  //
+  // There is NO ENVIRONMENT MAP in this project — no `scene.environment`, no
+  // PMREM, no `.envMap` on any material. Lighting is one DirectionalLight plus
+  // one HemisphereLight (`Sky.js`), and the renderer tone-maps with ACES
+  // Filmic (`Renderer.js:45`).
+  //
+  // That combination changes what `metalness` means here. In
+  // MeshStandardMaterial, metalness SUBTRACTS from the diffuse term and moves
+  // that energy into specular reflection of the environment — but with no
+  // environment to reflect, indirect specular is exactly zero. Metal takes the
+  // brightness away and gives nothing back. At the values that shipped first
+  // (wallMetal 0.45, winMetal 0.70) the tower lost half to two thirds of its
+  // diffuse output on top of an albedo already darker than the mid-rise's, and
+  // ACES crushes that low end hard. The result was a facade that read as
+  // near-black with pure-black window voids — reported by a human flying past
+  // it, and visible in two of five screenshots.
+  //
+  // So: albedo up, metalness down. Roughness is deliberately UNCHANGED — it was
+  // never implicated, and the low `winRough` is what keeps the glass reading
+  // glossy rather than chalky.
+  //
+  // If this still reads flat on a real GPU, the physically correct fix is a
+  // real environment map (PMREM-baked from a synthetic gradient sky, no asset
+  // file needed) rather than pushing these numbers further. That is written up
+  // in DESIGN_SPEC_TOWER_PALETTE.md as an open question, and it would let the
+  // metalness values go back up where they belong.
   towerShared: {
-    wall: 0x6f7b8c,
-    window: 0x16212e,
+    wall: 0x828fa0,
+    window: 0x32475e,
     band: 0x4a4844,
     columns: 5,
     wallRough: 0.4,
-    wallMetal: 0.45,
+    wallMetal: 0.32,
     winRough: 0.1,
-    winMetal: 0.7,
+    winMetal: 0.5,
   },
 });
 
