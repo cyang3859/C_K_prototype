@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-08-01 (session 7 — Phase 2 research COMPLETE, both runs landed and spot-checked)
+**Last updated:** 2026-08-01 (session 7 — closed by the user. Phase 2 research complete; district design spec landed; decisions 12–18 locked)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -123,7 +123,27 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 7, 2026-08-01 <<<
+## >>> RESUME HERE — session 7 closed 2026-08-01, deliberately, by the user <<<
+
+**Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` is in
+sync, 0 unpushed commits, working tree clean apart from `.claude/` and `KODAMAN_HANDOFF.md` (both
+pre-existing and untracked). 108/108 tests. `main` untouched. `kodaman_prototype.html` zero diff.
+**No agent was running when the session ended and nothing was interrupted.**
+
+**Session 7 in one paragraph.** The four held-back documentation commits were pushed; Phase 2
+research run 2 was spawned and landed (`RESEARCH_PHASE_2_CHARACTER.md`, 937 lines) with five of its
+claims spot-checked and confirmed; all seven of its user decisions were made in one sitting and
+locked as decisions 12–18; the one open licensing question was verified live against the vendor and
+closed as decision 18; the user chose the world half over the character half and Design-first within
+it; the district design spec landed (760 lines) and had one real budget error found and corrected;
+and `DESIGN_AGENT_BRIEF.md` was finally corrected at source.
+
+**Session 7 spend: ~477,266 subagent tokens** across two agents. Past the 400k prep-to-pause mark;
+the user was told and chose to pause here.
+
+---
+
+## What to do next
 
 **PHASE 2 RESEARCH IS COMPLETE, spot-checked, and its decision gate is CLOSED.** Both runs landed,
 all seven of run 2's user decisions were made this session and are locked as **decisions 12–18**, and
@@ -149,10 +169,25 @@ passes** of decision 14 (a rig built object-by-object silently stays at 14 and w
 and **decision 17's ORG-6 precision test as soon as any rigged mesh exists.**
 
 **The character half remains unstarted and fully briefed** — decisions 12–18 settle its art direction,
-and `RESEARCH_PHASE_2_CHARACTER.md` is its research. The two halves are independent.
+and `RESEARCH_PHASE_2_CHARACTER.md` is its research. The two halves are independent, so the character
+half is an equally valid thing to pick up instead.
 
-**Nothing is half-finished.** Everything is committed and **pushed** — `origin/feat/3d-open-world` is
-in sync as of this session. Phase 1 is untouched and still complete, verified and merge-ready.
+### Still open, unchanged by this session
+
+- **PR #3** — open, unmerged, 51 commits, base `dev`. **The review and the merge are the user's — do
+  not merge it for them.** Untouched all session.
+- **The trademark naming table** — still descriptions, not names. Blocks Phase 2 *content porting*,
+  not the design or engineering work queued above. Per locked decision 6 the user approves every
+  name; the companion at 345 references is the one they should name personally.
+- **Day/night cycle length** — deliberately not put to the user. Run 1 calls it a feel call that needs
+  `DayNightCycle.js` to exist before it can be judged; asking now would collect a guess.
+- **`InstancedMesh` vs `BatchedMesh` for streamed props** — run 1's §BUD-4 recommends over-allocated
+  `InstancedMesh`, explicitly revisable once real per-district counts exist. **Meant to be settled by
+  measurement at the Engineer stage, not chosen blind.** Note it leaves the build mixed: buildings
+  batched, props instanced.
+- **`BatchedMesh` per-instance material override** — the design spec's §11 item 1. **A five-minute
+  Engineer-side check** that could delete the 4-call landmark line entirely. Cheapest open question
+  in the pile.
 
 ### The unpushed-commits situation from session 6 is RESOLVED
 
@@ -320,9 +355,15 @@ table** — that table still says *45 measured / 60 ceiling* and *primitives-onl
 own spawn prompt calls it binding. Left uncorrected the agent would have designed to **less than half
 the real budget.** The override is a visible table in the brief, not a quiet restatement.
 
-**⚠️ `DESIGN_AGENT_BRIEF.md` ITSELF IS STILL UNCORRECTED.** Only the Phase 2 brief overrides it. **Any
-future Design spawn must carry the same override or repeat the mistake.** Fixing the charter at
-source is a cheap, unclaimed piece of work.
+**`DESIGN_AGENT_BRIEF.md` HAS NOW BEEN CORRECTED AT SOURCE** — user instruction, 2026-08-01, at the
+end of session 7. It is safe to spawn a Design agent directly from the charter again. Five stale
+places were fixed, not one: the constraints table, the spawn prompt's budget paragraph, the
+"why the extra hop" rationale, the Research-handoff contract's "primitives-only reality" line, and
+the header status ("not yet spawned" — it had run three times). **Phase 1 figures were kept and
+labelled as history rather than deleted**, because this project has repeatedly been bitten by
+documents that quietly changed a number and left readers unable to tell which figure an older
+document meant. The charter also gained the both-pass convention, the hero's 8-call budget, the
+no-post-processing rule, the CSM cascade correction, and a run-history table.
 
 It obeyed both process rules — no subagents, wrote incrementally. Code untouched, 108/108 tests.
 
