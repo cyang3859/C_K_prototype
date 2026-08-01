@@ -121,11 +121,19 @@ export class Game {
       if (hint) hint.style.display = locked ? 'none' : '';
     };
 
+    // PLAYTEST BUILDS start with every debug surface hidden. Set by
+    // `scripts/build-standalone.mjs`, which is what produces the single-file
+    // build handed to non-developer testers; unset in dev, so nothing about
+    // working on this project changes. F1 still reveals everything either way —
+    // this decides the first impression, not what exists.
+    const playtest = import.meta.env?.VITE_PLAYTEST === '1';
+
     this.debugHud = new DebugHud({
       renderer: this.renderer,
       time: this.time,
       hero: this.hero.state,
       cameraRig: this.cameraRig,
+      startHidden: playtest,
     });
 
     // Refocusing after an alt-tab must not produce a burst of catch-up steps.

@@ -26,12 +26,19 @@ export class DebugHud {
    * @param {object} args.hero hero state
    * @param {import('../controllers/CameraRig.js').CameraRig} args.cameraRig
    */
-  constructor({ renderer, time, hero, cameraRig }) {
+  constructor({ renderer, time, hero, cameraRig, startHidden = false }) {
     this.renderer = renderer;
     this.time = time;
     this.hero = hero;
     this.cameraRig = cameraRig;
-    this.visible = true;
+    /**
+     * `startHidden` is for standalone playtest builds handed to people who are
+     * not developers. Everything is still BUILT and still toggleable with F1 —
+     * this only decides what is on screen at t = 0. A first impression of forty
+     * tuning sliders invites the tester to adjust the game instead of playing it,
+     * and then their feedback describes a build nobody else has.
+     */
+    this.visible = !startHidden;
 
     // ---- stats.js: frame time panel -------------------------------------
     // Panel 0 is fps. Criterion 5 (≥60 fps sustained at 1920×1080) is read from
@@ -67,6 +74,21 @@ export class DebugHud {
     document.body.appendChild(this.readout);
 
     this._buildGui();
+
+    // Apply the initial visibility once every piece exists, so there is exactly
+    // one place that decides what is shown and `toggle()` is its only other user.
+    this._applyVisibility();
+  }
+
+  /** Single source of truth for what the three debug surfaces are doing. */
+  _applyVisibility() {
+    const shown = this.visible ? '' : 'none';
+    this.readout.style.display = shown;
+    this.stats.dom.style.display = shown;
+    // The lil-gui panel follows F1 too. It did not before, which meant F1 left
+    // the largest debug surface on screen — fine when the only audience was us,
+    // wrong the moment a build goes to a playtester.
+    if (this.gui) this.gui.domElement.style.display = shown;
   }
 
   _buildGui() {
@@ -171,11 +193,10 @@ export class DebugHud {
     ].join('\n');
   }
 
-  /** F1 toggles the readout and the stats panel. */
+  /** F1 toggles the readout, the stats panel AND the lil-gui tuning panel. */
   toggle() {
     this.visible = !this.visible;
-    this.readout.style.display = this.visible ? '' : 'none';
-    this.stats.dom.style.display = this.visible ? '' : 'none';
+    this._applyVisibility();
   }
 
   /** Called at the very start of a rendered frame. */

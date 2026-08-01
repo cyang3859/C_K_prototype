@@ -49,8 +49,18 @@ function walk(dir, base = '') {
   return out;
 }
 
-console.log('› vite build');
-execFileSync('npx', ['vite', 'build'], { cwd: root, stdio: 'inherit' });
+console.log('› vite build (VITE_PLAYTEST=1 — debug surfaces start hidden)');
+// VITE_PLAYTEST hides the lil-gui tuning panel, the stats.js meter and the state
+// readout at startup. `Game.js` reads it; F1 still reveals all three, so a tester
+// can be talked through showing them if we ever need a number out of them. The
+// point is only that the first thing they see is the game, not an instrument
+// panel they might start adjusting — feedback on a build nobody else has is
+// worse than no feedback.
+execFileSync('npx', ['vite', 'build'], {
+  cwd: root,
+  stdio: 'inherit',
+  env: { ...process.env, VITE_PLAYTEST: '1' },
+});
 
 const htmlPath = join(dist, 'index.html');
 if (!existsSync(htmlPath)) throw new Error('vite build produced no dist/index.html');
