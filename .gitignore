@@ -1,0 +1,6 @@
+# Claude Code local state — machine-specific permissions and scratch worktrees.
+# Never commit: settings.local.json holds per-machine allow-lists, and worktrees/
+# contains checkouts of other repos.
+.claude/
+
+.DS_Store

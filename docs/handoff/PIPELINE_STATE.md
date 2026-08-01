@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-08-01 (session 7 — closed by the user. Phase 2 research complete; district design spec landed; decisions 12–18 locked)
+**Last updated:** 2026-08-01 (session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -27,6 +27,8 @@ The Design agent was added 2026-07-30 (session 3) after the human QA pass. See
 prompt.
 
 **Read these in order to get current:**
+0. **`CLAUDE.md` (repo root) — loads automatically, but know it exists.** New in session 8. Carries
+   the Playwright-first browser-testing rule and the `window.__game` driving notes.
 0. **`KNOWLEDGE_BASE.md` (478 lines) — START HERE.** The Overview agent's consolidated map: module
    wireframe, app lifecycle, the flight FSM written from the code, the settled decisions, and an
    index of every other document with when to read it. It exists precisely so nobody has to read the
@@ -54,6 +56,10 @@ prompt.
 Targeted `grep` only.
 
 **Standing working rules** (also stored in persistent memory, so they survive a cleared chat):
+- **Run browser checks yourself via the Playwright MCP connector** — see `CLAUDE.md` at the repo
+  root, which loads automatically. Ask the user only for what genuinely needs a human eye, and say
+  what and why. **This supersedes the older "agents have no browser or GPU" premise** that appears
+  throughout this file and the spot-check documents. Added 2026-08-01, session 8.
 - All agents run **Sonnet** except the **Engineer**, which runs **Opus**.
 - **Every agent prompt must explicitly forbid spawning subagents.** One fanned out to four
   children unprompted and burned budget.
@@ -125,7 +131,7 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Flight lean + 12 m helipad | orchestrator, inline | **done** — commit `fd33b41`, 99/99 tests | not yet seen in a browser |
 | Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
 | Overview | Sonnet | **done** — 127,078 tokens | `KNOWLEDGE_BASE.md` (478 lines) |
-| envMap — PMREM sky environment | orchestrator, inline | **done** — commit `6a07c13`, 108/108 | `BROWSER_SPOT_CHECK_5.md` awaiting a human |
+| envMap — PMREM sky environment | orchestrator, inline | **done** — commit `6a07c13`, 108/108 | `BROWSER_SPOT_CHECK_5.md` — **run under Playwright, session 8, 4/4 pass, results recorded in the doc** |
 | Research — Phase 2 world (run 1 of 2) | Sonnet | **done** — 198,801 tokens | `RESEARCH_PHASE_2_WORLD.md` (1,009 lines, 38 findings) |
 | Research — Phase 2 character (run 2 of 2) | Sonnet | **done** — 215,614 tokens | `RESEARCH_PHASE_2_CHARACTER.md` (937 lines, 29 findings) |
 
@@ -133,7 +139,102 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 7 closed 2026-08-01, deliberately, by the user <<<
+## >>> RESUME HERE — session 8 closed 2026-08-01, deliberately, by the user <<<
+
+**Nothing is half-finished. Working tree is clean and everything is committed.** 108/108 tests.
+`main` untouched. `kodaman_prototype.html` zero diff. **No agent ran this session at all** — subagent
+spend **0 tokens**, all work inline. Nothing was interrupted and nothing is stranded.
+
+### A standing working rule CHANGED this session — read this before any browser work
+
+**Browser spot-checks are now run by the assistant via the Playwright MCP connector, not handed to
+the user as a checklist.** User instruction, 2026-08-01. The long-standing premise in this file and
+in the spot-check documents — *"agents in this pipeline have no browser or GPU, so the human is the
+only instrument for anything visual"* — **is obsolete.** Headless WebGL renders fine, and most of
+what was being sent to a human is directly measurable.
+
+The rule and its operational detail now live in **`CLAUDE.md` at the repo root** (new this session,
+first CLAUDE.md this project has had). It is loaded automatically every session, so it does not need
+restating here — but the short version:
+
+- Drive the scene through `window.__game` (`scene`, `renderer`, `hero`, `cameraRig`, `world`, `sky`).
+- Set pose via `hero.state.position` / `.facing`, **not** `hero.group.position` — the group is
+  overwritten from state every frame. This costs ten minutes to rediscover.
+- Tuning is live on the shared object at `cameraRig.tuning`.
+- Prefer numbers: `renderer.renderer.info` for draw calls/triangles, `gl.readPixels` over fixed
+  screen regions for mean luminance. A/B one variable by toggling between two `render()` calls.
+- **Ask the user only for what genuinely needs an eye, and say what and why.** Known human-only:
+  real frame rate (headless pins rAF to 60, so the fps HUD is meaningless — report GPU frame time),
+  driver-specific rendering, and final "does this look right" calls.
+
+The `BROWSER_SPOT_CHECK_*.md` format survives unchanged for the cases that still need a human — but
+**fill in every result you measured yourself first.**
+
+### Spot-check 5 was actually run, and step 3's premise was wrong
+
+`BROWSER_SPOT_CHECK_5.md` (the PMREM env map, commit `6a07c13`) was executed end to end under
+Playwright. **All four steps pass**; results are written into the document's `> Result:` boxes.
+
+**⚠️ Note a contradiction this surfaced in THIS file.** Line ~128's status table said spot-check 5 was
+"awaiting a human," while the session 5 block (item 4 under "Next, and nothing is blocking") claims
+it "passed 4/4 on 2026-07-31." The document's result boxes were **empty**, so the session 5 claim was
+not backed by a recorded run. It is now genuinely run and recorded. **Treat the session 5 block's 4/4
+line as unsourced;** the filled-in document is the authority.
+
+**The substantive finding — a correction that matters for Phase 2 art direction.** Step 3 predicted
+matte surfaces would "barely move" because they have low metalness. **That is wrong.** An environment
+map feeds **diffuse irradiance** to every `MeshStandardMaterial`, and **the diffuse term does not care
+about metalness.** Measured ENV 0 → 1: road **+70%**, sidewalk **+33%**, mid-rise **+253%**, hero cape
+**+637%**, far towers **+780%/+637%**, sky **unchanged**.
+
+**So `6a07c13` is doing double duty as the scene's global ambient fill, not just a tower-glass fix.**
+That is a happy accident, not a design decision. Consequences worth carrying into Phase 2:
+
+- At `ENV_INTENSITY` 0 the **whole scene** is underlit, not only the towers. The old rig was short of
+  ambient fill generally.
+- **`ENV_INTENSITY` stays at 1.0.** 0.6 also reads fine; nothing about 1.0 looked overdone.
+- **The tower-metalness raise stays closed as not needed** — consistent with the session 5 ruling,
+  now on measured evidence rather than eyeball.
+- **If ambient fill ever gets its own control, `ENV_INTENSITY` must stop carrying it.** Anything that
+  changes it is changing scene-wide brightness, not just glass.
+
+Perf: **57 draw calls, 11,324 triangles, 13 programs, 22 textures — identical at ENV 0 and 1.**
+Median GPU frame 0.20 ms, p95 0.30 ms over 60 renders with a `gl.finish()` sync. The bake costs
+nothing per frame. **The 120 fps target was NOT verified** — headless pins rAF to 60. That is the one
+item still wanting a human at real hardware, and it is low-stakes.
+
+### Housekeeping
+
+**The two long-standing untracked files are resolved.** Every session block above notes the tree
+"clean apart from `.claude/` and `KODAMAN_HANDOFF.md`" — that caveat is gone:
+
+- **`.claude/` is now gitignored** (new `.gitignore`). It holds machine-specific permission
+  allow-lists and a checkout of another repo; it was never committable.
+- **`KODAMAN_HANDOFF.md` is deliberately left untracked and NOT committed.** It documents the old
+  single-file 2D prototype and persistent memory records it as **stale and wrong** on line count and
+  cape rendering. Committing a known-wrong document would give it authority it should not have.
+  **It is a user call whether to fix it or delete it** — it is on disk either way and nothing depends
+  on it. `KNOWLEDGE_BASE.md` is the live equivalent for the 3D build.
+
+There is also a **prunable stale worktree** registered at `/Users/calvinyang/C_K_prototype/.claude/
+worktrees/agent-a7249838f691a7088`. Harmless; `git worktree prune` clears it. Left alone deliberately
+— it points into the other repo.
+
+### What to do next is UNCHANGED by this session
+
+**Session 8 touched no code and made no pipeline decisions.** The next action is still
+**Review's feasibility gate on `DESIGN_SPEC_PHASE_2_DISTRICTS.md`** — see the session 7 block below,
+which remains the authoritative statement of the queue. The four outstanding spec decisions, PR #3,
+and the trademark naming table are all still open exactly as described there.
+
+One small thing this session ADDS to that queue: **`StreetBlock.js:205-208` still carries the stale
+comment claiming "There is NO ENVIRONMENT MAP in this project."** Session 7 confirmed it stale; this
+session confirmed the env map is not merely present but load-bearing for scene-wide brightness. It is
+a one-line fix and the next engineer to read it would be actively misled.
+
+---
+
+## Session 7 closed 2026-08-01, deliberately, by the user
 
 **Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` is in
 sync, 0 unpushed commits, working tree clean apart from `.claude/` and `KODAMAN_HANDOFF.md` (both
