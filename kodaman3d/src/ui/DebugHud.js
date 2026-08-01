@@ -116,6 +116,12 @@ export class DebugHud {
       .name('halfLife (s) — NOT ^60');
     hover.add(TUNING, 'HOVER_SNAP_SPEED', 0, 0.5, 0.005).name('HOVER_SNAP_SPEED (m/s)');
 
+    // Sky.update() writes this onto the scene every step, so dragging the
+    // slider changes the glass response live. 0 turns image-based lighting off
+    // entirely, which is the honest before/after for the dark-tower problem.
+    const env = this.gui.addFolder('Environment lighting');
+    env.add(TUNING, 'ENV_INTENSITY', 0, 3, 0.05).name('ENV_INTENSITY (0 = off)');
+
     const cam = this.gui.addFolder('Camera');
     cam.add(TUNING, 'CAMERA_LAMBDA', 1, 20, 0.01).name('CAMERA_LAMBDA (1/s)');
     cam.add(TUNING, 'CAM_GROUND_DISTANCE', 1, 20, 0.1).name('ground distance');

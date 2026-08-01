@@ -487,3 +487,58 @@ describe('worst-case draw calls', () => {
     expect(added.length * 2).toBe(8);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The PMREM sky environment.
+//
+// WHAT THESE CAN AND CANNOT PROVE. There is no GL context under Node, so the
+// bake itself cannot run here and nothing below asserts that the towers look
+// better — that is a browser question and is stated as one. What they do pin
+// down is the part that is pure structure: the env map must cost NO draw calls,
+// must degrade cleanly when there is no renderer, and must be released on
+// teardown. Each of those is a claim the Sky.js comments make in prose, and
+// prose is not enforcement.
+// ---------------------------------------------------------------------------
+
+describe('sky environment map', () => {
+  it('adds no renderable object to the scene, so the 57-call budget is unmoved', () => {
+    // scene.environment is a TEXTURE consulted by the shader, not a node in the
+    // graph. This is the whole reason image-based lighting is affordable here,
+    // and it is worth an assertion rather than a comment: a future change that
+    // implemented the sky as a skybox MESH would be a silent +2 calls.
+    const scene = new THREE.Scene();
+    // eslint-disable-next-line no-new
+    new Sky(scene);
+    const inv = drawCallInventory(scene);
+    expect(inv.total).toBe(0);
+  });
+
+  it('degrades to analytic-lights-only when constructed without a renderer', () => {
+    // Unit tests and any future headless path take this branch. It must not
+    // throw, and must not leave a half-initialised environment behind.
+    const scene = new THREE.Scene();
+    const sky = new Sky(scene);
+    expect(scene.environment).toBe(null);
+    expect(sky.envTarget).toBe(null);
+    // update() reads scene.environment before touching intensity; without this
+    // guard the no-renderer path would throw on the first frame.
+    expect(() => sky.update(1 / 60)).not.toThrow();
+  });
+
+  it('releases the baked render target on dispose', () => {
+    // The env map hangs off the SCENE, not off any Object3D, so the project's
+    // disposeObject3D() walk cannot reach it. If Sky does not free it by hand,
+    // nothing does.
+    const scene = new THREE.Scene();
+    const sky = new Sky(scene);
+
+    let disposed = false;
+    sky.envTarget = { dispose: () => { disposed = true; } };
+    scene.environment = {};
+
+    sky.dispose();
+    expect(disposed).toBe(true);
+    expect(sky.envTarget).toBe(null);
+    expect(scene.environment).toBe(null);
+  });
+});

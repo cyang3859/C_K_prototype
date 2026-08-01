@@ -213,6 +213,22 @@ export const TUNING = {
    */
   CAPE_MIN_STANDOFF: 0.4,
 
+  // ---- Environment lighting ------------------------------------------------
+  /**
+   * Multiplier on the PMREM sky environment (`scene.environmentIntensity`).
+   *
+   * This is the strength of INDIRECT SPECULAR — the sky reflected in glass. It
+   * was effectively zero before an environment map existed, which is why the
+   * towers read as black slabs and why their metalness had to be pulled down to
+   * compensate. See the long block comment in `world/Sky.js`.
+   *
+   * 1.0 is physically neutral and the right default. The slider exists because
+   * "how glassy is too glassy" is not a question anyone can answer off a screen
+   * they are not looking at. 0 disables image-based lighting entirely, which is
+   * the honest before/after comparison.
+   */
+  ENV_INTENSITY: 1.0,
+
   // ---- World bounds --------------------------------------------------------
   /** m — ±150 m on X and Z from the origin = a 300 m playable square. */
   PLAYABLE_HALF_EXTENT: 150.0,

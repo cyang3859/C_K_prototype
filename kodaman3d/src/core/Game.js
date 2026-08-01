@@ -76,7 +76,10 @@ export class Game {
     this.time = new Time({ fixedDt: FIXED_DT, maxSteps: MAX_STEPS });
 
     // Static midday lighting, fog and background.
-    this.sky = new Sky(this.scene);
+    // The renderer is handed over so Sky can bake its PMREM environment map;
+    // that is the only thing it uses it for, and it is optional (unit tests
+    // construct Sky without one, having no GL context).
+    this.sky = new Sky(this.scene, this.renderer.renderer);
 
     // The collision world is created BEFORE the street block, because the block
     // registers its building AABBs into it as it builds them. One box list,
