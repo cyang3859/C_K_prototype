@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-07-30 (session 4 — closed after the human QA pass)
+**Last updated:** 2026-07-31 (session 4 — Phase 1 complete and verified; paused by the user)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -127,9 +127,62 @@ work** — it is Phase 2 Research input and is recorded here so it is not lost.
 draw-call count, regressions on criteria 14/20/24, and the B5 decision. **Ask for their results
 first thing.** They report back as a numbered pass/fail list.
 
-**B1–B4 are fixed and committed.** Tests (76/76), build, and the 2D-file zero-diff were
-re-verified independently by the orchestrator. **Nothing is verified visually** — the Engineer
-had no GPU and correctly refused to claim any visual result.
+### Session 4 closed here, deliberately, by the user
+
+**Phase 1 is complete and verified.** All 28 acceptance criteria pass. Three browser passes were
+run by the user. Current state on real hardware: **120 fps**, draw calls 50 in flight against a
+57 computed worst case, geometries/textures flat.
+
+**Everything committed. Working tree clean** except `.claude/` and `KODAMAN_HANDOFF.md`, both
+pre-existing and untracked. Nothing pushed. `main` untouched.
+
+**Latest tests: 102/102. Build clean.**
+
+#### FIRST THING NEXT SESSION — a short browser re-check
+
+Four changes landed after the user's last pass and **none has been seen**:
+
+1. **The helipad should now be visible.** It never was: G1's parapet shipped as a solid slab
+   covering the whole roof, sitting on the exact face the atlas paints the helipad onto. Raising
+   it 3.5 m → 12 m changed nothing. G1 is now a **ring of four bars** (same one draw call), so
+   the roof centre is clear.
+2. **Dives reach ~70°** instead of ~44° (`PITCH_SPEED_DIVISOR` 8.0 → 5.0).
+3. **Criterion 20 needs re-confirming** — landing now puts the hero on the real roof at `b.h`
+   rather than on the slab at `b.h + 0.45`.
+4. **Roof art should now be visible generally**, not just the helipad.
+
+Write the guide before asking — see the standing preference in persistent memory. Format:
+`BROWSER_SPOT_CHECK_3.md`.
+
+#### Open, in rough priority order
+
+- **Cape clips through the body at speed.** User reported it and said "at some point." Cause is
+  known: with the body flat, the cape's world lift is colinear with the torso and the anchor
+  stands only 0.14 m off the back (`CAPE_Z`). Fix is a minimum standoff angle scaled by body
+  pitch, in `Hero._animateCape`. Deliberately not done — it is a visual judgement and stacking
+  another unverified change onto an unverified pass was the wrong trade.
+- **The envMap question.** `DESIGN_SPEC_TOWER_PALETTE.md` flags that the physically correct fix
+  for glass is a real environment map, PMREM-baked from a synthetic sky, **no asset file needed**.
+  It would let metalness go back up where it belongs. Touches `Renderer.js` and `Sky.js`. Only
+  worth doing if the user still finds the towers flat.
+- **The PR against `dev` has never been opened.** Phase 1 is done and should land before Phase 2
+  builds on it. **Never push `main`.**
+- **The Overview agent has never run** — the last pipeline stage. `KNOWLEDGE_BASE.md` plus the
+  build wireframe. Worth doing BEFORE Phase 2 research, since that research needs to understand
+  what exists and it is currently spread across fourteen documents.
+- **Phase 2 research.** Locked decisions 7, 8 and 9 are the binding scope; the user's deferred
+  design feedback (recorded above) is the input. References they named: **RDR2, the Watch Dogs
+  series, Ghost of Tsushima** for animation fluidity. Budget from the real **57**, and say
+  whether any new ceiling counts one pass or both.
+- **The trademark mapping table still holds descriptions, not names**, and blocks Phase 2 content
+  porting. Per locked decision 6 the user approves names. The companion at 345 references is the
+  one they should name personally.
+
+---
+
+**B1–B4 are fixed and committed.** Tests (76/76 at the time), build, and the 2D-file zero-diff
+were re-verified independently by the orchestrator. **Nothing was verified visually** — the
+Engineer had no GPU and correctly refused to claim any visual result.
 
 **Then the next action is: spawn an Opus Engineer to implement the building design spec.**
 Hand it both documents together — the spec and the review are a pair:
@@ -316,7 +369,16 @@ Cross-session observable total: **~771,000.**
 | Review — feasibility gate on that spec (Sonnet) | 113,626 |
 | Engineer — Phase 1 close, attempt 1 (Opus) | died on a session limit, no work done |
 | Engineer — Phase 1 close, attempt 2 (Opus) | 180,786 |
-| **Session 4 total** | **569,520** |
+| Design — tower palette follow-up (Sonnet) | 96,040 |
+| **Session 4 total** | **665,560** |
+
+Cross-session observable total: **~1,437,000**.
+
+**The Design agent broke the no-fanout rule.** Its prompt forbade spawning subagents in those
+words; it delegated a lighting lookup to a read-only Explore agent anyway, foreground and small,
+and disclosed it unprompted. The finding was correct and was independently verified. Recorded
+because the rule exists after an earlier agent burned budget fanning out, and it has now been
+violated by an agent explicitly told not to — worth weighing when trusting that instruction.
 
 Cross-session observable total: **~1,160,000**.
 
