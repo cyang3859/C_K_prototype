@@ -146,11 +146,52 @@ Consequence for the plan of record: `IMPLEMENTATION_PLAN.md`'s Phase 2 acceptanc
 ("target: under 150") is a **pre-correction guess** with no stated pass convention. Replacing it
 with a figure derived from the real 57 is one of run 1's deliverables.
 
-### In flight
+### Run 1 has landed
 
 | Stage | Model | Status | Output |
 |---|---|---|---|
-| Research — Phase 2 world (run 1 of 2) | Sonnet | **running** | `RESEARCH_PHASE_2_WORLD.md` |
+| Research — Phase 2 world (run 1 of 2) | Sonnet | **done** — 198,801 tokens | `RESEARCH_PHASE_2_WORLD.md` (1,009 lines, 38 tagged findings) |
+
+**It obeyed the no-fanout rule and wrote incrementally.** Code untouched — `git status` clean apart
+from the two known untracked files, `kodaman_prototype.html` zero diff.
+
+**Orchestrator spot-checks, run independently rather than taken at face value:**
+
+| Claim | Verdict |
+|---|---|
+| CSM's addon default is **3** cascades, not the 4 `RESEARCH_FINDINGS.md` asserts | **Confirmed** — `CSM.js:61`, `data.cascades \|\| 3` |
+| Every Phase 1 building is a single `BoxGeometry`, so "blocky" is literally true | **Confirmed** — `StreetBlock.js:550` |
+| The 57-call baseline and its 32/25 split | **Confirmed** — matches the test and `ENGINEER_PHASE1_CLOSE.md` |
+| `BUD-2`'s 448-call figure (7 ground/road meshes × 64 chunks) | Arithmetic **correct** given its stated assumption, which it labels honestly |
+| `ATM-4`'s claim that an earlier session's cached PDF and `pypdf` survived on disk | **Partly confirmed, and the brief was wrong** — see below |
+
+**The brief told it the old scratchpad was gone; it checked anyway and found otherwise.**
+`pypdf` is still on disk at the earlier session's `scratchpad/pylibs/`, dated **Jul 29**. The
+LaDochy PDF itself is no longer findable (those directories get cleaned), so **that specific
+citation cannot be re-verified now** — but the provenance account holds up where it can be checked.
+**Treat `ATM-4`'s exact mileage figures as sourced-but-unre-verifiable.** Its *conclusion* is robust
+independently of them: real LA visibility is kilometres-scale, so a 2–4 km world cannot show
+literal haze physics and the fog numbers must be understood as deliberate stylization.
+
+This is the second time an agent has been right to distrust something handed to it. Keep writing
+briefs that invite it.
+
+### Run 1's headline findings
+
+1. **`BUD-2` — the biggest budget risk, and it is in no prior document.** Building `Chunk.js` by
+   naively repeating Phase 1's per-block ground/road pattern (7 meshes) once per 256 m chunk costs
+   **7 × 64 = 448 draw calls** before a single building. Ground and road must be merged or instanced
+   *across* chunks; `Chunk.js` is "a data window into district-shared batches," not "a `StreetBlock`
+   at 256 m."
+2. **`BUD-3` — `BatchedMesh` is load-bearing, not polish.** One `Mesh` per building at realistic
+   district counts is ~160 calls from buildings alone. Batching by facade family drops it to ~12–16.
+3. **`BUD-6` — a derived ceiling of 150, both passes**, itemised up from ~67–85 with the headroom
+   explicitly sized to absorb CSM's unmeasured cost. Numerically close to the old placeholder but
+   for a stated, re-derivable reason — and it is a starting budget, not a verified result.
+4. **`DIS-4` closes R2 in the way that matters:** Ord-grid blocks confirmed at 112/200 yards
+   (~102/183 m) from a primary source, which **validates the existing 256 m chunk size** rather than
+   disturbing it. LAMC §17.05 stayed behind a 403 and is flagged as search-synthesised, not read.
+5. **§8 lists 10 unresolved gaps**, CSM's real shadow cost being the most consequential.
 
 Its charter is `PHASE_2_RESEARCH_BRIEF.md` (new this session). That brief hands it
 `KNOWLEDGE_BASE.md` rather than the document pile, scopes it against locked decisions 3, 7 and 8,
