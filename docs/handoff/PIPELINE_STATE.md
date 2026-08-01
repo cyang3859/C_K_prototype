@@ -168,18 +168,29 @@ untouched. The queue is unchanged apart from the cape moving to "fixed, unverifi
    the app lifecycle, the flight FSM, and the other 21 documents. It wrote the FSM tables from
    the code rather than from prose, and it found the stale body-pitch finding above.
    **The pipeline is now complete — all six stages have run at least once.**
-4. ~~**The envMap**~~ **DONE** — `6a07c13`. PMREM baked from a synthetic sky, no asset file, zero
-   draw calls. **Not visually verified**; `BROWSER_SPOT_CHECK_5.md` is written and waiting.
-   Tower metalness deliberately left at the palette pass's reduced values.
+4. ~~**The envMap**~~ **DONE AND VERIFIED** — `6a07c13`, spot-check 5 passed 4/4 on 2026-07-31.
+   PMREM baked from a synthetic sky, no asset file, zero draw calls, no frame-rate cost.
+   **The dark-tower defect is closed.** The towers now read as glass with visible window rhythm
+   at street level and at distance, which is exactly where they failed before; matte surfaces did
+   not go milky; draw calls and frame rate unchanged. `ENV_INTENSITY` stayed at its 1.0 default —
+   the user did not retune it.
+
+   **The metalness question is closed too, as not needed.** The plan was to raise the towers back
+   toward 0.45/0.70 if the environment map alone was not enough. It was enough. Raising it now
+   would be a change with no problem left to solve, on a build a human has just signed off. The
+   option stays available and physically defensible if a Phase 2 pass wants more glassiness.
 5. **Phase 2 research** — now unblocked and the natural next big step. Locked decisions 7, 8 and
    9 are the binding scope; the user's deferred design feedback is the input. Hand the researcher
    `KNOWLEDGE_BASE.md` rather than the fourteen-document pile.
 6. **The trademark naming table** — still descriptions, not names. Blocks Phase 2 content
    porting. The companion at 345 references is the one the user should name personally.
 
-**Phase 1 has no open visual defects.** Every bug found across four browser passes is fixed and
-re-verified by eye. The only known cosmetic issue left is the distant-tower flatness in item 4,
-which is a judgement call the user has not made rather than a defect anyone has confirmed.
+**PHASE 1 IS FULLY VERIFIED AND HAS NO OPEN VISUAL DEFECTS.** Every bug found across **five**
+browser passes is fixed and re-verified by eye, including the dark towers — the last one. All 28
+acceptance criteria pass. 108/108 tests, build clean, `kodaman_prototype.html` zero diff.
+
+There is nothing left in Phase 1 that needs a human at a keyboard. The next work is Phase 2, and
+it needs two decisions from the user before it starts — see below.
 
 ---
 

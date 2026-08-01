@@ -130,13 +130,16 @@ tests construct `new Sky(scene)` with no GL context and take an analytic-lights-
 `ENV_INTENSITY` is live in lil-gui, and 0 disables image-based lighting entirely — the honest
 before/after.
 
-**Not visually verified.** The bake cannot run without a GPU.
+**Verified in a browser 2026-07-31, spot-check 5, 4/4.** The towers read as glass at street level
+and at distance — the exact case that failed before. Matte surfaces did not go milky, draw calls
+and frame rate were unchanged, and `ENV_INTENSITY` was left at its 1.0 default.
 
-**One thing deliberately left undone:** the towers' metalness is still where the palette pass
-put it (0.32 wall / 0.50 window, down from 0.45/0.70). Those reduced numbers were compensation
-for the missing mechanism. Raising them back is now physically defensible, but it is a visual
-judgement, and changing the mechanism and the numbers together would make it impossible to
-attribute the result. See `BROWSER_SPOT_CHECK_5.md`.
+**The towers' metalness was deliberately NOT raised back**, and that is now settled rather than
+pending. It sits where the palette pass put it (0.32 wall / 0.50 window, reduced from 0.45/0.70
+to compensate for the then-missing environment map). The plan was to restore it if the
+environment map alone proved insufficient; it proved sufficient. Restoring it is still physically
+defensible and remains available to a Phase 2 pass that wants more glassiness — but as an
+enhancement, not a fix.
 
 ---
 
