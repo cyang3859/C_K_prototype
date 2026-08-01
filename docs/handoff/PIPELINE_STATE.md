@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-07-31 (session 6 — Phase 2 research run 1 done, run 2 briefed; paused by the user)
+**Last updated:** 2026-08-01 (session 7 — Phase 2 research COMPLETE, both runs landed and spot-checked)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -109,24 +109,33 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Design — character | Sonnet | not spawned (**blocked on the B5 decision**) | `DESIGN_SPEC_PHASE_1_CHARACTER.md` |
 | Overview | Sonnet | **done** — 127,078 tokens | `KNOWLEDGE_BASE.md` (478 lines) |
 | envMap — PMREM sky environment | orchestrator, inline | **done** — commit `6a07c13`, 108/108 | `BROWSER_SPOT_CHECK_5.md` awaiting a human |
+| Research — Phase 2 world (run 1 of 2) | Sonnet | **done** — 198,801 tokens | `RESEARCH_PHASE_2_WORLD.md` (1,009 lines, 38 findings) |
+| Research — Phase 2 character (run 2 of 2) | Sonnet | **done** — 215,614 tokens | `RESEARCH_PHASE_2_CHARACTER.md` (937 lines, 29 findings) |
 
 Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
 
 ---
 
-## >>> RESUME HERE — session 6 closed 2026-07-31, deliberately, by the user <<<
+## >>> RESUME HERE — session 7, 2026-08-01 <<<
 
-**Do this first next session: spawn run 2.** Its brief is written and committed
-(`PHASE_2_RESEARCH_BRIEF_CHARACTER.md`), it needs a **Sonnet** agent, and it wrote nothing before
-being stopped, so there is no partial work to reconcile. Details in the run 2 block below.
+**PHASE 2 RESEARCH IS COMPLETE. Both runs have landed and both have been spot-checked against the
+code.** The pipeline's next stage is a **decision gate, not another research run.**
 
-**Nothing is half-finished.** Everything this session produced is committed. Phase 1 is untouched
-and still complete, verified and merge-ready.
+**Do this first next session: put the consolidated user-decision list to the user.** Run 1 and run 2
+each closed with one; together they are the input to whatever comes next. **Seven of them are run 2's
+and they are listed verbatim in `RESEARCH_PHASE_2_CHARACTER.md` §"Summary of what needs a user
+decision" (line 892).** Do not start Design or Engineer work before at least the art-direction calls
+(toon vs PBR, outline, head material) are made — they change what gets specified.
 
-### ⚠️ THREE COMMITS ARE LOCAL AND UNPUSHED — read this before trusting any older line in this file
+**Nothing is half-finished.** Everything is committed and **pushed** — `origin/feat/3d-open-world` is
+in sync as of this session. Phase 1 is untouched and still complete, verified and merge-ready.
 
-`31c5cba`, `3ce893d`, `0123c48`. **This contradicts session 5's "everything is committed AND
-pushed" note further down — that line describes session 5, not now.**
+### The unpushed-commits situation from session 6 is RESOLVED
+
+The four local commits (`31c5cba`, `3ce893d`, `0123c48`, `c0d9eb5`) were **pushed at the user's
+explicit instruction at the top of session 7** (`87992b6..c0d9eb5`). They were documentation only, so
+PR #3's code diff is unaffected. **There is no longer any unpushed work.** Older lines in this file
+describing stranded local commits describe session 6, not now.
 
 They were held back **deliberately, by the orchestrator, not by accident**: PR #3 is open and the
 user is deciding whether to merge it, and pushing would add commits to the diff they are reviewing.
@@ -165,6 +174,78 @@ tool exposes it and the user has asked that it stop.
   not Phase 2 research. The companion at 345 references is the one the user should name personally.
 - **Day/night cycle length** and **`InstancedMesh` vs `BatchedMesh` for streamed props** — see the
   note below on why neither was put to the user.
+
+---
+
+## Session 7 detail — opened 2026-08-01
+
+**State re-verified independently at the top of the session, not taken from this file:** 108/108
+tests, working tree clean apart from the two known untracked files, `kodaman_prototype.html` zero
+diff, branch 4 commits ahead of origin (since pushed).
+
+### The user's decisions this session
+
+1. **Push the four held-back documentation commits.** Done — `87992b6..c0d9eb5`. No code affected.
+2. **Spawn run 2.** Done, on Sonnet, pointed at the committed brief.
+
+### Run 2 has landed — Phase 2 research is now complete
+
+| Stage | Model | Status | Output |
+|---|---|---|---|
+| Research — Phase 2 character/animation (run 2 of 2) | Sonnet | **done** — 215,614 tokens, 61 tool calls | `RESEARCH_PHASE_2_CHARACTER.md` (937 lines) |
+
+**It obeyed both process rules**: no subagents spawned, and it wrote incrementally in 9 append
+passes, one per section. Code untouched — `git status` clean apart from the known untracked files,
+`kodaman_prototype.html` zero diff.
+
+Finding IDs: `ASSET-1..5`, `RIG-1..4`, `ANIM-1..3`, `PROC-1..3`, `CAPE-1..5`, `ART-1..4`,
+`DRAW-1..5`, `ORG-4..7`, `CLIP-1..5`. It **continued run 1's numbering rather than restarting it**,
+so IDs are unique across both documents and safe to cite bare.
+
+**Orchestrator spot-checks, run independently rather than taken at face value — all five confirmed:**
+
+| Claim | Verdict |
+|---|---|
+| `CAPE-1` — the brief's "cape tests assert direction, never position" premise is stale; position tests already ship | **Confirmed** — `tests/locomotion.test.js:646` defines `capeTorsoGap()`, asserted at `:677` and `:685` |
+| `DRAW-4` — CPU bone-matrix computation is deduped once per frame, not once per shadow pass | **Confirmed** — `WebGLObjects.js:50–54`, `skeleton.update()` behind a per-frame `WeakMap` guard |
+| `DRAW-1` — the hero is 7 meshes = 14 calls both passes | **Confirmed** — `Hero.js` torso `:139`, head `:147`, 4 limbs via `make()` `:172`, cape `:202` |
+| `ART-2` — `MeshToonMaterial` structurally cannot consume the world's PMREM env map | **Confirmed** — no `envMap` property anywhere in the installed material's constructor |
+| `RIG-2`/`RIG-3` — `SkeletonUtils.retarget()` and `CCDIKSolver` ship in the installed `three@0.185.1` | **Confirmed** — both files present; `retarget()` at `SkeletonUtils.js:39`, `retargetClip()` at `:226` |
+
+**This is the third time an agent has been right to distrust something handed to it** — `CAPE-1`
+contradicts its own brief, correctly, and says so under the brief's own code-wins rule. The practice
+of writing briefs that invite this is now three-for-three and should continue.
+
+### Run 2's headline findings
+
+1. **`DRAW-2` — the hero's draw calls go DOWN, 14 → 4–8, but not for the reason you'd guess.**
+   Skinning isn't inherently cheaper; it's that a rig lets 6 same-material primitives merge into one
+   mesh, which separate `Object3D` joint groups structurally could not. **The lever is material-group
+   count, not skinning.** That reframes the art-direction calls below as budget decisions too.
+2. **`ASSET-1`/`ASSET-2` — Quaternius ships a "Superhero" proportion class on a shared rig with its
+   own CC0 animation library.** An unplanned but strong fit for the "comic-accurate read" feedback,
+   and the shared rig is what actually de-risks the pipeline.
+3. **`CLIP-1` — the FSM's yaw-always-faces-travel behaviour eliminates strafe and backward clips
+   entirely**, collapsing a naive directional blend tree to one speed axis per state cluster. Largest
+   single reduction in authoring volume.
+4. **`ORG-4`–`ORG-7` close run 1's handed-forward `§ORG-2`** as far as evidence allows: cross-engine
+   reports put skinned-mesh jitter onset around 3 km, with a sourced mechanism (bone-chain matrix
+   error compounding). **It revises run 1's "defer to Phase 5" recommendation** — the precondition
+   that justified deferring (no skinned mesh exists) stops holding this phase. It specifies the exact
+   synthetic test that would close it.
+
+### Cost log — session 7
+
+| Agent | Tokens |
+|---|---|
+| Research — Phase 2 character, run 2 (Sonnet) | 215,614 |
+| **Session 7 total** | **~215,614** |
+
+Cross-session observable total: **~1,979,000.** Everything else — the spot-checks, the state
+updates, the push — was inline orchestrator work.
+
+**Past the 400k prep-to-pause mark? No — this session is at ~216k.** Report raw subagent token counts
+only, never a percentage of a ceiling, and **never attempt to look up account usage.**
 
 ---
 
@@ -271,11 +352,14 @@ The user took the researcher's recommendation on both, 2026-07-31. See the locke
   and it flags the tension honestly: `InstancedMesh`'s count is fixed at construction, which fights
   per-chunk streaming. Review or the Engineer may overturn it with measurements.
 
-### >>> RUN 2 IS BRIEFED BUT NOT STARTED — THIS IS THE RESUME POINT <<<
+### ~~RUN 2 IS BRIEFED BUT NOT STARTED~~ — SUPERSEDED: run 2 ran and landed in session 7
+
+**This block is history. See the session 7 block above.** Kept for the scope detail below, which is
+still an accurate description of what run 2 was asked to cover.
 
 | Stage | Model | Status | Output |
 |---|---|---|---|
-| Research — Phase 2 character/animation (run 2 of 2) | Sonnet | **briefed, NOT started** | `RESEARCH_PHASE_2_CHARACTER.md` |
+| Research — Phase 2 character/animation (run 2 of 2) | Sonnet | **done in session 7** | `RESEARCH_PHASE_2_CHARACTER.md` (937 lines) |
 
 It was spawned and then **stopped within about two minutes, deliberately, when the user asked to
 pause the session.** It had written **nothing** — `RESEARCH_PHASE_2_CHARACTER.md` does not exist.
