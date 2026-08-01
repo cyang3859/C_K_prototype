@@ -63,14 +63,28 @@ describe('facade families (§4)', () => {
     expect(FACADE_FAMILIES.fam7BronzeGlass).toEqual(FACADE_VARIANTS.midriseB);
   });
 
-  it('FAM-5 is a single-hex band delta on lowriseB and nothing else', () => {
+  it('FAM-5 adds a cornice course to lowriseB and changes NOTHING else', () => {
+    // §4 asked for a retinted `band`. That is wrong and a browser screenshot
+    // caught it: `band` is also the pixel every flat roof's UVs collapse onto,
+    // so retinting it painted terracotta ROOFS across District B. The terracotta
+    // is a separate string course now, and `band` keeps the shipped neutral.
     const fam5 = FACADE_FAMILIES.fam5OchreTerracotta;
     const shipped = FACADE_VARIANTS.lowriseB;
-    expect(fam5.band).toBe(0xa85a3c);
-    expect(fam5.band).not.toBe(shipped.band);
-    for (const k of Object.keys(shipped)) {
-      if (k === 'band') continue;
-      expect(fam5[k]).toBe(shipped[k]);
+    expect(fam5.cornice).toBe(0xa85a3c);
+    expect(fam5.band).toBe(shipped.band);
+    for (const k of Object.keys(shipped)) expect(fam5[k]).toBe(shipped[k]);
+  });
+
+  it('no family retints `band`, because `band` is also the roof pixel', () => {
+    // The general form of the FAM-5 defect. A family whose band is a saturated
+    // accent colour has a saturated roof, on every building using it, seen from
+    // the air — which is most of how this game is played.
+    const saturation = (hex) => {
+      const c = [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff];
+      return Math.max(...c) - Math.min(...c);
+    };
+    for (const [id, spec] of Object.entries(FACADE_FAMILIES)) {
+      expect(saturation(spec.band), `${id}.band is not a roof neutral`).toBeLessThan(60);
     }
   });
 

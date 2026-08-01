@@ -108,6 +108,29 @@ export function makeFacadeMaterial(spec, register, size = 512) {
   fillRect(rough, grey(BAND_ROUGH), 0, bandY, size, bandH);
   fillRect(metal, grey(BAND_METAL), 0, bandY, size, bandH);
 
+  /**
+   * OPTIONAL STRING COURSE, AND WHY IT IS NOT JUST A RETINTED `band`.
+   *
+   * The design spec's FAM-5 asks for a terracotta re-tint of `band` to carry the
+   * Broadway Theater District cornice reference. Taken literally that is wrong,
+   * and the screenshot proves it: `band` is not only the spandrel colour, it is
+   * ALSO the single pixel `scaleBoxUVs` collapses every flat roof onto. Retinting
+   * it painted every ochre building in District B with a bright terracotta ROOF.
+   *
+   * So the cornice is its own thin course drawn directly above the plinth band
+   * instead. It repeats with the tile, i.e. every FACADE_TILE_M metres up the
+   * facade, which is what a string course actually does on an ornate storefront —
+   * and the roof stays the neutral the band was always authored to be. Same zero
+   * draw calls, same one hex constant, and it does not require touching a shipped
+   * value.
+   */
+  if (spec.cornice !== undefined) {
+    const courseH = Math.max(1, Math.round(size * 0.03));
+    fillRect(diffuse, `#${hex6(spec.cornice)}`, 0, bandY - courseH, size, courseH);
+    fillRect(rough, grey(0.8), 0, bandY - courseH, size, courseH);
+    fillRect(metal, grey(BAND_METAL), 0, bandY - courseH, size, courseH);
+  }
+
   return new THREE.MeshStandardMaterial({
     map: register(diffuse.canvas, { repeat: true, srgb: true }),
     roughnessMap: register(rough.canvas, { repeat: true, srgb: false }),

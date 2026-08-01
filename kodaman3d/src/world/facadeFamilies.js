@@ -19,8 +19,8 @@ import { FACADE_VARIANTS } from './StreetBlock.js';
  * FAM-1, FAM-4, FAM-6 and FAM-7 are not re-typed copies of the shipped Phase 1
  * constants — they are spread directly from `FACADE_VARIANTS`, so the shipped
  * values cannot drift out from under them and `tests/districts.test.js` can
- * assert byte-equality. FAM-5 is a single-hex `band` delta on `lowriseB`,
- * declared as such. Only FAM-2 and FAM-3 are new authoring, and §4 permits that
+ * assert byte-equality. FAM-5 adds a single new key to `lowriseB` and alters
+ * none of its values. Only FAM-2 and FAM-3 are new authoring, and §4 permits that
  * explicitly: District A has no shipped "stone podium" or "light glass" asset to
  * reuse, because Phase 1 built exactly one tower palette.
  */
@@ -87,12 +87,23 @@ const fam4CreamStucco = { ...FACADE_VARIANTS.lowriseA };
 /**
  * FAM-5 — "Ochre Terracotta Storefront". District B lowrise/storefront.
  *
- * A ONE-HEX DELTA on the shipped `lowriseB`, and nothing else: `band` moves from
- * `0xb8a888` to terracotta, carrying the Broadway Theater District cornice
- * reference (§5.5). Wall, window, columns and all four PBR numbers are the
- * shipped, browser-verified values. Zero draw calls; one constant.
+ * A ONE-HEX ADDITION to the shipped `lowriseB`, and nothing else.
+ *
+ * ⚠️ THE SPEC ASKED FOR SOMETHING SUBTLY WRONG HERE AND THE CODE WINS. §4
+ * specifies FAM-5 as a re-tint of `band` from `0xb8a888` to terracotta, to carry
+ * the Broadway Theater District cornice reference (§5.5). But `band` is not only
+ * the spandrel colour: `scaleBoxUVs` collapses every flat roof face onto that
+ * exact pixel, which is why `StreetBlock.js` authors it as a ROOF neutral
+ * ("built-up roofing and rooftop gravel are matte and non-metallic"). Built as
+ * written, this family gave every ochre building in District B a bright
+ * terracotta rooftop — caught in a browser screenshot, not in review.
+ *
+ * So the terracotta becomes a `cornice` string course instead (see
+ * `facadeAtlas.makeFacadeMaterial`), and `band` keeps the shipped roof neutral.
+ * Same reference carried, same zero draw calls, same single constant, and the
+ * roofs stay roofs.
  */
-const fam5OchreTerracotta = { ...FACADE_VARIANTS.lowriseB, band: 0xa85a3c };
+const fam5OchreTerracotta = { ...FACADE_VARIANTS.lowriseB, cornice: 0xa85a3c };
 
 /** FAM-6 — "Steel-Blue Glass Midrise". District B midrise. Shipped `midriseA`, unchanged. */
 const fam6SteelBlueGlass = { ...FACADE_VARIANTS.midriseA };
