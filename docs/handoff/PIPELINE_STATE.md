@@ -112,7 +112,65 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 5 closed 2026-07-31, deliberately, by the user <<<
+## >>> RESUME HERE — session 6, opened 2026-07-31 <<<
+
+**Phase 2 research has started. Phase 1 remains complete, verified and merge-ready — nothing in
+it changed this session.**
+
+State re-verified independently at the top of session 6: **108/108 tests**, branch fully in sync
+with `origin/feat/3d-open-world` (**0 unpushed commits**), working tree clean apart from `.claude/`
+and `KODAMAN_HANDOFF.md` (both pre-existing and untracked), `main` untouched.
+[PR #3](https://github.com/cyang3859/C_K_prototype/pull/3) is **open and unmerged**, 51 commits,
+base `dev`. **The review and the merge are the user's — do not merge it for them.**
+
+### The user's decisions this session
+
+1. **Phase 2 research, ahead of the naming table.** Offered the three options session 5 left open;
+   they chose research. The naming table is still outstanding and still blocks Phase 2 *content
+   porting*, not Phase 2 research.
+2. **Phase 2 research is SPLIT INTO TWO RUNS, world first.** Phase 2 now spans three large areas —
+   world/streaming (the plan of record), skeletal animation (pulled in by locked decision 9), and
+   the deferred density/realism feedback. That is too much for one agent in a project that has lost
+   three of them to session limits. **Run 1 = world, streaming and density. Run 2 = skeletal
+   animation and the character work, spawned only after the user has read run 1's output.**
+
+### Orchestrator ruling, made inline so the researcher did not have to guess
+
+**Every draw-call figure from here on is stated as a TOTAL across both passes**, because that is
+what `renderer.info.render.calls` reports and therefore what anyone can measure in the debug HUD,
+**with the main/shadow split always shown alongside it.** Any proposed ceiling must say in the
+sentence that states it that it counts both passes. This closes the "one pass or both" question
+locked decision 7 required an explicit answer to.
+
+Consequence for the plan of record: `IMPLEMENTATION_PLAN.md`'s Phase 2 acceptance criterion 2
+("target: under 150") is a **pre-correction guess** with no stated pass convention. Replacing it
+with a figure derived from the real 57 is one of run 1's deliverables.
+
+### In flight
+
+| Stage | Model | Status | Output |
+|---|---|---|---|
+| Research — Phase 2 world (run 1 of 2) | Sonnet | **running** | `RESEARCH_PHASE_2_WORLD.md` |
+
+Its charter is `PHASE_2_RESEARCH_BRIEF.md` (new this session). That brief hands it
+`KNOWLEDGE_BASE.md` rather than the document pile, scopes it against locked decisions 3, 7 and 8,
+carries the 57-call correction and the pass-convention ruling, and puts four open questions to it:
+the **two districts** to build (it proposes, the user approves), **world edge behaviour** at the
+±1,024 m boundary, and research items **R1** (LA haze/visibility numbers) and **R2** (LA block
+dimensions). It is explicitly forbidden from spawning subagents and instructed to write its
+deliverable incrementally.
+
+### When run 1 lands
+
+1. Read it against the brief before showing the user anything — check the district recommendation,
+   the derived draw-call ceiling, and the "what I could not answer" section in particular.
+2. Take the district choice and the world-edge decision to the **user**; both are theirs.
+3. Then spawn **run 2** — skeletal animation, glTF rigs, Ghost of Tsushima animation fluidity, and
+   the "character not human enough" feedback. Same working rules.
+
+---
+
+## Session 5 closed 2026-07-31, deliberately, by the user
 
 **PHASE 1 IS COMPLETE, FULLY VERIFIED, AND MERGE-READY. There is nothing left in it to do.**
 Five browser passes, all 28 acceptance criteria, 108/108 tests, clean build, `main` untouched,
@@ -122,10 +180,10 @@ sessions, nothing is stranded locally. Working tree clean apart from `.claude/` 
 
 **The whole six-agent pipeline has now run at least once.**
 
-### Do this first next session
+### Do this first next session — ANSWERED in session 6, see the block above
 
-**Ask the user which of these they want.** They were offered the choice at the end of session 5
-and chose to pause instead, so none of it is decided:
+**The user was asked at the top of session 6 and chose option 1, Phase 2 research.** Options 2 and
+3 remain open and unstarted. Kept below for the detail on each:
 
 1. **Phase 2 research** — the plan of record and the natural next step. Locked decisions 7, 8
    and 9 are the binding scope; the user's deferred design feedback is the input (RDR2 and the
