@@ -101,6 +101,10 @@ export class DebugHud {
     // lean reads as "right" is a judgement nobody can make without a screen.
     flight.add(TUNING, 'MIN_FORWARD_PITCH', -1.6, 0, 0.01).name('MIN_FORWARD_PITCH (rad)');
     flight.add(TUNING, 'PITCH_SPEED_DIVISOR', 1, 30, 0.1).name('PITCH_SPEED_DIVISOR');
+    // How far the cape is held off the torso once the body is flat. Live because
+    // "the cape is inside the body" was a browser finding, so the fix has to be
+    // judgeable in the same place it was found. 0 restores the old behaviour.
+    flight.add(TUNING, 'CAPE_MIN_STANDOFF', 0, 1.2, 0.01).name('CAPE_MIN_STANDOFF (rad)');
 
     // The hover damping folder gets its own home and an explanatory name,
     // because this is the single most important — and most easily broken —

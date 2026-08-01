@@ -611,6 +611,89 @@ describe('Hero visual orientation — B1 cape, B4 body pitch', () => {
     expect(hem.y).toBeLessThan(-0.99);
   });
 
+  // ---------------------------------------------------------------------
+  // Cape/torso interpenetration.
+  //
+  // The B1 tests above all ask about DIRECTION, and every one of them passed
+  // while the cape was buried in the chest — because a cape can trail perfectly
+  // backward and still be inside the body it trails from. A human found this by
+  // looking at it. What follows is the clearance question the direction tests
+  // never asked.
+  //
+  // Measured against the real capsule the torso is actually built from, so it
+  // cannot be satisfied by tuning a number until an assertion goes green.
+  // ---------------------------------------------------------------------
+
+  /** Shortest distance from `p` to the segment `a`–`b`. All in world space. */
+  function distanceToSegment(p, a, b) {
+    const ab = new THREE.Vector3().subVectors(b, a);
+    const t = THREE.MathUtils.clamp(
+      new THREE.Vector3().subVectors(p, a).dot(ab) / ab.lengthSq(),
+      0,
+      1,
+    );
+    return p.distanceTo(new THREE.Vector3().copy(a).addScaledVector(ab, t));
+  }
+
+  /**
+   * The smallest gap between the cape's centreline and the torso capsule's
+   * surface, in metres. Negative means the cape is inside the torso.
+   *
+   * Samples down the cape rather than testing the hem alone: the hem is the part
+   * FURTHEST from the anchor and so the part most likely to be clear. The bug
+   * lived up near the shoulders.
+   */
+  function capeTorsoGap(hero3d) {
+    hero3d.group.updateMatrixWorld(true);
+
+    // TORSO_GEO: CapsuleGeometry(0.28, 0.6) — the cylinder's endpoints are half
+    // the LENGTH (not half the total height) either side of centre.
+    const TORSO_RADIUS = 0.28;
+    const centre = hero3d.torso.getWorldPosition(new THREE.Vector3());
+    const up = worldAxis(hero3d.bodyPivot, 0, 1, 0);
+    const capA = new THREE.Vector3().copy(centre).addScaledVector(up, 0.3);
+    const capB = new THREE.Vector3().copy(centre).addScaledVector(up, -0.3);
+
+    // The cape hangs 1.1 m along the anchor's local -Y.
+    const anchor = hero3d.capeAnchor.getWorldPosition(new THREE.Vector3());
+    const down = worldAxis(hero3d.capeAnchor, 0, -1, 0);
+
+    let min = Infinity;
+    for (let i = 0; i <= 20; i++) {
+      const p = new THREE.Vector3().copy(anchor).addScaledVector(down, (i / 20) * 1.1);
+      min = Math.min(min, distanceToSegment(p, capA, capB) - TORSO_RADIUS);
+    }
+    return min;
+  }
+
+  it('the cape does not intersect the torso at a full dash-flight', () => {
+    const { hero3d, controller, state } = makeHero();
+    controller.update(DT, mkInput({ jumpPressed: true, jumpDown: true }), 0);
+    stepHero(hero3d, controller, mkInput({ forward: true, dash: true }), 240);
+
+    // Precondition: the body really is flat, which is the case that broke.
+    expect(state.pitch).toBeGreaterThan(1.0);
+    // The shipped build measured about -0.14 m here: cape inside torso.
+    expect(capeTorsoGap(hero3d)).toBeGreaterThan(0.05);
+  });
+
+  it('the cape does not intersect the torso while standing', () => {
+    // The anchor was buried in the capsule from the first frame, so this fails
+    // on the shipped build too — at zero speed, with no lift involved at all.
+    const { hero3d, controller } = makeHero();
+    stepHero(hero3d, controller, mkInput(), 120);
+    expect(capeTorsoGap(hero3d)).toBeGreaterThan(0.0);
+  });
+
+  it('standing keeps the cape near the back, not flared out behind', () => {
+    // Guards the other direction: the standoff fades in with body pitch, so an
+    // upright hero must NOT get the flying wedge. Without the fade this reads as
+    // a hero standing in a permanent wind tunnel.
+    const { hero3d, controller } = makeHero();
+    stepHero(hero3d, controller, mkInput(), 120);
+    expect(Math.abs(hero3d.capeAnchor.rotation.x)).toBeLessThan(0.05);
+  });
+
   it('B4: the hero dives HEAD-FIRST, not feet-first', () => {
     const { hero3d, controller, state } = makeHero();
     forceFlying(state, 100);

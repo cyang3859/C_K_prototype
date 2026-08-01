@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+import { TUNING } from '../config/tuning.js';
 import { HERO_HEIGHT_M } from '../core/Scale.js';
 import { disposeObject3D } from '../core/dispose.js';
 import { LocomotionState, createHeroState } from '../controllers/LocomotionController.js';
@@ -49,7 +50,19 @@ const RIG = Object.freeze({
   HIP_X: 0.15,
   LIMB_DROP: 0.34, // half of a 0.68 m limb capsule: mesh offset below its joint
   CAPE_Y: 1.66,
-  CAPE_Z: 0.14, // behind the hero: facing is -Z, so "behind" is +Z
+  /**
+   * Behind the hero: facing is -Z, so "behind" is +Z.
+   *
+   * This was 0.14, which put the anchor INSIDE the torso. The torso is a capsule
+   * of radius 0.28 centred at y=1.18; at the anchor's y=1.66 it is into the top
+   * hemisphere, where the surface stands at `sqrt(0.28² - 0.18²)` ≈ 0.214. So the
+   * anchor sat ~0.07 m under the skin, and a cape hanging from it ran straight
+   * down through the widest part of the chest. The clipping a human reported was
+   * never only a speed case — the mount was buried from the first frame.
+   *
+   * 0.32 clears the 0.28 bulge at the torso's widest with 0.04 m to spare.
+   */
+  CAPE_Z: 0.32,
 });
 
 /** Material colours per persona. Colours ONLY — see `setPersona`. */
@@ -363,9 +376,30 @@ export class Hero {
     //
     // This surfaced the moment body pitch started responding to horizontal
     // speed. A unit test caught it, not an eye.
+    // MINIMUM BODY-FRAME STANDOFF. The world lift above is correct in world
+    // terms and blind in body terms. `state.pitch - targetLift` is the cape's
+    // angle away from the torso, and at dash speed the two arguments nearly
+    // cancel: body pitch reaches MAX_FORWARD_PITCH (1.5) while targetLift tops
+    // out at 1.5 as well, so the cape ends up lying ALONG the torso. Combined
+    // with an anchor that stands only CAPE_Z off the back, the cape sinks into
+    // the body — which is what a human saw and reported as the cape "blending
+    // into the hero's body".
+    //
+    // Negative local rotation swings the hem toward +Z, away from the back (the
+    // same sign convention the B1 note above spells out), so the clamp is a
+    // `Math.min` toward the negative, not a max.
+    //
+    // Faded in by |pitch| rather than applied flat: standing upright the cape
+    // SHOULD lie against the back, and a permanent 23° kick would read as a
+    // hero standing in a wind tunnel.
+    const pitchFactor = Math.min(Math.abs(this.state.pitch) / (Math.PI / 2), 1);
+    // Read through TUNING at the point of use, never destructured into module
+    // scope, so the lil-gui slider retunes it live.
+    const standoff = TUNING.CAPE_MIN_STANDOFF * pitchFactor;
+
     this.capeAnchor.rotation.x = damp(
       this.capeAnchor.rotation.x,
-      this.state.pitch - (targetLift + flare),
+      Math.min(this.state.pitch - (targetLift + flare), -standoff),
       12,
       dt,
     );

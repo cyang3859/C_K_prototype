@@ -194,6 +194,25 @@ export const TUNING = {
    */
   PITCH_SPEED_DIVISOR: 5.0,
 
+  /**
+   * rad — the smallest angle the cape is allowed to make with the torso, in the
+   * BODY frame, once the body is fully pitched to horizontal. Faded in by body
+   * pitch, so an upright hero's cape still hangs flat against the back where it
+   * belongs and only a flying one is pushed clear.
+   *
+   * Why this exists. The cape's world lift is held at a fixed angle from vertical
+   * (see `Hero._animateCape`), which is right in world terms and wrong in body
+   * terms: at dash speed the body lies down to MAX_FORWARD_PITCH and the cape
+   * lies down to almost exactly the same angle, so the two become colinear and
+   * the cape sinks into the torso it is supposed to trail behind. Clamping the
+   * body-frame angle keeps a wedge of daylight open no matter what the world lift
+   * and the body pitch happen to agree on.
+   *
+   * 0.4 rad ≈ 23°, which puts the hem ~0.43 m off the torso axis on top of the
+   * 0.32 m the anchor already stands off.
+   */
+  CAPE_MIN_STANDOFF: 0.4,
+
   // ---- World bounds --------------------------------------------------------
   /** m — ±150 m on X and Z from the origin = a 300 m playable square. */
   PLAYABLE_HALF_EXTENT: 150.0,
