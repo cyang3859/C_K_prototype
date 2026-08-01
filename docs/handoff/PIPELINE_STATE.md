@@ -69,6 +69,8 @@ Targeted `grep` only.
 | 7 | Draw-call ceiling | **The 60 ceiling is a Phase 1 number and is deliberately raised for Phase 2.** Set the new figure from a **measured worst case**, not a guess. User decision 2026-07-30. **See the correction below — every draw-call figure used before 2026-07-31 undercounted by roughly half.** |
 | 8 | World extent | **Vast and explorable, but BOUNDED.** Explicitly *not* endless open world. User decision 2026-07-30. |
 | 9 | Skeletal animation | **Pulled forward into Phase 2** (was Phase 5). Accepts imported rigged assets, which supersedes the Phase 1 primitives-only constraint from Phase 2 onward. User decision 2026-07-30. |
+| 10 | The two Phase 2 districts | **A dense tower-plateau district on the 36°-rotated historic grid, paired with a mixed-height boulevard corridor on the cardinal grid.** User decision 2026-07-31, on `RESEARCH_PHASE_2_WORLD.md` §DIS-2's recommendation. The rotation difference between the two grids is the point: the same sun rakes them differently at the same hour, so `DayNightCycle.js` gets per-district visual differentiation for free. Historic Core/Broadway was the argued alternative — higher landmark density and lower authoring risk, but it shares DTLA's rotation and loses the contrast. It stays a strong candidate for a later detail pass or a third district. |
+| 11 | World edge behaviour | **A hard wall behind an atmospheric fade — both, not either.** User decision 2026-07-31, on §DIS-3. Phase 1's four-`Box3` boundary mechanism carries forward unchanged but moves out to the true edge; a radial fade driven by distance-from-centre whites out visibility well before the hero can reach it. The wall is an unreachable safety net, never the player's experience. No new rendering system — the fade is a per-frame tuning value feeding the existing `Fog`, the same shape as `Sky.update()`'s `ENV_INTENSITY` write. |
 
 ## Model assignment
 
@@ -112,7 +114,48 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 6, opened 2026-07-31 <<<
+## >>> RESUME HERE — session 6 closed 2026-07-31, deliberately, by the user <<<
+
+**Do this first next session: spawn run 2.** Its brief is written and committed
+(`PHASE_2_RESEARCH_BRIEF_CHARACTER.md`), it needs a **Sonnet** agent, and it wrote nothing before
+being stopped, so there is no partial work to reconcile. Details in the run 2 block below.
+
+**Nothing is stranded and nothing is half-finished.** Everything this session produced is committed.
+Phase 1 is untouched and still complete, verified and merge-ready.
+
+**Session 6 in one paragraph.** Phase 1 was re-verified rather than assumed (108/108, 0 unpushed,
+`main` untouched), the user chose Phase 2 research over the naming table and agreed to split it into
+two runs, run 1 delivered `RESEARCH_PHASE_2_WORLD.md` and had its claims spot-checked against the
+code, two user decisions came out of it and were locked as decisions 10 and 11, and run 2 was
+briefed and then stopped at the user's request before it wrote anything.
+
+### Cost log — session 6
+
+| Agent | Tokens |
+|---|---|
+| Research — Phase 2 world, run 1 (Sonnet) | 198,801 |
+| Research — Phase 2 character, run 2 (Sonnet) | stopped after ~2 min, no work produced |
+| **Session 6 total** | **~198,801** |
+
+Cross-session observable total: **~1,763,000.** Everything else this session — the two briefs, the
+spot-checks, the state updates — was done inline by the orchestrator.
+
+**Well inside the 400k prep-to-pause mark.** Run 2 would likely add 150–200k on run 1's evidence,
+which would put a resumed session around 350–400k on its own. As always: report raw subagent token
+counts only, never a percentage of a ceiling, and **never attempt to look up account usage** — no
+tool exposes it and the user has asked that it stop.
+
+### Still open, unchanged by this session
+
+- **PR #3** — open, unmerged, 51 commits, base `dev`. **The review and the merge are the user's.**
+- **The trademark naming table** — still descriptions, not names. Blocks Phase 2 *content porting*,
+  not Phase 2 research. The companion at 345 references is the one the user should name personally.
+- **Day/night cycle length** and **`InstancedMesh` vs `BatchedMesh` for streamed props** — see the
+  note below on why neither was put to the user.
+
+---
+
+## Session 6 detail — opened 2026-07-31
 
 **Phase 2 research has started. Phase 1 remains complete, verified and merge-ready — nothing in
 it changed this session.**
@@ -201,13 +244,46 @@ the **two districts** to build (it proposes, the user approves), **world edge be
 dimensions). It is explicitly forbidden from spawning subagents and instructed to write its
 deliverable incrementally.
 
-### When run 1 lands
+### Both user decisions from run 1 are made — locked decisions 10 and 11
 
-1. Read it against the brief before showing the user anything — check the district recommendation,
-   the derived draw-call ceiling, and the "what I could not answer" section in particular.
-2. Take the district choice and the world-edge decision to the **user**; both are theirs.
-3. Then spawn **run 2** — skeletal animation, glTF rigs, Ghost of Tsushima animation fluidity, and
-   the "character not human enough" feedback. Same working rules.
+The user took the researcher's recommendation on both, 2026-07-31. See the locked-decisions table.
+**Two lesser questions run 1 raised were deliberately NOT put to the user:**
+
+- **Day/night cycle length** (the 2D game's 4 minutes, ported unchanged). The researcher itself says
+  this needs playtesting, and nothing exists to play yet. Premature — revisit once
+  `DayNightCycle.js` runs.
+- **`InstancedMesh` vs `BatchedMesh` for streamed props** (§BUD-4). A technical call inside the
+  researcher's remit, not a user one. Its recommendation — over-allocate `InstancedMesh` at district
+  scale and toggle unloaded instances via degenerate transforms — **stands as the working answer**,
+  and it flags the tension honestly: `InstancedMesh`'s count is fixed at construction, which fights
+  per-chunk streaming. Review or the Engineer may overturn it with measurements.
+
+### >>> RUN 2 IS BRIEFED BUT NOT STARTED — THIS IS THE RESUME POINT <<<
+
+| Stage | Model | Status | Output |
+|---|---|---|---|
+| Research — Phase 2 character/animation (run 2 of 2) | Sonnet | **briefed, NOT started** | `RESEARCH_PHASE_2_CHARACTER.md` |
+
+It was spawned and then **stopped within about two minutes, deliberately, when the user asked to
+pause the session.** It had written **nothing** — `RESEARCH_PHASE_2_CHARACTER.md` does not exist.
+**Nothing is stranded and nothing needs recovering. Spawn it fresh next session.**
+
+**Its brief is written and committed: `PHASE_2_RESEARCH_BRIEF_CHARACTER.md`.** That is the whole
+setup cost, already paid. To resume, spawn a **Sonnet** agent pointed at that brief — it carries the
+full spawn instruction set, and the brief itself tells the agent to read `KNOWLEDGE_BASE.md` and
+then `RESEARCH_PHASE_2_WORLD.md` as prior context.
+
+Scope: skeletal animation, rig and glTF pipeline, animation state machines and blending, the cape,
+asset sourcing and licensing, Ghost of Tsushima-grade fluidity, and the "character not human enough
+/ wants a comic-accurate read" feedback. It inherits run 1's budget and conclusions.
+
+Three things the brief leans on hardest, worth knowing before you read it:
+- **The `Hero.js` / `LocomotionController.js` seam** is the constraint an animation system is most
+  likely to break, since it wants to read velocity and write transforms in one place.
+- **The cape's bug history** — three tests passed straight through two real defects because every
+  one asserted *direction* and none asserted *position*.
+- **Draw calls may go DOWN.** The hero is 7 primitives = 14 calls both passes; one skinned mesh
+  could be 2.
 
 ---
 
