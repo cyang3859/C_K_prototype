@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-07-31 (session 4 — Phase 1 complete and verified; paused by the user)
+**Last updated:** 2026-07-31 (session 6 — Phase 2 research run 1 done, run 2 briefed; paused by the user)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -120,8 +120,21 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 (`PHASE_2_RESEARCH_BRIEF_CHARACTER.md`), it needs a **Sonnet** agent, and it wrote nothing before
 being stopped, so there is no partial work to reconcile. Details in the run 2 block below.
 
-**Nothing is stranded and nothing is half-finished.** Everything this session produced is committed.
-Phase 1 is untouched and still complete, verified and merge-ready.
+**Nothing is half-finished.** Everything this session produced is committed. Phase 1 is untouched
+and still complete, verified and merge-ready.
+
+### ⚠️ THREE COMMITS ARE LOCAL AND UNPUSHED — read this before trusting any older line in this file
+
+`31c5cba`, `3ce893d`, `0123c48`. **This contradicts session 5's "everything is committed AND
+pushed" note further down — that line describes session 5, not now.**
+
+They were held back **deliberately, by the orchestrator, not by accident**: PR #3 is open and the
+user is deciding whether to merge it, and pushing would add commits to the diff they are reviewing.
+**The user was told and has not yet decided.** Ask them; a plain `git push` sends them up, since
+`origin/feat/3d-open-world` already exists.
+
+They are all documentation — the two Phase 2 briefs, run 1's research, and this file. **No code is
+affected either way**, so this is a low-stakes decision, not a risk to the build.
 
 **Session 6 in one paragraph.** Phase 1 was re-verified rather than assumed (108/108, 0 unpushed,
 `main` untouched), the user chose Phase 2 research over the naming table and agreed to split it into
