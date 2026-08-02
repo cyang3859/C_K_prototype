@@ -207,36 +207,40 @@ export class District {
       }
     }
 
-    for (const line of STREET_LINES) {
-      for (const side of [1, -1]) {
-        // Walking along X: break at each cross-street's ROADWAY edge, so the
-        // corner square is covered by this strip and not by the Z-running one.
-        for (const seg of segments('x', HALF_ROADWAY)) {
-          walks.push(slab('x', line + side * walkOffset(), seg, SIDEWALK, SIDEWALK_RELIEF));
-          curbs.push(slab('x', line + side * curbOffset(), seg, CURB_W, CURB_RELIEF));
-        }
-        // Walking along Z: break at each cross-street's full RIGHT-OF-WAY, so
-        // the two directions meet edge to edge instead of overlapping.
-        for (const seg of segments('z', ROW / 2)) {
-          walks.push(slab('z', line + side * walkOffset(), seg, SIDEWALK, SIDEWALK_RELIEF));
-          curbs.push(slab('z', line + side * curbOffset(), seg, CURB_W, CURB_RELIEF));
-        }
-      }
-    }
-
     // ABSORBED ANNEX STREETS — locked decision 24. Phase 1's boulevard used to
     // be five separate meshes of its own (roadway, 2 sidewalks, 2 curbs) plus an
     // instanced centreline. Its strips are appended to the same three arrays as
     // the grid's, so they land in the same three merged geometries and cost
     // NOTHING: 6 meshes -> 0. The lane marking comes back from the shared
     // roadway texture, at Phase 1's exact 2.4 m dash / 3.6 m gap rhythm.
-    for (const s of this.spec.annexStreets ?? []) {
+    const annexStreets = this.spec.annexStreets ?? [];
+    for (const s of annexStreets) {
       roadway.push(roadStrip(s.axis, s.line, s.from, s.to));
+    }
+
+    // ⚠️ WALKS AND CURBS ARE BROKEN AT EVERY CROSSING, GRID *AND* ANNEX ALIKE.
+    // Both are cut against ONE street list for a reason found by the session-11
+    // code review: the grid used to be cut only at `STREET_LINES` and the annex
+    // strips not at all, so decision 27's connector was crossed twice over —
+    // once by its own boulevard's kerb at the T-junction, and once by District
+    // B's grid sidewalk at each end, where `segments()` had no idea an annex
+    // street existed. Two instances of one defect: a strip cut against a street
+    // list that did not contain every street. Cutting everything against
+    // `streets` makes that class of miss structurally impossible.
+    const streets = [...gridStreets(), ...annexStreets];
+    for (const s of streets) {
       for (const side of [1, -1]) {
-        walks.push(
-          slab(s.axis, s.line + side * walkOffset(), [s.from, s.to], SIDEWALK, SIDEWALK_RELIEF),
-        );
-        curbs.push(slab(s.axis, s.line + side * curbOffset(), [s.from, s.to], CURB_W, CURB_RELIEF));
+        // Along X, break at the crossing's ROADWAY edge, so the corner square is
+        // covered by this strip; along Z, break at the full RIGHT-OF-WAY, so the
+        // two directions meet edge to edge instead of overlapping.
+        const walkLine = s.line + side * walkOffset();
+        const curbLine = s.line + side * curbOffset();
+        for (const seg of crossings(s, walkLine, streets)) {
+          walks.push(slab(s.axis, walkLine, seg, SIDEWALK, SIDEWALK_RELIEF));
+        }
+        for (const seg of crossings(s, curbLine, streets)) {
+          curbs.push(slab(s.axis, curbLine, seg, CURB_W, CURB_RELIEF));
+        }
       }
     }
 
@@ -539,6 +543,73 @@ function segments(axis, halfGap) {
     from = c + halfGap;
   }
   if (DISTRICT_HALF > from) out.push([from, DISTRICT_HALF]);
+  return out.filter(([a, b]) => b - a > 0.01);
+}
+
+/**
+ * The district's own grid, expressed in the same shape as `annexStreets` so both
+ * can be cut against one list. Every grid street spans the full district square.
+ *
+ * @returns {Array<{axis:'x'|'z', line:number, from:number, to:number}>}
+ */
+function gridStreets() {
+  const out = [];
+  for (const line of STREET_LINES) {
+    out.push({ axis: 'x', line, from: -DISTRICT_HALF, to: DISTRICT_HALF });
+    out.push({ axis: 'z', line, from: -DISTRICT_HALF, to: DISTRICT_HALF });
+  }
+  return out;
+}
+
+/**
+ * The runs of one sidewalk or curb strip once every street that crosses it has
+ * been cut out.
+ *
+ * `segments()` above does the same job for the ROADWAY against the fixed
+ * `STREET_LINES`. This one takes the street list as data, because the annex's
+ * streets are authored and the grid cannot know them — which is exactly the gap
+ * that let decision 27's connector ship with a kerb across its mouth.
+ *
+ * @param {{axis:'x'|'z', line:number, from:number, to:number}} s the street the
+ *   strip belongs to; the strip runs along `s.axis` and spans `s.from..s.to`
+ * @param {number} stripLine the strip's own cross-axis coordinate — NOT
+ *   `s.line`. A strip is offset to one side, so whether a short street reaches
+ *   it is a different question from whether that street reaches the centre-line.
+ * @param {ReadonlyArray<{axis:'x'|'z', line:number, from:number, to:number}>} all
+ * @returns {Array<[number, number]>}
+ */
+function crossings(s, stripLine, all) {
+  const halfGap = s.axis === 'x' ? HALF_ROADWAY : ROW / 2;
+  const cuts = all
+    .filter(
+      (c) =>
+        // Only a street running the OTHER way can cross this one, and only if it
+        // reaches this strip. ⚠️ The reach test is widened by HALF_ROADWAY at
+        // both ends ON PURPOSE: streets ABUT at junctions rather than overlapping
+        // (decision 27 stops the boulevard at the connector's west kerb, not at
+        // its centreline, because coplanar roadway at one y is a z-fight). A
+        // plain `from <= line <= to` finds no junction at the exact place a
+        // T-junction is, which is the whole case this exists for.
+        c.axis !== s.axis &&
+        c.from - HALF_ROADWAY <= stripLine &&
+        stripLine <= c.to + HALF_ROADWAY,
+    )
+    .map((c) => c.line)
+    // Keep a cut whose BAND overlaps the strip, not one whose centre-line sits
+    // strictly inside it. Decision 27's connector runs exactly ON the district
+    // boundary, so its centre-line coincides with the grid strips' own start and
+    // a strict interior test drops it — leaving the sidewalk covering the half
+    // of the junction that lies inside the district.
+    .filter((line) => line + halfGap > s.from && line - halfGap < s.to)
+    .sort((a, b) => a - b);
+
+  const out = [];
+  let from = s.from;
+  for (const c of cuts) {
+    if (c - halfGap > from) out.push([from, c - halfGap]);
+    from = Math.max(from, c + halfGap);
+  }
+  if (s.to > from) out.push([from, s.to]);
   return out.filter(([a, b]) => b - a > 0.01);
 }
 

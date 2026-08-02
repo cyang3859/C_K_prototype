@@ -511,6 +511,43 @@ describe('District, built', () => {
     expect(boulevard.to).toBeCloseTo(connector.line - HALF_ROADWAY, 9);
   });
 
+  it('no annex sidewalk or curb is laid ACROSS an annex roadway (decision 27)', () => {
+    // THIS IS THE TEST THAT WAS MISSING, and its absence is why the defect
+    // shipped. The assertions above pin the DECLARED spec numbers -- axis, line,
+    // from/to -- and every one of them passed while the connector's west
+    // sidewalk lay straight across the mouth of the T-junction. They verified
+    // the declaration and never the road.
+    //
+    // The rule being enforced is `_buildRoads`'s own, stated there in prose and
+    // applied to the grid but not, until now, to the annex: "a sidewalk slab
+    // laid across a roadway is a slab in the street." So walk the BUILT vertices
+    // and assert none of them sits inside an annex carriageway.
+    const b = DISTRICTS.find((d) => d.id === 'districtB');
+    const rects = b.annexStreets.map((s) =>
+      s.axis === 'x'
+        ? { x0: s.from, x1: s.to, z0: s.line - HALF_ROADWAY, z1: s.line + HALF_ROADWAY }
+        : { x0: s.line - HALF_ROADWAY, x1: s.line + HALF_ROADWAY, z0: s.from, z1: s.to },
+    );
+
+    // Strict interior: strips legitimately ABUT a roadway edge, and a shared
+    // edge is the correct result rather than a violation.
+    const EPS = 0.01;
+    const inside = (x, z, r) =>
+      x > r.x0 + EPS && x < r.x1 - EPS && z > r.z0 + EPS && z < r.z1 - EPS;
+
+    for (const surface of ['sidewalk', 'curb']) {
+      const mesh = scene.getObjectByName(`districtB_${surface}`);
+      const pos = mesh.geometry.attributes.position;
+      const hits = [];
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        for (const r of rects) if (inside(x, z, r)) hits.push([x.toFixed(2), z.toFixed(2)]);
+      }
+      expect(hits, `${surface} vertices inside an annex roadway`).toEqual([]);
+    }
+  });
+
   it('the boundary connector clears District B’s western building row', () => {
     // The margin between the district edge and the westernmost footprint is
     // exactly ROW / 2 -- half a right-of-way, which is the grid's tiling intent
