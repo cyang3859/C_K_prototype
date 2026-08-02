@@ -29,6 +29,9 @@ import { District } from '../src/world/District.js';
 import { FACADE_VARIANTS } from '../src/world/annex.js';
 import { MAST_SIGN_TEXT } from '../src/world/landmarks.js';
 import { HILL_NAME } from '../src/world/terrain.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { installCanvasStub } from './support/canvas2d.js';
 import { allPropPlacements, localKeepOutBoxes } from '../src/world/props.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
@@ -70,6 +73,61 @@ describe('facade families (§4)', () => {
     // Not "close to", not "based on". The user closed the metalness-raise
     // question three times; a Phase 2 family that quietly nudged towerShared
     // toward glassiness is exactly the regression that decision exists to stop.
+    //
+    // ⚠️ THE ANCHOR BELOW IS THE POINT, and the session-11 code review caught its
+    // absence. This test used to assert ONLY the four lines further down --
+    // family against variant -- but every family IS a spread of its variant
+    // (`facadeFamilies.js:34`), so it proved that the spread operator works.
+    // Raising towerShared.winMetal in annex.js moved BOTH sides and the whole
+    // suite still passed: the lock was not broken, it simply was not locked.
+    //
+    // These literals are the values Phase 1 shipped, read off
+    // `05eb5df:src/world/StreetBlock.js`. They are duplicated ON PURPOSE. A
+    // golden snapshot has to live outside the file it guards or it guards
+    // nothing, and this is the one place in the repo where restating a constant
+    // is the correct thing to do rather than a smell.
+    expect(FACADE_VARIANTS.towerShared).toEqual({
+      wall: 0x828fa0,
+      window: 0x32475e,
+      band: 0x4a4844,
+      columns: 5,
+      wallRough: 0.4,
+      wallMetal: 0.32,
+      winRough: 0.1,
+      winMetal: 0.5,
+    });
+    expect(FACADE_VARIANTS.midriseA).toEqual({
+      wall: 0x8f96a3,
+      window: 0x1f2c3a,
+      band: 0x6a675f,
+      columns: 4,
+      wallRough: 0.45,
+      wallMetal: 0.4,
+      winRough: 0.12,
+      winMetal: 0.65,
+    });
+    expect(FACADE_VARIANTS.midriseB).toEqual({
+      wall: 0x8a7a68,
+      window: 0x2e2519,
+      band: 0x6a675f,
+      columns: 4,
+      wallRough: 0.45,
+      wallMetal: 0.4,
+      winRough: 0.12,
+      winMetal: 0.65,
+    });
+    expect(FACADE_VARIANTS.lowriseA).toEqual({
+      wall: 0xd9c6a0,
+      window: 0x293b4d,
+      band: 0xb8a888,
+      columns: 3,
+      wallRough: 0.98,
+      wallMetal: 0.0,
+      winRough: 0.22,
+      winMetal: 0.45,
+    });
+
+    // And only THEN that the Phase 2 families still reuse them unchanged.
     expect(FACADE_FAMILIES.fam1DarkCurtainWall).toEqual(FACADE_VARIANTS.towerShared);
     expect(FACADE_FAMILIES.fam4CreamStucco).toEqual(FACADE_VARIANTS.lowriseA);
     expect(FACADE_FAMILIES.fam6SteelBlueGlass).toEqual(FACADE_VARIANTS.midriseA);
@@ -647,7 +705,36 @@ describe('District, built', () => {
     // exactly two. Every other proper noun in this world is still the user's to
     // supply, and an agent adding a third by inventing a shop name or a street
     // should fail here rather than ship.
-    expect([MAST_SIGN_TEXT, HILL_NAME]).toEqual(['AKC ENTERPRISE', 'Coco Hill']);
+    //
+    // ⚠️ THIS TEST USED TO ASSERT `[MAST_SIGN_TEXT, HILL_NAME]` against the two
+    // strings -- a verbatim restatement of the two tests above it, with no
+    // visibility into the rest of the build at all. A new `export const
+    // SHOP_NAME = 'Ruby Diner'` in props.js passed it untouched. The comment
+    // stated the invariant correctly and the body checked something else; the
+    // session-11 code review caught the gap. To fail for the reason the decision
+    // cares about, it has to read the source.
+    const files = walkJs(new URL('../src/', import.meta.url).pathname);
+    const names = new Map();
+    for (const file of files) {
+      const source = stripComments(readFileSync(file, 'utf8'));
+      for (const m of source.matchAll(/'([^'\\\n]{2,60})'|"([^"\\\n]{2,60})"/g)) {
+        const value = m[1] ?? m[2];
+        // A proper noun as this project would write one: Title Case or signage
+        // ALL CAPS, two or more words. Single words are deliberately NOT matched
+        // -- 'Phase', 'Sky' and every enum-ish literal in the build are single
+        // capitalised words, and a test that cries wolf gets deleted.
+        if (/^[A-Z][a-z]+(?: +[A-Z][a-z]+)+$/.test(value) || /^[A-Z0-9]{2,}(?: +[A-Z0-9]{2,})+$/.test(value)) {
+          names.set(value, file);
+        }
+      }
+    }
+
+    const found = [...names.keys()].sort();
+    expect(found, `proper nouns in src/: ${[...names].map(([n, f]) => `${n} (${f})`).join(', ')}`)
+      .toEqual(['AKC ENTERPRISE', 'Coco Hill']);
+    // And they are still the constants the two tests above pin, not stray
+    // duplicates that happen to read the same.
+    expect(found).toEqual([MAST_SIGN_TEXT, HILL_NAME].sort());
   });
 
   it('the grid group carries the district rotation, not the ground plane', () => {
@@ -795,4 +882,22 @@ function localOf(p, district) {
   const dx = p.x - district.origin.x;
   const dz = p.z - district.origin.z;
   return { lx: dx * cos - dz * sin, lz: dx * sin + dz * cos };
+}
+
+/** Every .js file under a directory, recursively. */
+function walkJs(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) return walkJs(p);
+    return e.name.endsWith('.js') ? [p] : [];
+  });
+}
+
+/**
+ * Strip block and line comments. The proper-noun scan above runs on CODE only —
+ * this project's comments are dense with real place names (Los Angeles, Bunker
+ * Hill, Mexican fan palm) and every one of them would be a false positive.
+ */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
