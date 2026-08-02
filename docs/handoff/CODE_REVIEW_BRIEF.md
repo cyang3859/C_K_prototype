@@ -112,12 +112,16 @@ incrementally** (three agents have been killed mid-task; only persisted work sur
 `/code-review` skill's own parallel sub-agents are its documented design and are not what that rule
 prohibits.
 
-### ⚠️ One thing needs a user decision before spawning
+### ~~One thing needs a user decision before spawning~~ — ANSWERED 2026-08-02, session 11
 
-**Model.** The standing rule is *all agents Sonnet except the Engineer, which runs Opus*. This stage
-did not exist when that rule was set. **The orchestrator's recommendation is Opus for this one** — it
-is 4,000 lines of subtle geometry, collision and disposal code, which is closer to the Engineer's kind
-of work than to a document review. **Ask the user; do not deviate silently.**
+**Vehicle: `/code-review ultra`, triggered by the user.** Asked and answered at the top of session 11.
+**Model: Opus.** The standing rule is *all agents Sonnet except the Engineer, which runs Opus*; this
+stage did not exist when that rule was set, and the user took the orchestrator's recommendation —
+4,000 lines of subtle geometry, collision and disposal code is closer to the Engineer's kind of work
+than to a document review. **The standing rule is not changed; this is a named exception, like the
+one-time Opus resume of the LA worldbuilding agent.**
+
+Base verified green immediately before launch: **177/177 tests**, 0 unpushed commits, `main` untouched.
 
 ---
 
