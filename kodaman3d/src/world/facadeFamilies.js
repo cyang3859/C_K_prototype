@@ -1,4 +1,4 @@
-import { FACADE_VARIANTS } from './StreetBlock.js';
+import { FACADE_VARIANTS } from './annex.js';
 
 /**
  * facadeFamilies.js — the seven Phase 2 facade families (design spec §4).
@@ -133,10 +133,25 @@ export const DISTRICT_A_FAMILIES = Object.freeze([
   'fam3LightSilverGlass',
 ]);
 
-/** The four families District B draws from. */
+/**
+ * The families District B draws from.
+ *
+ * FAM-1 IS HERE BECAUSE OF LOCKED DECISION 24, and it is the absorption's one
+ * real draw-call cost. The annex carries a 64 m tower painted in the shipped
+ * `towerShared` palette. Repainting it in one of District B's four families
+ * would be a visual change to reviewed content for the sake of a ledger; giving
+ * District B its own FAM-1 batch preserves it exactly for **+1 main / +1 shadow**
+ * — against the ~25 calls the absorption gives back. The batch is shared with
+ * any future District B tower, so it is not a special case for one building.
+ *
+ * (The annex's *other* tower, the 90 m helipad one, cannot join any batch: its
+ * bespoke roof atlas needs its own material and `BatchedMesh` has no per-instance
+ * material override.)
+ */
 export const DISTRICT_B_FAMILIES = Object.freeze([
   'fam4CreamStucco',
   'fam5OchreTerracotta',
   'fam6SteelBlueGlass',
   'fam7BronzeGlass',
+  'fam1DarkCurtainWall',
 ]);

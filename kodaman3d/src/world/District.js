@@ -10,6 +10,7 @@ import {
   STREET_LINES,
   buildingWorldBox,
 } from './districts.js';
+import { TOWER_ATLAS, atlasBoxUVs, makeBespokeTowerMaterial } from './annex.js';
 import {
   FACADE_TILE_M,
   fillAll,
@@ -150,6 +151,7 @@ export class District {
     this._buildGround();
     this._buildRoads();
     this._buildFacadeBatches();
+    this._buildBespokeBuildings();
     this._buildLandmark();
 
     scene.add(this.group);
@@ -219,6 +221,22 @@ export class District {
           walks.push(slab('z', line + side * walkOffset(), seg, SIDEWALK, SIDEWALK_RELIEF));
           curbs.push(slab('z', line + side * curbOffset(), seg, CURB_W, CURB_RELIEF));
         }
+      }
+    }
+
+    // ABSORBED ANNEX STREETS — locked decision 24. Phase 1's boulevard used to
+    // be five separate meshes of its own (roadway, 2 sidewalks, 2 curbs) plus an
+    // instanced centreline. Its strips are appended to the same three arrays as
+    // the grid's, so they land in the same three merged geometries and cost
+    // NOTHING: 6 meshes -> 0. The lane marking comes back from the shared
+    // roadway texture, at Phase 1's exact 2.4 m dash / 3.6 m gap rhythm.
+    for (const s of this.spec.annexStreets ?? []) {
+      roadway.push(roadStrip(s.axis, s.line, s.from, s.to));
+      for (const side of [1, -1]) {
+        walks.push(
+          slab(s.axis, s.line + side * walkOffset(), [s.from, s.to], SIDEWALK, SIDEWALK_RELIEF),
+        );
+        curbs.push(slab(s.axis, s.line + side * curbOffset(), [s.from, s.to], CURB_W, CURB_RELIEF));
       }
     }
 
@@ -318,6 +336,11 @@ export class District {
     for (const id of this.spec.families) perFamily.set(id, []);
 
     for (const b of this.buildings) {
+      // The annex's 90 m helipad tower opts OUT of batching: its non-repeating
+      // roof atlas needs its own material and `BatchedMesh` has none per
+      // instance. It is built by `_buildBespokeBuildings` below, at its own
+      // +1 main / +1 shadow — exactly what it cost as a Phase 1 mesh.
+      if (b.bespoke) continue;
       const boxes = massingBoxes(b.recipe, b);
       for (let i = 0; i < boxes.length; i++) {
         const family = i === 0 && b.podiumFamily ? b.podiumFamily : b.family;
@@ -373,6 +396,47 @@ export class District {
     // rotated-footprint approximation District A carries.
     for (const b of this.buildings) {
       this.collision.addBuilding(buildingWorldBox(b, this.spec));
+    }
+  }
+
+  /**
+   * Buildings that cannot join a facade batch, because they carry a unique
+   * non-repeating atlas. There is exactly one: the annex's 90 m helipad tower.
+   *
+   * THIS IS THE MOST LOAD-BEARING TWENTY LINES IN THE ABSORPTION. The painted
+   * helipad on this roof is the only marked landing site in the world, it was
+   * invisible once already (a parapet slab covered it), and a human has signed
+   * it off across five browser passes. It is built here — geometry, atlas UVs
+   * and bespoke material — exactly as `StreetBlock` built it, at the same one
+   * mesh and the same two draw calls.
+   */
+  _buildBespokeBuildings() {
+    /** @type {THREE.Mesh[]} */
+    this.bespokeBuildings = [];
+
+    for (const b of this.buildings) {
+      if (!b.bespoke) continue;
+
+      const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
+      // Non-repeating atlas: every face gets its own slice of one canvas, so the
+      // roof can carry unique art (the helipad) that a repeat-wrapped texture
+      // physically cannot — any pixel in a tiled canvas also lands on a wall.
+      atlasBoxUVs(geo, TOWER_ATLAS.REGIONS);
+      const material = makeBespokeTowerMaterial(b, (canvas, opts) =>
+        this._registerTexture(canvas, opts),
+      );
+      this._disposables.push(material);
+
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.name = `${this.spec.id}_bespoke_${b.annexIndex}`;
+      // Box geometry is centred on its origin, so lift it by half its height to
+      // stand it on the ground plane.
+      mesh.position.set(b.lx, b.h / 2, b.lz);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.grid.add(mesh);
+      this.bespokeBuildings.push(mesh);
+      this.triangles += geo.index.count / 3;
     }
   }
 

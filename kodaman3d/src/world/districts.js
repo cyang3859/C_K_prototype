@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+import { ANNEX, ANNEX_HALF_EXTENT, ANNEX_ORIGIN, BESPOKE_TOWER_INDEX } from './annex.js';
 import { DISTRICT_A_FAMILIES, DISTRICT_B_FAMILIES } from './facadeFamilies.js';
 import { hash01 } from './facadeAtlas.js';
 
@@ -271,6 +272,69 @@ export function districtBBuildings() {
 }
 
 /**
+ * District B's ANNEX — locked decision 24.
+ *
+ * Phase 1's standalone `StreetBlock` is gone as an area; its ten hand-authored
+ * buildings are District B lots now. They are expressed in District B's LOCAL
+ * frame, which for a cardinal district (rotation 0) is a pure translation of
+ * `ANNEX_ORIGIN.x - origin.x = -320` on X — so every world coordinate the annex
+ * has ever had is preserved bit for bit.
+ *
+ * WHY THEY DO NOT USE §5's MASSING RECIPES. `mas0` is one box, which is what
+ * Phase 1 built. Retro-fitting setbacks onto ten reviewed buildings would be a
+ * visual redesign nobody asked for; decision 24 is about where content lives,
+ * not what it looks like.
+ *
+ * FAMILY MAPPING, and why it is not a repaint. Four of District B's five
+ * families ARE the shipped Phase 1 variants, spread byte-identically under
+ * locked decision 22 — so `lowriseA -> FAM-4`, `midriseA -> FAM-6`,
+ * `midriseB -> FAM-7` and `towerShared -> FAM-1` change nothing at all about how
+ * these buildings render. The one real change is `lowriseB -> FAM-5`, which adds
+ * FAM-5's terracotta cornice string course to the two ochre lowrises; that is an
+ * addition to the shipped spec rather than an alteration of it, and it is what
+ * makes the annex read as part of District B's storefront corridor instead of as
+ * a transplant.
+ *
+ * `bespoke: true` marks the 90 m helipad tower, which cannot join a batch.
+ *
+ * @returns {DistrictBuilding[]}
+ */
+export function annexBuildings() {
+  const dx = ANNEX_ORIGIN.x - DISTRICT_B_ORIGIN.x;
+  const dz = ANNEX_ORIGIN.z - DISTRICT_B_ORIGIN.z;
+  const family = {
+    lowriseA: 'fam4CreamStucco',
+    lowriseB: 'fam5OchreTerracotta',
+    midriseA: 'fam6SteelBlueGlass',
+    midriseB: 'fam7BronzeGlass',
+    towerShared: 'fam1DarkCurtainWall',
+  };
+  // Phase 1's own assignment rule, reproduced exactly: variants alternate A/B in
+  // array order WITHIN each kind, and towers all share `towerShared`.
+  const ordinal = { lowrise: 0, midrise: 0, tower: 0 };
+
+  return ANNEX.buildings.map((b, i) => {
+    const n = ordinal[b.kind]++;
+    const variant = b.kind === 'tower' ? 'towerShared' : `${b.kind}${n % 2 === 0 ? 'A' : 'B'}`;
+    return {
+      band: 'annex',
+      annexIndex: i,
+      bespoke: i === BESPOKE_TOWER_INDEX,
+      kind: b.kind,
+      lx: b.x + dx,
+      lz: b.z + dz,
+      w: b.w,
+      d: b.d,
+      h: b.h,
+      recipe: 'mas0',
+      family: family[variant],
+      podiumFamily: null,
+      seed: 1000 + i,
+    };
+  });
+}
+
+/**
  * Deal band labels across `total` slots with EXACT counts and no clustering.
  *
  * Written as a deal rather than as `i % 10 < 3`-style modular tests because a
@@ -296,26 +360,39 @@ function dealBands(total, counts) {
   return out;
 }
 
+/** District A's centre in world space. */
+export const DISTRICT_A_ORIGIN = Object.freeze({ x: -400, z: 0 });
+/** District B's centre in world space. Its annex extends it west to x = -150. */
+export const DISTRICT_B_ORIGIN = Object.freeze({ x: 320, z: 0 });
+
 /**
  * The two districts, as consumed by `District.js`.
  *
  * `origin` is the district's centre in WORLD space and `rotation` its grid yaw.
  * `ground` is stated separately and in WORLD-AXIS-ALIGNED terms on purpose: the
  * ground plane is featureless, so rotating it with the grid would buy nothing,
- * and sizing it to the district's own 300 m square would leave visible void
- * between the districts. Instead each district's ground covers its whole half of
- * the bounded world and sits 1 cm below Phase 1's block ground, which keeps the
- * world floored end to end for the same ONE mesh §6 already budgets.
+ * and sizing it to the district's own square would leave visible void between
+ * the districts. Instead the two ground planes tile the whole bounded world
+ * between them, for the same TWO meshes §6 already budgets.
+ *
+ * WHERE THE GROUND SPLIT MOVED, and why it is not arbitrary (locked decision
+ * 24). Before the absorption the split was at x = 0 and Phase 1's own block
+ * ground covered ±150, hiding it. With that block ground gone the seam would
+ * have run straight down the middle of the annex's boulevard, so District B's
+ * ground was extended west to x = -150 — the annex's own edge — and District A's
+ * shortened to meet it there. District B's ground colour is 0x9a927f, which is
+ * byte-identical to the ground the annex used to own, so nothing under the
+ * boulevard changed shade.
  */
 export const DISTRICTS = Object.freeze([
   Object.freeze({
     id: 'districtA',
     label: 'tower plateau',
-    origin: Object.freeze({ x: -400, z: 0 }),
+    origin: DISTRICT_A_ORIGIN,
     rotation: DISTRICT_A_ROTATION,
     families: DISTRICT_A_FAMILIES,
     buildings: districtABuildings,
-    ground: Object.freeze({ cx: -305, cz: 0, w: 610, d: 1220, color: 0x8f8a78 }),
+    ground: Object.freeze({ cx: -380, cz: 0, w: 460, d: 1220, color: 0x8f8a78 }),
     roadColor: 0x3c3f45,
     /** §DA-4 — one 150 m landmark on the district's geometric centre lot. */
     landmark: Object.freeze({
@@ -331,12 +408,31 @@ export const DISTRICTS = Object.freeze([
   Object.freeze({
     id: 'districtB',
     label: 'boulevard corridor',
-    origin: Object.freeze({ x: 320, z: 0 }),
+    origin: DISTRICT_B_ORIGIN,
     rotation: DISTRICT_B_ROTATION,
     families: DISTRICT_B_FAMILIES,
-    buildings: districtBBuildings,
-    ground: Object.freeze({ cx: 305, cz: 0, w: 610, d: 1220, color: 0x9a927f }),
+    /**
+     * The generated 3x3 grid PLUS the absorbed annex (locked decision 24).
+     * `districtBBuildings()` stays pure so the §DB-2 band shares can still be
+     * asserted on the population the spec actually describes.
+     */
+    buildings: () => [...districtBBuildings(), ...annexBuildings()],
+    ground: Object.freeze({ cx: 230, cz: 0, w: 760, d: 1220, color: 0x9a927f }),
     roadColor: 0x3f4148,
+    /**
+     * The annex's own street: Phase 1's boulevard, running along world X at
+     * z = 0 for ±150 m. Stated in District B LOCAL coordinates so `District.js`
+     * can merge its strips into the district's four §6 surfaces without knowing
+     * anything about where the annex came from.
+     */
+    annexStreets: Object.freeze([
+      Object.freeze({
+        axis: 'x',
+        line: ANNEX_ORIGIN.z - DISTRICT_B_ORIGIN.z,
+        from: ANNEX_ORIGIN.x - ANNEX_HALF_EXTENT - DISTRICT_B_ORIGIN.x,
+        to: ANNEX_ORIGIN.x + ANNEX_HALF_EXTENT - DISTRICT_B_ORIGIN.x,
+      }),
+    ]),
     /**
      * §DB-4 / locked decision 20 — a sign/observation mast, NOT a building, on
      * the sidewalk corner of the district's busiest intersection.

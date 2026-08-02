@@ -10,8 +10,8 @@ import { Input } from './Input.js';
 import { LocomotionController } from '../controllers/LocomotionController.js';
 import { Renderer } from './Renderer.js';
 import { Sky } from '../world/Sky.js';
-import { StreetBlock } from '../world/StreetBlock.js';
 import { TUNING } from '../config/tuning.js';
+import { WorldProps } from '../world/WorldProps.js';
 import { Time } from './Time.js';
 import { disposeObject3D } from './dispose.js';
 
@@ -83,22 +83,30 @@ export class Game {
     // construct Sky without one, having no GL context).
     this.sky = new Sky(this.scene, this.renderer.renderer);
 
-    // The collision world is created BEFORE the street block, because the block
-    // registers its building AABBs into it as it builds them. One box list,
-    // shared by the hero's capsule resolution and the camera's arm raycast.
+    // THE COLLISION WORLD IS CREATED FIRST, AND THAT ORDERING IS LOAD-BEARING.
+    // Everything below registers its building AABBs into it as it builds them —
+    // the districts their footprints, `WorldProps` the parapet rings and rooftop
+    // units. One box list, shared by the hero's capsule resolution and the
+    // camera's arm raycast. This is Phase 1's rule, unchanged by locked
+    // decision 24; only the list of things that register has grown.
     this.collision = new CollisionWorld({ halfExtent: TUNING.PLAYABLE_HALF_EXTENT });
-    this.world = new StreetBlock({ scene: this.scene, collision: this.collision });
 
-    // Phase 2's two districts, built statically alongside Phase 1's block. They
-    // register into the SAME collision world, and for the same reason it is
-    // created first. No streaming, no chunk loading, no LOD — a district is
-    // built once and stays resident, which is all this phase's scope needs.
+    // The two districts. Phase 1's standalone block is GONE as a separate area
+    // (locked decision 24): its content is District B's annex and is built by
+    // District B along with everything else. No streaming, no chunk loading, no
+    // LOD — a district is built once and stays resident.
     this.districts = DISTRICTS.map(
       (spec) => new District({ scene: this.scene, collision: this.collision, spec }),
     );
 
-    // Spawn on the sidewalk, clear of every building footprint, facing the
-    // boulevard so the first thing the player sees is the street.
+    // The world-shared prop pools: vegetation, street furniture, roof furniture.
+    // One pool per silhouette for the whole world (§PROP-1), so a palm costs the
+    // same two draw calls whether there are 40 of them or 400.
+    this.props = new WorldProps({ scene: this.scene, collision: this.collision });
+
+    // Spawn on the annex sidewalk, clear of every building footprint, facing the
+    // boulevard so the first thing the player sees is the street. The annex has
+    // not moved in world space, so this is Phase 1's spawn exactly.
     this.hero = new Hero({ scene: this.scene, position: new THREE.Vector3(0, 0, 13) });
 
     this.locomotion = new LocomotionController({
@@ -199,8 +207,8 @@ export class Game {
 
     // 3. World. Static in Phase 1; the call exists so the step has its final
     //    shape for Phase 2's time-of-day and streaming work.
-    this.world.update(dt);
     for (const district of this.districts) district.update(dt);
+    this.props.update(dt);
     this.sky.update(dt);
 
     // 4. Camera, AFTER locomotion, reading the hero's final transform.
@@ -249,7 +257,7 @@ export class Game {
     if (this.input) this.input.detach();
     if (this.debugHud) this.debugHud.dispose();
     if (this.hero) this.hero.dispose();
-    if (this.world) this.world.dispose();
+    if (this.props) this.props.dispose();
     if (this.districts) for (const d of this.districts) d.dispose();
     if (this.sky) this.sky.dispose();
     if (this.scene) disposeObject3D(this.scene);

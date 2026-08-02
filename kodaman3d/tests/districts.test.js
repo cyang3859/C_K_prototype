@@ -25,7 +25,7 @@ import {
 } from '../src/world/districts.js';
 import { CollisionWorld } from '../src/world/Collision.js';
 import { District } from '../src/world/District.js';
-import { FACADE_VARIANTS } from '../src/world/StreetBlock.js';
+import { FACADE_VARIANTS } from '../src/world/annex.js';
 import { MAST_SIGN_TEXT } from '../src/world/landmarks.js';
 import { installCanvasStub } from './support/canvas2d.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
@@ -43,12 +43,21 @@ import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
 // ---------------------------------------------------------------------------
 
 describe('facade families (§4)', () => {
-  it('is exactly seven: three for District A, four for District B', () => {
+  it('is exactly seven: three for District A, five batches in District B', () => {
     // The family count IS the building draw-call count (§BUD-3), so this
     // assertion is a budget assertion wearing a data assertion's clothes.
+    //
+    // §4 authors SEVEN families and that has not changed. District B draws on
+    // FIVE of them, not four: locked decision 24 folded Phase 1's block into it,
+    // and the block's 64 m tower is painted in the shipped `towerShared` palette
+    // that FAM-1 already carries. Giving District B its own FAM-1 batch costs
+    // +1 main / +1 shadow and preserves a reviewed building exactly; repainting
+    // it in one of District B's own four would have been free but would have
+    // changed how shipped content looks to make a ledger tidier.
     expect(Object.keys(FACADE_FAMILIES)).toHaveLength(7);
     expect(DISTRICT_A_FAMILIES).toHaveLength(3);
-    expect(DISTRICT_B_FAMILIES).toHaveLength(4);
+    expect(DISTRICT_B_FAMILIES).toHaveLength(5);
+    expect(DISTRICT_B_FAMILIES).toContain('fam1DarkCurtainWall');
     for (const id of [...DISTRICT_A_FAMILIES, ...DISTRICT_B_FAMILIES]) {
       expect(FACADE_FAMILIES[id]).toBeDefined();
     }
@@ -457,8 +466,11 @@ describe('District, built', () => {
       const roadway = scene.getObjectByName(`${d.spec.id}_roadway`);
       // Each street line contributes one full-length strip along its own axis
       // plus (lines + 1) segments across the perpendicular streets, and all of
-      // it lands in ONE geometry.
-      const quads = STREET_LINES.length * (1 + (STREET_LINES.length + 1));
+      // it lands in ONE geometry. District B's absorbed annex boulevard (locked
+      // decision 24) adds one more strip to the SAME geometry — which is the
+      // whole point: six Phase 1 meshes became zero.
+      const annexQuads = (d.spec.annexStreets ?? []).length;
+      const quads = STREET_LINES.length * (1 + (STREET_LINES.length + 1)) + annexQuads;
       expect(roadway.geometry.index.count / 3).toBe(quads * 2);
       expect(roadway.geometry.groups.length).toBeLessThanOrEqual(1);
     }
@@ -486,7 +498,8 @@ describe('District, built', () => {
       }
     }
     expect(districts[0].batches.size).toBe(3);
-    expect(districts[1].batches.size).toBe(4);
+    // Five in District B since the absorption — see the FAM-1 note in §4 above.
+    expect(districts[1].batches.size).toBe(5);
   });
 
   it('§DA-4/§DB-4: both landmarks exist as their own non-batched Mesh', () => {

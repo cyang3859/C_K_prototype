@@ -34,6 +34,25 @@ export const TRIANGLES_PER_BOX = 12;
  */
 
 /**
+ * MAS-0 — "Shipped Single Box". 1 box. **Not a §5 recipe** — it is the massing
+ * Phase 1 actually built, kept verbatim so District B's absorbed annex buildings
+ * (locked decision 24) are geometrically byte-identical to what a human signed
+ * off across five browser passes.
+ *
+ * `DEN-1`'s "every building is one BoxGeometry" complaint is real and §5's five
+ * recipes are the fix — but retro-fitting a setback onto ten hand-placed,
+ * reviewed buildings is a *visual redesign* of shipped content, which decision 24
+ * did not ask for and which no browser pass has approved. So the annex keeps its
+ * geometry and the recipes apply to the generated population.
+ *
+ * @param {MassInput} b
+ * @returns {MassBox[]}
+ */
+export function mas0SingleBox(b) {
+  return [{ cx: 0, cy: b.h / 2, cz: 0, w: b.w, h: b.h, d: b.d }];
+}
+
+/**
  * MAS-1 — "Podium + Setback Slab". 2 boxes, District A primary/secondary towers.
  *
  * Podium at the full lot footprint, then a slab inset 1.5 m per side rising to
@@ -219,6 +238,7 @@ export function mas5OrnateCornicedMidrise(b) {
 
 /** Recipe id → function, so district data can name a recipe as a string. */
 export const MASSING_RECIPES = Object.freeze({
+  mas0: mas0SingleBox,
   mas1: mas1PodiumSetbackSlab,
   mas2: mas2TwinSetbackZiggurat,
   mas3: mas3LandmarkCrown,
