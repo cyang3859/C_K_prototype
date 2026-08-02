@@ -155,6 +155,51 @@ session-5 snapshot.
 
 ---
 
+## Session 12 closed 2026-08-02, deliberately, by the user
+
+**Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` in
+sync, **0 unpushed commits**, working tree clean apart from the pre-existing untracked
+`KODAMAN_HANDOFF.md`. **189/189 tests.** `main` untouched at `5f62309`. `kodaman_prototype.html`
+**zero diff**. No agent was running when the session ended and nothing was interrupted. 2 commits.
+
+⚠️ **Session 11 had committed but never pushed — the reboot came first.** This session's push
+carried **11** commits, not 2: nine of them were session 11's entire code-review fix set, which had
+been sitting only on this machine. **PR #3 showed none of it.** Worth knowing as a pattern: a
+session that ends by interruption rather than by decision does not run its close checklist, so
+**verify `ahead N` against `origin` at the START of a resume**, not only at the end.
+
+### Do this first next session: **Standards 4, 5 and 8** — the rest of the duplication cluster
+
+The user asked on 2026-08-02 for the cluster to be done **before the merge**, so it is not optional
+deferral. **Standards 10 is done** (`af0672a`). Remaining: **4** (`districtA/BBuildings`
+duplication), **5** (`CENTRAL_SLOTS` stringified floats), **8** (`props.js` facade-offset blocks
+plus a 9-site repeated switch).
+
+**All three are generator-side, which is the half the ORIGINAL refactor guard genuinely does
+cover** — read the guard section below before relying on that, because the other half did not.
+Re-verify by perturbation rather than trusting either guard's description, including this one's.
+
+**Then:** user reads the diff → merge → QA on the merged base. Locked decision 4 keeps the merge
+with the user.
+
+### PR #3 is current again
+
+**MERGEABLE / CLEAN**, tip `6d69e1d`, base `dev`, **+31,056 / −0, 78 files**. Its description had
+gone stale on three figures (177 tests, +29,101, 74 files) and was corrected this session — session
+10's own lesson was that a stale view of this PR produces confident wrong advice.
+
+### Cost log — session 12
+
+| Agent | Tokens |
+|---|---|
+| **none spawned** | **0** |
+
+**No subagents ran this session; all of it was inline orchestrator work.** Recorded explicitly
+because a blank line here reads like an omission rather than a zero. Cross-session observable total
+is unchanged at **~3,031,000**.
+
+---
+
 ## >>> ✅ SESSION 11's BREAK IS REPAIRED — Standards 10 is DONE (session 12, 2026-08-02) <<<
 
 **The repo is clean again. `af0672a`. 189 tests. Working tree clean apart from the pre-existing
