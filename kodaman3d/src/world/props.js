@@ -169,6 +169,9 @@ export function hvacBox(u) {
 /** Metres. Clearance kept around each intersection so nothing stands in a crossing. */
 const CROSSING_MARGIN = 5;
 
+/** Metres. One scaffold lift — the vertical pitch of the bay geometry. */
+export const SCAFFOLD_LIFT_M = 2.0;
+
 /**
  * Candidate points in a district's LOCAL frame, laid along both sides of every
  * street in the grid.
@@ -509,6 +512,88 @@ export function districtPropPlacements(spec, opts) {
       });
     }
   }
+  // ---- §10 item 10, the cut-priority tier ---------------------------------
+  // `DEN-8` frames these as "an authoring discipline... not a system", and §10
+  // ranks them last precisely so they are the first thing to go. They are here
+  // because the budget held, not because anything depends on them.
+  if (opts.bollards) {
+    // Tower-base vehicle barriers: a short arc across each primary tower's
+    // street frontage.
+    for (const b of buildings) {
+      if (b.band !== 'primary') continue;
+      const f = frontage(b);
+      const half = (f.axis === 'z' ? b.d : b.w) / 2;
+      const span = (f.axis === 'z' ? b.w : b.d) * 0.7;
+      for (let i = 0; i < 5; i++) {
+        const t = (i / 4 - 0.5) * span;
+        const p = { lx: b.lx, lz: b.lz };
+        if (f.axis === 'z') {
+          p.lz += f.sign * (half + 1.6);
+          p.lx += t;
+        } else {
+          p.lx += f.sign * (half + 1.6);
+          p.lz += t;
+        }
+        const w = districtLocalToWorld(p, spec);
+        out.bollards.push({ x: w.x, z: w.z });
+      }
+    }
+  }
+  if (opts.cafeProps) {
+    // Pavement tables outside the corridor's lowrise storefronts.
+    for (const b of buildings) {
+      if (b.band !== 'lowrise') continue;
+      const f = frontage(b);
+      const half = (f.axis === 'z' ? b.d : b.w) / 2;
+      for (let i = 0; i < 3; i++) {
+        const t = (i - 1) * 2.6;
+        const p = { lx: b.lx, lz: b.lz };
+        if (f.axis === 'z') {
+          p.lz += f.sign * (half + 2.4);
+          p.lx += t;
+        } else {
+          p.lx += f.sign * (half + 2.4);
+          p.lz += t;
+        }
+        const w = districtLocalToWorld({ ...p, yaw: f.yaw }, spec);
+        out.cafeProps.push({ x: w.x, z: w.z, yaw: w.yaw });
+      }
+    }
+  }
+  if (opts.scaffolding) {
+    // `DEN-8`'s environmental storytelling: TWO buildings under work, not a
+    // district-wide condition. A city where every block is scaffolded reads as a
+    // texture, not as a story.
+    const midrises = buildings.filter((b) => b.band === 'midrise');
+    for (const b of [midrises[3], midrises[9]]) {
+      if (!b) continue;
+      const f = frontage(b);
+      const half = (f.axis === 'z' ? b.d : b.w) / 2;
+      const span = (f.axis === 'z' ? b.w : b.d) - 2;
+      const lifts = Math.max(2, Math.floor(b.h / SCAFFOLD_LIFT_M) - 1);
+      for (let bay = 0; bay < 4; bay++) {
+        const t = (bay / 3 - 0.5) * span;
+        const p = { lx: b.lx, lz: b.lz };
+        if (f.axis === 'z') {
+          p.lz += f.sign * (half + 0.9);
+          p.lx += t;
+        } else {
+          p.lx += f.sign * (half + 0.9);
+          p.lz += t;
+        }
+        const w = districtLocalToWorld({ ...p, yaw: f.yaw }, spec);
+        // ONE INSTANCE PER LIFT, not one per bay scaled on Y. The first build
+        // stretched a single 2 m bay over the building's whole height, which put
+        // one deck at the top of two bare 12 m standards — a gantry, not
+        // scaffolding. A screenshot caught it; the fix is instances, and
+        // instances are free.
+        for (let lift = 0; lift < lifts; lift++) {
+          out.scaffolding.push({ x: w.x, y: lift * SCAFFOLD_LIFT_M, z: w.z, yaw: w.yaw });
+        }
+      }
+    }
+  }
+
   if (opts.smallProps) {
     const pts = rejectInsideBoxes(
       streetRowPoints({ offset: HALF_ROADWAY + SIDEWALK * 0.82, spacing: 17, phase: 11 }),
@@ -572,6 +657,10 @@ export function allPropPlacements() {
         lamps: true, // §10 item 7, world-shared
         cars: true,
         smallProps: true,
+        // §10 item 10 — the cut tier, in the spec's own order.
+        bollards: spec.id === 'districtA',
+        cafeProps: spec.id === 'districtB',
+        scaffolding: spec.id === 'districtB',
       }),
     );
   }

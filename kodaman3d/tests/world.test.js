@@ -17,6 +17,7 @@ import { DISTRICTS, WORLD_HALF_EXTENT, annexBuildings } from '../src/world/distr
 import { District } from '../src/world/District.js';
 import { Sky } from '../src/world/Sky.js';
 import { Hero } from '../src/entities/Hero.js';
+import { HILL, Terrain, hillColliderBoxes, hillHeight } from '../src/world/terrain.js';
 import { WorldProps } from '../src/world/WorldProps.js';
 import { createdContexts, installCanvasStub } from './support/canvas2d.js';
 
@@ -547,12 +548,13 @@ function buildWorld() {
   new Sky(scene);
   const districts = DISTRICTS.map((spec) => new District({ scene, collision, spec }));
   const props = new WorldProps({ scene, collision });
+  const terrain = new Terrain({ scene, collision });
   new Hero({ scene, position: new THREE.Vector3(0, 0, 13) });
-  return { scene, collision, districts, props };
+  return { scene, collision, districts, props, terrain };
 }
 
 describe('worst-case draw calls, both passes', () => {
-  it('is 72: 40 main + 32 shadow, against the 150 ceiling', () => {
+  it('is 78: 44 main + 34 shadow, against the 150 ceiling', () => {
     const { scene } = buildWorld();
     const inv = drawCallInventory(scene);
 
@@ -560,21 +562,22 @@ describe('worst-case draw calls, both passes', () => {
     //   District A   8 = ground + roadway + sidewalk + curb + 3 batches + landmark
     //   District B  11 = ground + roadway + sidewalk + curb + 5 batches
     //                    + bespoke helipad tower + landmark
-    //   props       14 = one pool per silhouette, world-shared (§PROP-1)
+    //   props       17 = one pool per silhouette, world-shared (§PROP-1)
+    //   hill         1 = §PROP-3's landform, one displaced plane
     //   hero         7 = torso + head + 4 limbs + cape
     //   sky          0 = two lights and a Color background; no skybox mesh
-    expect(inv.main.length).toBe(40);
+    expect(inv.main.length).toBe(44);
 
     // SHADOW, 32: every castShadow object above. No ground or road surface
     // casts, in either district — §6, and Phase 1's own convention.
-    expect(inv.shadow.length).toBe(32);
+    expect(inv.shadow.length).toBe(34);
     for (const spec of DISTRICTS) {
       for (const surface of ['ground', 'roadway', 'sidewalk', 'curb']) {
         expect(inv.shadow).not.toContain(`${spec.id}_${surface}`);
       }
     }
 
-    expect(inv.total).toBe(72);
+    expect(inv.total).toBe(78);
     // The Phase 2 ceiling, both passes (RESEARCH_PHASE_2_WORLD.md §BUD-6). The
     // 78 calls of headroom are reserved for CSM's unmeasured shadow multiplier —
     // they are not spare budget.
@@ -619,7 +622,7 @@ describe('worst-case draw calls, both passes', () => {
     expect(inv.shadow).toContain('districtB_fam1DarkCurtainWall');
   });
 
-  it('the 14 world-shared prop pools cost exactly 28 of those calls', () => {
+  it('the 17 world-shared prop pools cost exactly 32 of those calls', () => {
     // §PROP-4 budgets the whole props+terrain line at ~35 both passes. This is
     // the measured figure for everything §10 items 4-8 asked for, and the pool
     // COUNT is the whole cost — an InstancedMesh draws 4,000 instances for the
@@ -641,14 +644,20 @@ describe('worst-case draw calls, both passes', () => {
       'parkedSedans',
       'parkedVans',
       'smallProps',
+      'bollards',
+      'cafeProps',
+      'scaffolding',
     ];
     expect([...props.pools.keys()].sort()).toEqual([...pools].sort());
     for (const name of pools) {
       expect(inv.main, name).toContain(name);
-      // One main-pass call and one shadow-pass call each.
-      expect(inv.shadow, name).toContain(name);
     }
-    expect(pools.length * 2).toBe(28);
+    // Two of the seventeen do not cast: §8 prices bollards and cafe tables
+    // without a shadow, and a 0.9 m post's shadow is not worth a second pass
+    // over 100+ instances.
+    const noCast = ['bollards', 'cafeProps'];
+    for (const name of noCast) expect(inv.shadow).not.toContain(name);
+    expect(pools.length * 2 - noCast.length).toBe(32);
   });
 
   it('every pool actually has instances — an empty one still costs two calls', () => {
@@ -747,5 +756,81 @@ describe('sky environment map', () => {
     expect(disposed).toBe(true);
     expect(sky.envTarget).toBe(null);
     expect(scene.environment).toBe(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §PROP-3 — the hill landmark
+// ---------------------------------------------------------------------------
+
+describe('the hill (§PROP-3)', () => {
+  it('meets the ground plane exactly at its rim, with no lip and no gap', () => {
+    // A landform that stops 30 cm above the ground shows a black seam all the
+    // way round it, and one that dips below shows the ground poking through.
+    for (let a = 0; a < 32; a++) {
+      const ang = (a / 32) * Math.PI * 2;
+      // Sub-nanometre rather than bit-exact: `Math.hypot` on a point authored as
+      // `cos·R, sin·R` lands a few ULPs inside R about half the time, so the
+      // rim fade returns a denormal instead of a hard zero. Nothing at 1e-9 m
+      // is visible, and forcing an exact zero would mean snapping the whole
+      // height field to hide a rounding artefact.
+      expect(hillHeight(Math.cos(ang) * HILL.radius, Math.sin(ang) * HILL.radius)).toBeLessThan(1e-9);
+      expect(hillHeight(Math.cos(ang) * (HILL.radius + 5), Math.sin(ang) * 200)).toBe(0);
+    }
+    expect(hillHeight(0, 0)).toBeGreaterThan(HILL.height * 0.9);
+  });
+
+  it('is NOT radially symmetric — a cone reads the same from every approach', () => {
+    // The same argument decision 19 made for District A's crown, applied to a
+    // landform: the silhouette has to change as you fly around it.
+    const r = HILL.radius * 0.45;
+    const ring = [];
+    for (let a = 0; a < 12; a++) {
+      const ang = (a / 12) * Math.PI * 2;
+      ring.push(hillHeight(Math.cos(ang) * r, Math.sin(ang) * r));
+    }
+    const spread = Math.max(...ring) - Math.min(...ring);
+    expect(spread).toBeGreaterThan(HILL.height * 0.12);
+  });
+
+  it('stands clear of both districts and inside the bounded world', () => {
+    // A third sightline anchor is only that if it is not standing in a district.
+    expect(HILL.cz - HILL.radius).toBeGreaterThan(150);
+    expect(Math.abs(HILL.cx) + HILL.radius).toBeLessThan(WORLD_HALF_EXTENT);
+    expect(HILL.cz + HILL.radius).toBeLessThan(WORLD_HALF_EXTENT);
+  });
+
+  it('never puts a collider terrace ABOVE the surface it stands for', () => {
+    // The stepped approximation errs SMALL, on purpose and unlike every other
+    // collider in this project: a terrace whose top was above the real surface
+    // would leave the hero standing inside the hillside. See terrain.js.
+    for (const box of hillColliderBoxes()) {
+      for (const [x, z] of [
+        [box.min.x, box.min.z],
+        [box.max.x, box.min.z],
+        [box.min.x, box.max.z],
+        [box.max.x, box.max.z],
+        [(box.min.x + box.max.x) / 2, (box.min.z + box.max.z) / 2],
+      ]) {
+        const surface = hillHeight(x - HILL.cx, z - HILL.cz);
+        expect(box.max.y).toBeLessThanOrEqual(surface + 1e-6);
+      }
+    }
+  });
+
+  it('costs one mesh and registers its terraces as colliders', () => {
+    installCanvasStub();
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const terrain = new Terrain({ scene, collision });
+
+    expect(terrain.mesh.isMesh).toBe(true);
+    expect(Array.isArray(terrain.mesh.material)).toBe(false);
+    expect(terrain.mesh.castShadow).toBe(true);
+    // §PROP-3 carried BUD-6's 2-4 main / 2 shadow estimate forward unchecked.
+    // Built, it is 1 main / 1 shadow — one displaced plane, one material.
+    expect(drawCallInventory(scene).total).toBe(2);
+    expect(collision.buildings.length).toBe(hillColliderBoxes().length);
+    expect(collision.buildings.length).toBeGreaterThan(3);
   });
 });

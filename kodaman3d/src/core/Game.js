@@ -11,6 +11,7 @@ import { LocomotionController } from '../controllers/LocomotionController.js';
 import { Renderer } from './Renderer.js';
 import { Sky } from '../world/Sky.js';
 import { TUNING } from '../config/tuning.js';
+import { Terrain } from '../world/terrain.js';
 import { WorldProps } from '../world/WorldProps.js';
 import { Time } from './Time.js';
 import { disposeObject3D } from './dispose.js';
@@ -103,6 +104,10 @@ export class Game {
     // One pool per silhouette for the whole world (§PROP-1), so a palm costs the
     // same two draw calls whether there are 40 of them or 400.
     this.props = new WorldProps({ scene: this.scene, collision: this.collision });
+
+    // The hill (§PROP-3): a third silhouette class and a third sightline anchor,
+    // deliberately not a building and deliberately not named (locked decision 6).
+    this.terrain = new Terrain({ scene: this.scene, collision: this.collision });
 
     // Spawn on the annex sidewalk, clear of every building footprint, facing the
     // boulevard so the first thing the player sees is the street. The annex has
@@ -209,6 +214,7 @@ export class Game {
     //    shape for Phase 2's time-of-day and streaming work.
     for (const district of this.districts) district.update(dt);
     this.props.update(dt);
+    this.terrain.update(dt);
     this.sky.update(dt);
 
     // 4. Camera, AFTER locomotion, reading the hero's final transform.
@@ -258,6 +264,7 @@ export class Game {
     if (this.debugHud) this.debugHud.dispose();
     if (this.hero) this.hero.dispose();
     if (this.props) this.props.dispose();
+    if (this.terrain) this.terrain.dispose();
     if (this.districts) for (const d of this.districts) d.dispose();
     if (this.sky) this.sky.dispose();
     if (this.scene) disposeObject3D(this.scene);

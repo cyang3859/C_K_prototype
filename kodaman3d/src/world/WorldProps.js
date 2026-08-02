@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { AWNING, BLADE, HVAC, PARAPET } from './annex.js';
-import { allPropPlacements } from './props.js';
+import { SCAFFOLD_LIFT_M, allPropPlacements } from './props.js';
 import { disposeObject3D } from '../core/dispose.js';
 
 /**
@@ -87,6 +87,9 @@ export class WorldProps {
     this._buildUtilityPoles(p.utilityPoles);
     this._buildParkedCars(p.parkedCars);
     this._buildSmallProps(p.smallProps);
+    this._buildBollards(p.bollards);
+    this._buildCafeProps(p.cafeProps);
+    this._buildScaffolding(p.scaffolding);
 
     // Colliders. The collision world is created BEFORE this object for the same
     // reason it was created before `StreetBlock`: pools register their AABBs as
@@ -595,6 +598,121 @@ export class WorldProps {
     this.group.add(batch);
   }
 
+  // ------------------------------------------- §10 item 10, the cut tier
+
+  /**
+   * Loading-dock bollards at the tower bases (District A).
+   *
+   * NO SHADOW, per §8's own table — a 0.9 m post's shadow is not worth a second
+   * pass over 100+ instances, and this is the lowest-return item in the whole
+   * document. One call, and the first thing to delete under budget pressure.
+   */
+  _buildBollards(bollards) {
+    const geo = new THREE.CylinderGeometry(0.13, 0.15, 0.92, 8, 1);
+    geo.translate(0, 0.46, 0);
+    const mesh = this._pool(
+      'bollards',
+      geo,
+      new THREE.MeshStandardMaterial({ color: 0x54585c, roughness: 0.5, metalness: 0.6 }),
+      bollards.length,
+      { cast: false, receive: true },
+    );
+    const m = new THREE.Object3D();
+    for (let i = 0; i < bollards.length; i++) {
+      m.position.set(bollards[i].x, 0, bollards[i].z);
+      m.rotation.set(0, 0, 0);
+      m.scale.set(1, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * Pavement café tables outside District B's storefronts. One merged
+   * top-and-pedestal geometry, vertex-tinted, no shadow (§8).
+   */
+  _buildCafeProps(tables) {
+    const topGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.06, 10, 1).translate(0, 0.75, 0);
+    tintGeometry(topGeo, 0xc9c2b2);
+    const stemGeo = new THREE.CylinderGeometry(0.05, 0.14, 0.72, 8, 1).translate(0, 0.36, 0);
+    tintGeometry(stemGeo, 0x3b3f42);
+    const merged = mergeGeometries([topGeo, stemGeo]);
+    topGeo.dispose();
+    stemGeo.dispose();
+
+    const mesh = this._pool(
+      'cafeProps',
+      merged,
+      new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.7 }),
+      tables.length,
+      { cast: false, receive: true },
+    );
+    const m = new THREE.Object3D();
+    for (let i = 0; i < tables.length; i++) {
+      m.position.set(tables[i].x, 0, tables[i].z);
+      m.rotation.set(0, tables[i].yaw, 0);
+      m.scale.set(1, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * `DEN-8`'s construction storytelling: a scaffold bay — two standards, the
+   * ledgers between them and a boarded lift — repeated up a facade.
+   *
+   * The bay is authored ONE lift tall and stacked as one INSTANCE per lift.
+   * Scaling a single instance on Y instead — which is what the first build did —
+   * gives two bare 12 m standards with one deck at the top, i.e. a gantry rather
+   * than scaffolding. Instances inside a pool are free; the scale trick was not.
+   */
+  _buildScaffolding(bays) {
+    const LIFT = SCAFFOLD_LIFT_M;
+    const parts = [];
+    for (const sx of [1, -1]) {
+      const std = new THREE.BoxGeometry(0.09, LIFT, 0.09);
+      std.translate(sx * 1.2, LIFT / 2, 0);
+      parts.push(tintGeometry(std, 0x8d9298));
+      const outer = new THREE.BoxGeometry(0.09, LIFT, 0.09);
+      outer.translate(sx * 1.2, LIFT / 2, -0.85);
+      parts.push(tintGeometry(outer, 0x8d9298));
+    }
+    const ledger = new THREE.BoxGeometry(2.5, 0.08, 0.08);
+    ledger.translate(0, LIFT - 0.15, -0.85);
+    parts.push(tintGeometry(ledger, 0x8d9298));
+    const board = new THREE.BoxGeometry(2.5, 0.06, 0.9);
+    board.translate(0, LIFT - 0.06, -0.45);
+    parts.push(tintGeometry(board, 0xa8895c)); // timber deck
+    const merged = mergeGeometries(parts);
+    for (const p of parts) p.dispose();
+
+    const mesh = this._pool(
+      'scaffolding',
+      merged,
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: 0.6,
+        metalness: 0.4,
+      }),
+      bays.length,
+      { receive: true },
+    );
+
+    const m = new THREE.Object3D();
+    for (let i = 0; i < bays.length; i++) {
+      const b = bays[i];
+      m.position.set(b.x, b.y, b.z);
+      m.rotation.set(0, b.yaw, 0);
+      m.scale.set(1, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
   // ----------------------------------------------------------------- plumbing
 
   /**
@@ -609,10 +727,10 @@ export class WorldProps {
    * @param {THREE.Material} mat
    * @param {number} count
    */
-  _pool(name, geo, mat, count, { receive = false } = {}) {
+  _pool(name, geo, mat, count, { receive = false, cast = true } = {}) {
     const mesh = new THREE.InstancedMesh(geo, mat, Math.max(count, 1));
     mesh.name = name;
-    mesh.castShadow = true;
+    mesh.castShadow = cast;
     mesh.receiveShadow = receive;
     mesh.count = count;
     this._disposables.push(mat);
