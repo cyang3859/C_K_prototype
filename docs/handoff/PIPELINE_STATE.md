@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-08-02 (session 11 — the code review ran and 16 of its 18 findings are fixed; see the resume block. Previously session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
+**Last updated:** 2026-08-02 (session 12 — session 11's mid-refactor break is repaired, Standards 10 is done, and the refactor guard's blind spot is closed. Previously session 11 — the code review ran and 16 of its 18 findings are fixed; see the resume block. Previously session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -155,42 +155,52 @@ session-5 snapshot.
 
 ---
 
-## >>> ⚠️ SESSION 11 PAUSED MID-REFACTOR — READ THIS BEFORE ANYTHING ELSE <<<
+## >>> ✅ SESSION 11's BREAK IS REPAIRED — Standards 10 is DONE (session 12, 2026-08-02) <<<
 
-**Paused 2026-08-02 for a system reboot, with ONE FILE IN A BROKEN STATE. This is the only
-thing in the repo that is not clean, and it is uncommitted.**
+**The repo is clean again. `af0672a`. 189 tests. Working tree clean apart from the pre-existing
+untracked `KODAMAN_HANDOFF.md`.**
 
-### The broken file
+`WorldProps.js` parses and all 15 `_build*` sites are on the `_fill(mesh, list, place)` helper.
+**The malformed site was `_buildShadeTrees`, NOT `_buildParkedCars`** as this file predicted — the
+loop header had been replaced with a `_fill` call but the body and its closing brace were left
+behind, so the method closed a `for` loop with `});`. **Repaired in place** (resume option 2)
+rather than reverted, because the diff read cleanly hunk by hunk and only that one site was
+broken. The three sites the machine pass had skipped — parked cars, bollards, cafe props — were
+then converted by hand. `_buildSmallProps` stays as it is: a `BatchedMesh` writes through
+`addInstance`/`setMatrixAt` into a texture and is not the shape `_fill` extracts.
 
-`kodaman3d/src/world/WorldProps.js` **has a syntax error and will not parse.** `npm test`
-therefore fails to load two suites (`districts.test.js`, `world.test.js`) — that is the cause,
-not a real test failure. Nothing else is broken and nothing committed is affected.
+**Verified in a browser after the fix: 78 draw calls (44 main / 34 shadow), unmoved.** 16
+instanced pools, 1,835 instances, **zero stranded at the origin**, console clean apart from the
+known favicon 404 and the `PCFSoftShadowMap` deprecation.
 
-**What happened.** I was converting the 15 `_build*` methods to a new `_fill(mesh, list, place)`
-helper — the code review's Standards-10 finding, ~120 lines of duplicated instance-matrix fill.
-A regex-driven conversion handled 5 sites correctly but **partially consumed a two-pool block**
-(the palms build two `InstancedMesh` pools in one loop, which the pattern did not anticipate). I
-repaired `_buildCanaryPalms` by hand; **at least one more site is still malformed.**
+### ⚠️ THE REFACTOR GUARD DID NOT GUARD THIS REFACTOR — read this before trusting a digest test
 
-**Find it with:** `cd kodaman3d && npx esbuild src/world/WorldProps.js --loader=js --outfile=/dev/null`
-— that command was queued when the pause came. `_buildParkedCars` is the most likely remaining
-one: it is the other site that does not fit the uniform shape (nested helper, per-instance
-`setColorAt` AFTER `setMatrixAt`).
+This file previously recorded the guard as the safety net for exactly this work: *"golden digests
+of all 68 buildings and ~1,400 prop placements. If a 'pure' refactor moves a single number, it
+fails."* **For Standards 10 it could not fail.**
 
-### Two clean ways to resume — RECOMMENDED FIRST
+It digests what the **generators** produce (`props.js`, `districts.js`). `WorldProps.js` then reads
+those placements and **writes instance matrices**, and nothing checked that second step.
+**Perturbing a `_fill` callback by 1 mm left all 188 tests green** — measured, not reasoned about.
 
-1. **`git checkout kodaman3d/src/world/WorldProps.js`** — discards ONLY the broken refactor and
-   nothing else. Back to **188 passing** immediately. Then redo the `_fill` conversion by hand,
-   site by site, running the suite between each. **This is the recommendation:** the `_fill`
-   helper is genuinely worth having (it makes forgetting `instanceMatrix.needsUpdate` structurally
-   impossible, which is a silent failure mode), but the regex approach has earned distrust.
-2. Repair in place from the esbuild error. Cheaper if only one site is left, but you are debugging
-   a machine edit rather than writing the change.
+**That is the fourth instance of the session-11 review's hollow-enforcement pattern, and the first
+one found inside a test written to prevent it.** The three the review caught were pinning tests for
+locked decisions 21, 22 and 25; this one was the pinning test for the cleanup those findings
+triggered.
 
-**Either way the safety net is already committed and passing:** `districts.test.js` carries a
-**REFACTOR GUARD** — golden digests of all 68 buildings and ~1,400 prop placements. If a "pure"
-refactor moves a single number, it fails. That test is the reason this refactor is safe to redo
-quickly; do not regenerate its digests to make it pass.
+**Now closed at the other end:** a second guard over the matrices themselves, per pool, including
+per-instance colour, reading the `BatchedMesh` back through `getMatrixAt`. **It was verified to
+fail before being trusted** — the same 1 mm perturbation moves `cafeProps`' digest and nothing
+else. Both guards are needed and neither subsumes the other: the first covers Standards 4, 5 and 8
+(generator changes), the second covers Standards 10 (matrix-writing changes).
+
+### Still open from the review: Standards 4, 5 and 8
+
+The user asked on 2026-08-02 for the duplication cluster to be done **before the merge**, so this
+is not optional deferral. **Standards 10 is now done.** Untouched: **4** (`districtA/BBuildings`
+duplication), **5** (`CENTRAL_SLOTS` stringified floats) and **8** (`props.js` facade-offset blocks
+plus a 9-site repeated switch). All three are generator-side, which is the half the **original**
+guard genuinely does cover.
 
 ### What IS finished and committed
 
@@ -199,11 +209,8 @@ quickly; do not regenerate its digests to make it pass.
   (+144), District A still deliberately excluded, pinned by a walk-off-the-roof test. **187 tests.**
 - **The refactor guard is committed** as part of the in-flight work — check `git status`; if it is
   still unstaged, keep it.
-- Remaining from the review: **Standards 4, 5, 8 and 10** — the duplication cluster. The user asked
-  on 2026-08-02 for this to be done **before the merge**, so it is NOT optional deferral any more.
-  Standards 10 is the one half-done above. 4 (`districtA/BBuildings` duplication), 5
-  (`CENTRAL_SLOTS` stringified floats) and 8 (`props.js` facade-offset blocks + a 9-site repeated
-  switch) are untouched.
+- Remaining from the review: **Standards 4, 5 and 8** — see the section above. **Standards 10 is
+  done** (`af0672a`).
 
 **Draw calls were 78 (44/34) at the last browser check and must still be 78 when this is done.**
 
