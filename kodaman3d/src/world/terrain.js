@@ -252,7 +252,36 @@ export class Terrain {
     this.triangles = geo.index.count / 3;
 
     scene.add(this.mesh);
-    for (const box of hillColliderBoxes()) collision.addBuilding(box);
+
+    /**
+     * THE HILL IS REAL TERRAIN NOW, NOT A STACK OF BOXES.
+     *
+     * It used to register `hillColliderBoxes()` — nested AABBs whose tops sat at
+     * the true surface. That was the honest best an AABB-only world could do, and
+     * it had two costs the boxes could never shed: **you could not walk up the
+     * hill** (each terrace presented a vertical face the horizontal push-out
+     * shoved you off), and a terrace edge could leave a metre of daylight under
+     * your feet.
+     *
+     * `CollisionWorld.addTerrain` takes the height field directly, so the ground
+     * under the hero simply *is* the surface. `hillHeight` returns 0 outside the
+     * footprint, which is exactly the contract a provider must satisfy, so the
+     * rest of the world keeps its flat y = 0 plane untouched.
+     *
+     * `hillColliderBoxes()` is deliberately KEPT and still exported, registered
+     * `solid: false`. It is the only description of this landform a pure-AABB
+     * consumer can use, and the camera arm is one — `spherecast` reads
+     * `buildings`, not terrain, so without the boxes the camera would sink
+     * through the hillside the moment the hero could stand on it. Registering
+     * them non-solid is the whole point: **the camera sees them, the hero does
+     * not.** Leaving them solid would put the terraces' vertical faces back in
+     * the push-out path and re-create the defect this change removes.
+     */
+    this.collision = collision;
+    collision.addTerrain((x, z) => hillHeight(x - HILL.cx, z - HILL.cz));
+    for (const box of hillColliderBoxes()) {
+      collision.addBuilding(box, this, { solid: false });
+    }
   }
 
   /** Static this run. Present so the update shape matches the districts'. */
@@ -262,5 +291,6 @@ export class Terrain {
     disposeObject3D(this.mesh);
     this.mesh.material.dispose();
     this.scene.remove(this.mesh);
+    this.collision.removeOwner(this);
   }
 }

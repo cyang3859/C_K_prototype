@@ -264,10 +264,41 @@ still 78 draw calls (44/34), verified in a browser.**
    collision-system design change, and it is the natural companion to the two other collision debts
    below. **The hill itself is built and unaffected** — it carries a stepped-box collider.
 
-**Two collision debts are now pending together, and they are the same shape:** the per-owner
-`CollisionWorld` handle (so `dispose()` can drop one owner's colliders without dropping everyone's)
-and the terrain height query. Neither is urgent; both are design changes rather than patches, and
-whoever takes one should look at the other.
+### Both collision debts are PAID — `Collision.js`, session 10
+
+They were the same shape and were taken together, at the user's instruction. **177/177 tests, world
+still 78 draw calls (44/34), verified in a browser.**
+
+**1. Per-owner collider handles.** `addBuilding(box, owner)` now records who registered each box, and
+`removeOwner(owner)` drops exactly that owner's. `District.dispose()` and `WorldProps.dispose()` call
+it. **The teardown assertion run 2 had to delete is restored** — and it is now meaningful rather than
+merely passable, backed by a second test proving a co-owner's colliders survive. The old
+`clearBuildings()` remains for whole-world teardown.
+
+**2. A real terrain height query, and the hill is walkable.** `addTerrain(heightAt)` takes a pure
+`(x, z) -> height` function — no scene-graph access, so `Collision.js` keeps its no-Three.js-objects
+property and its headless tests. `resolveCapsule`'s hard-coded `y = 0` ground became "the tallest
+registered field, or 0". **The hero now walks from the rim to the summit continuously** — measured in
+the live world through the real resolve path: 0 → 66.5 m, `onGround` true at every step.
+
+⚠️ **The subtle part, worth knowing before touching it: terrain needed a STEP-UP allowance, and boxes
+must not get one.** Walking uphill, the surface under your feet is *higher* than where the step began,
+so the existing crossed-it test rejects it and the hero walks straight through the hillside. Terrain
+gets a 0.5 m per-step allowance, which is **a slope limit in disguise** (at 7.5 m/s the hero covers
+0.125 m per fixed step, so it tops out near a 4:1 grade — steeper and he stops climbing rather than
+teleporting up a cliff). **Roof boxes deliberately do NOT get it**, and a test pins that: brushing a
+30 cm kerb must never lift the hero on top of it.
+
+⚠️ **The hill's terrace boxes are still registered, now `solid: false`** — a new flag meaning *the
+camera sees this, the hero does not.* They exist so the camera arm cannot sink through the hillside
+(`spherecast` reads `buildings`, not terrain). **Leaving them solid would have put the terraces'
+vertical faces back in the push-out path and re-created the exact defect the height field removes** —
+that is why walking up the hill was impossible before.
+
+**§PROP-3's district grade relief is now UNBLOCKED but still not built.** The mechanical blocker is
+gone; whether to grade the district ground is a design call nobody has made, and locked decision 21's
+lesson about un-anticipated interactions applies — the districts' buildings, roads and 1,376 props
+all assume a flat y = 0.
 
 ### The original four, as run 2 reported them
 

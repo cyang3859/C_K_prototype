@@ -95,8 +95,8 @@ export class WorldProps {
     // reason it was created before `StreetBlock`: pools register their AABBs as
     // they build. The parapet ring's four boxes per building are the ones that
     // must not be lost — they are what stops the hero walking off a roof edge.
-    for (const box of p.parapetColliders) this.collision.addBuilding(box);
-    for (const box of p.hvacColliders) this.collision.addBuilding(box);
+    for (const box of p.parapetColliders) this.collision.addBuilding(box, this);
+    for (const box of p.hvacColliders) this.collision.addBuilding(box, this);
 
     scene.add(this.group);
   }
@@ -746,6 +746,11 @@ export class WorldProps {
     this._disposables.length = 0;
     this.pools.clear();
     this.scene.remove(this.group);
+    // Drops exactly this module's parapet and rooftop-unit colliders. Before
+    // `removeOwner` existed the only tool was `clearBuildings()`, which would
+    // also have dropped both districts' footprints — so nothing was dropped at
+    // all, and the teardown assertion had to be deleted. It is back.
+    this.collision.removeOwner(this);
   }
 }
 

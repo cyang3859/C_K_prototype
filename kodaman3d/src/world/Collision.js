@@ -52,6 +52,16 @@ const STAND_CLEARANCE = 0.05;
 const DEFAULT_SNAP_TOLERANCE = 0.05;
 
 /**
+ * How far the feet may be lifted onto TERRAIN in one fixed step, metres.
+ *
+ * Only applies to a registered height field, never to a box roof — stepping up
+ * onto a building because you brushed its side is exactly the bug this project
+ * already fixed once via `STAND_CLEARANCE`. See the use site for why a
+ * per-step allowance is really a slope limit.
+ */
+const DEFAULT_MAX_TERRAIN_STEP = 0.5;
+
+/**
  * Build the 4 thin, tall perimeter volumes that enforce the playable extent.
  *
  * The playable-extent mechanism is deliberately *not* a special case: the
@@ -127,6 +137,8 @@ export function resolveCapsule(position, radius, height, boxes, options = {}) {
     previousY = position.y,
     groundPlane = true,
     snapTolerance = DEFAULT_SNAP_TOLERANCE,
+    groundHeightAt = null,
+    maxTerrainStep = DEFAULT_MAX_TERRAIN_STEP,
   } = options;
 
   const result = { onGround: false, groundY: position.y, pushed: false, surfaceIndex: -1 };
@@ -143,8 +155,27 @@ export function resolveCapsule(position, radius, height, boxes, options = {}) {
     let bestY = -Infinity;
     let bestIndex = -1;
 
-    if (groundPlane && 0 <= from + EPS && 0 >= lowerBound) {
-      bestY = 0;
+    if (groundPlane) {
+      // The "ground" is y = 0 unless a terrain field says otherwise.
+      const gy = groundHeightAt ? groundHeightAt(position.x, position.z) : 0;
+
+      // Flat ground uses the strict crossed-it test. Terrain gets an extra
+      // allowance UPWARD, and it needs one: walking uphill, the surface under
+      // your feet is HIGHER than where the step began, so the crossed-it test
+      // rejects it and the hero walks straight through the hillside. Allowing a
+      // small step up is what turns a height field into a walkable slope — it is
+      // the same allowance every character controller makes for stairs and
+      // kerbs, applied to a continuous surface.
+      //
+      // The limit is per-step, not per-second, so it is a slope limit in
+      // disguise: at 7.5 m/s the hero covers 0.125 m per fixed step, so a 0.5 m
+      // allowance tops out around a 4:1 grade. Steeper than that and the hero
+      // stops climbing instead of teleporting up a cliff face, which is the
+      // behaviour to want.
+      const rise = gy > 0 ? maxTerrainStep : EPS;
+      if (gy <= from + rise && gy >= lowerBound) {
+        bestY = gy;
+      }
     }
 
     for (let i = 0; i < boxes.length; i++) {
@@ -400,27 +431,129 @@ export class CollisionWorld {
   constructor({ halfExtent = 150 } = {}) {
     /** @type {THREE.Box3[]} solid, visible geometry the camera should also respect. */
     this.buildings = [];
+    /**
+     * Who registered each entry in `buildings`, index for index.
+     *
+     * PARALLEL ARRAY RATHER THAN `{box, owner}` RECORDS, deliberately: `buildings`
+     * is handed straight to `raycastBoxes`/`spherecastBoxes` as a plain `Box3[]`,
+     * and several tests read it as one. Keeping the public shape unchanged is
+     * worth one bookkeeping array.
+     * @type {Array<object|null>}
+     */
+    this._owners = [];
+    /**
+     * Whether each entry in `buildings` also blocks the HERO, index for index.
+     *
+     * Almost everything does. The exception is terrain: the hill registers boxes
+     * so the CAMERA cannot sink through the hillside, but the hero walks on the
+     * real height field instead, and leaving those same boxes solid would have
+     * their vertical faces shove him off the slope — the exact defect the height
+     * field exists to remove.
+     * @type {boolean[]}
+     */
+    this._solid = [];
     /** @type {THREE.Box3[]} invisible playable-extent walls. */
     this.boundaries = createBoundaryBoxes(halfExtent);
     /** @type {THREE.Box3[]} the concatenated list used for capsule resolution. */
     this.boxes = [...this.boundaries];
+    /** @type {Array<(x:number,z:number)=>number>} registered terrain height fields. */
+    this._terrain = [];
     this.halfExtent = halfExtent;
   }
 
   /**
    * Register a building's world-space AABB.
+   *
+   * `owner` is what makes teardown possible without a shared-list problem. Before
+   * it existed, `StreetBlock.dispose()` called `clearBuildings()` — fine when one
+   * module owned every collider, wrong the moment two districts and a prop pool
+   * share the list, because clearing on behalf of one drops all three. Passing an
+   * owner lets each module remove exactly its own.
+   *
    * @param {THREE.Box3} box
+   * @param {object|null} [owner] whatever registered it; identity-compared.
+   * @param {object} [opts]
+   * @param {boolean} [opts.solid=true] false registers the box for the CAMERA
+   *   only — see `_solid`. Use it for anything the hero should pass through but
+   *   the camera arm should not.
    */
-  addBuilding(box) {
+  addBuilding(box, owner = null, { solid = true } = {}) {
     this.buildings.push(box);
-    this.boxes.push(box);
+    this._owners.push(owner);
+    this._solid.push(solid);
+    if (solid) this.boxes.push(box);
     return box;
+  }
+
+  /**
+   * Drop every collider registered by one owner, leaving everyone else's alone.
+   *
+   * @param {object} owner the same reference passed to `addBuilding`
+   * @returns {number} how many colliders were removed
+   */
+  removeOwner(owner) {
+    const boxes = [];
+    const owners = [];
+    const solid = [];
+    for (let i = 0; i < this.buildings.length; i++) {
+      if (this._owners[i] === owner) continue;
+      boxes.push(this.buildings[i]);
+      owners.push(this._owners[i]);
+      solid.push(this._solid[i]);
+    }
+    const removed = this.buildings.length - boxes.length;
+    this.buildings = boxes;
+    this._owners = owners;
+    this._solid = solid;
+    this._rebuildBoxes();
+    return removed;
   }
 
   /** Drop every building collider, keeping the boundary. For teardown/HMR. */
   clearBuildings() {
     this.buildings.length = 0;
+    this._owners.length = 0;
+    this._solid.length = 0;
     this.boxes = [...this.boundaries];
+  }
+
+  /** Rebuild the capsule list from the boundary plus every SOLID building. */
+  _rebuildBoxes() {
+    this.boxes = [...this.boundaries];
+    for (let i = 0; i < this.buildings.length; i++) {
+      if (this._solid[i]) this.boxes.push(this.buildings[i]);
+    }
+  }
+
+  /**
+   * Register a terrain height field — a pure `(x, z) -> height` over world space.
+   *
+   * WHY A FUNCTION AND NOT A MESH. This module has no scene-graph access by
+   * design (see the file header), so terrain arrives as maths, not as geometry.
+   * A provider MUST return 0 outside its own footprint, so several can coexist
+   * and the tallest simply wins.
+   *
+   * @param {(x:number, z:number) => number} heightAt
+   */
+  addTerrain(heightAt) {
+    this._terrain.push(heightAt);
+    return heightAt;
+  }
+
+  /**
+   * Ground height at a world point: the tallest registered terrain field, or 0
+   * where none applies. This is the surface `resolveCapsule` snaps feet onto in
+   * place of the old hard-coded y = 0 plane.
+   *
+   * @param {number} x @param {number} z
+   */
+  groundHeightAt(x, z) {
+    let best = 0;
+    for (const f of this._terrain) {
+      const h = f(x, z);
+      if (h > best) best = h;
+    }
+    return best;
   }
 
   /**
@@ -431,7 +564,12 @@ export class CollisionWorld {
    * @param {object} [options]
    */
   resolve(position, radius, height, options) {
-    return resolveCapsule(position, radius, height, this.boxes, options);
+    return resolveCapsule(position, radius, height, this.boxes, {
+      // Only pay for the lookup when terrain actually exists, so a world without
+      // any keeps the exact flat-plane path it has always had.
+      groundHeightAt: this._terrain.length ? (x, z) => this.groundHeightAt(x, z) : undefined,
+      ...options,
+    });
   }
 
   /**

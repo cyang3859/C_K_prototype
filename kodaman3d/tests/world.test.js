@@ -495,7 +495,7 @@ describe('District B with its annex, built', () => {
     expect(textures.length).toBe(22);
   });
 
-  it('disposes cleanly and drops every prop pool', () => {
+  it('disposes cleanly and drops every prop pool AND every collider it added', () => {
     const local = new THREE.Scene();
     const world = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
     const p = new WorldProps({ scene: local, collision: world });
@@ -504,6 +504,30 @@ describe('District B with its annex, built', () => {
     p.dispose();
     expect(p._disposables.length).toBe(0);
     expect(local.children.length).toBe(0);
+    // RESTORED. Run 2 had to delete this assertion: the only teardown tool was
+    // `clearBuildings()`, which would have dropped the districts' footprints as
+    // well, so `WorldProps` correctly cleared nothing. `removeOwner` makes the
+    // assertion meaningful again rather than merely passable.
+    expect(world.buildings.length).toBe(0);
+  });
+
+  it('drops ONLY its own colliders, never a co-owner’s', () => {
+    // The property that made `clearBuildings()` unusable here, pinned directly:
+    // a second registrant's boxes must survive `WorldProps.dispose()`.
+    const local = new THREE.Scene();
+    const world = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const someoneElse = {};
+    const theirs = world.addBuilding(
+      new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 1, 1)),
+      someoneElse,
+    );
+
+    const p = new WorldProps({ scene: local, collision: world });
+    expect(world.buildings.length).toBeGreaterThan(1);
+    p.dispose();
+
+    expect(world.buildings).toEqual([theirs]);
+    expect(world.boxes).toContain(theirs);
   });
 });
 
@@ -839,5 +863,69 @@ describe('the hill (§PROP-3)', () => {
     expect(drawCallInventory(scene).total).toBe(2);
     expect(collision.buildings.length).toBe(hillColliderBoxes().length);
     expect(collision.buildings.length).toBeGreaterThan(3);
+  });
+
+  it('registers its terraces for the CAMERA only, never for the hero', () => {
+    // The terraces exist so the camera arm cannot sink through the hillside.
+    // They must NOT be in the capsule list: their vertical faces would shove the
+    // hero off the slope, which is the exact defect the height field removes.
+    installCanvasStub();
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    new Terrain({ scene, collision });
+
+    expect(collision.buildings.length).toBe(hillColliderBoxes().length);
+    // Capsule list is the boundary and nothing else.
+    expect(collision.boxes.length).toBe(collision.boundaries.length);
+  });
+
+  it('the hero walks ON the hill, not through it and not on a terrace edge', () => {
+    installCanvasStub();
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    new Terrain({ scene, collision });
+
+    // Walk a radial line from the rim to the summit at a real ground speed, one
+    // fixed step at a time, and require the feet to track the true surface the
+    // whole way. Against the old stepped boxes this could not pass: the hero
+    // would be pushed out horizontally at the first terrace face.
+    const step = 7.5 / 60; // MAX_SPEED at 60 Hz
+    const pos = { x: HILL.cx, y: 0, z: HILL.cz + HILL.radius - 1 };
+    let climbed = 0;
+
+    for (let i = 0; i < 1200 && pos.z > HILL.cz; i++) {
+      const previousY = pos.y;
+      pos.z -= step;
+      const r = collision.resolve(pos, 0.35, 1.8, { previousY });
+      const surface = hillHeight(pos.x - HILL.cx, pos.z - HILL.cz);
+      expect(r.onGround).toBe(true);
+      // On the surface, not inside it and not floating above it.
+      expect(Math.abs(pos.y - surface)).toBeLessThan(0.01);
+      climbed = Math.max(climbed, pos.y);
+    }
+
+    // It actually got somewhere: most of the way up a 68 m hill.
+    expect(climbed).toBeGreaterThan(HILL.height * 0.9);
+  });
+
+  it('does not let the step-up allowance climb a wall', () => {
+    // The terrain allowance must not become a general step-up: brushing a
+    // building should never lift the hero onto its roof.
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const wall = new THREE.Box3(
+      new THREE.Vector3(-5, 0, -5),
+      new THREE.Vector3(5, 0.3, 5), // a 30 cm kerb — well inside the 0.5 m terrain allowance
+    );
+    collision.addBuilding(wall, null);
+
+    const pos = { x: 0, y: 0, z: 8 };
+    for (let i = 0; i < 200; i++) {
+      const previousY = pos.y;
+      pos.z -= 7.5 / 60;
+      collision.resolve(pos, 0.35, 1.8, { previousY });
+    }
+    // Pushed out horizontally, still on the ground plane — never lifted on top.
+    expect(pos.y).toBeCloseTo(0, 6);
+    expect(pos.z).toBeGreaterThan(5);
   });
 });

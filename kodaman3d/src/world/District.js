@@ -395,7 +395,7 @@ export class District {
     // updated first — Phase 1's rule, kept. See `buildingWorldBox` for the
     // rotated-footprint approximation District A carries.
     for (const b of this.buildings) {
-      this.collision.addBuilding(buildingWorldBox(b, this.spec));
+      this.collision.addBuilding(buildingWorldBox(b, this.spec), this);
     }
   }
 
@@ -462,7 +462,7 @@ export class District {
     this._disposables.push(built.mesh.material);
     this.grid.add(built.mesh);
 
-    for (const box of built.colliderBoxes(this.spec)) this.collision.addBuilding(box);
+    for (const box of built.colliderBoxes(this.spec)) this.collision.addBuilding(box, this);
   }
 
   // ----------------------------------------------------------------- plumbing
@@ -504,6 +504,9 @@ export class District {
     for (const d of this._disposables) d.dispose();
     this._disposables.length = 0;
     this.scene.remove(this.group);
+    // This district's footprints and landmark boxes only — the other district's
+    // survive. That is the whole reason `removeOwner` takes an owner.
+    this.collision.removeOwner(this);
   }
 }
 
