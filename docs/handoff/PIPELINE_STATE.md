@@ -147,18 +147,51 @@ re-running ~59 tool calls of research on Sonnet. One-time, deliberate.
 | Research — Phase 2 world (run 1 of 2) | Sonnet | **done** — 198,801 tokens | `RESEARCH_PHASE_2_WORLD.md` (1,009 lines, 38 findings) |
 | Research — Phase 2 character (run 2 of 2) | Sonnet | **done** — 215,614 tokens | `RESEARCH_PHASE_2_CHARACTER.md` (937 lines, 29 findings) |
 
-Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of code.**
+⚠️ **That table stops at session 6 and is not maintained.** For current status read the resume block
+above; for the code read `KNOWLEDGE_BASE.md`. **Re-measured 2026-08-01, session 10: the planning
+corpus is ~14,300 lines across 34 documents, and `kodaman3d/src` is 8,867 lines across 24 files** —
+the "4,132 lines across 7 documents / 6,691 lines of code" figures this line used to carry were a
+session-5 snapshot.
 
 ---
 
-## >>> RESUME HERE — session 10, opened 2026-08-01 <<<
+## >>> RESUME HERE — session 10 closed 2026-08-01, deliberately, by the user <<<
 
-**State re-verified independently at the top of the session, not taken from this file:** 148/148
-tests, working tree clean apart from the pre-existing untracked `KODAMAN_HANDOFF.md`, **0 unpushed
-commits**, nothing interrupted or stranded.
+**Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` in
+sync, **0 unpushed commits**, working tree clean apart from the pre-existing untracked
+`KODAMAN_HANDOFF.md`. **177/177 tests.** `main` untouched at `5f62309`. `kodaman_prototype.html`
+**zero diff**. No agent was running when the session ended and **nothing was interrupted or
+stranded.** 6 commits this session.
 
-**The user chose housekeeping over spawning Engineer run 2.** Zero subagent tokens spent; all work
-inline.
+### Do this first next session: **the code review.** It is fully briefed.
+
+**`CODE_REVIEW_BRIEF.md` is written and committed** — self-contained, written to be run cold. It
+targets `main...HEAD` (74 files, +29,101, −0), names the seven highest-risk areas in priority order,
+and lists what is **already verified** so budget is not spent re-deriving measurements.
+
+**⚠️ It needs ONE user decision before spawning: the model.** The standing rule is all agents Sonnet
+except the Engineer on Opus; this stage did not exist when that rule was set. **The recommendation is
+Opus** — 4,000 lines of subtle geometry, collision and disposal code is closer to the Engineer's kind
+of work than to a document review. **Ask; do not deviate silently.**
+
+**Preferred vehicle is `/code-review ultra`, which the USER must trigger** — the assistant cannot
+launch it. `/code-review` is the assistant-invocable alternative.
+
+**Why this stage exists:** everything verified so far is *output* — draw calls, frame time,
+screenshots, tests. **Nobody has read the code critically.** ~4,000 lines have been examined by
+nothing but their own author. And the orchestrator both commissioned and spot-checked that code, so
+its own review is weak independence, not real independence. **The review informs the merge decision;
+it does not close it.** Locked decision 4 keeps the merge with the user.
+
+**Then:** fix findings → user reads the diff → merge → QA on the merged base.
+
+### Session 10 in one paragraph
+
+`KNOWLEDGE_BASE.md` was refreshed against the code (500 → 705 lines, five stale areas, 11 missing
+documents); **Engineer run 2 landed** and completed Phase 2's world half; its four open questions were
+all answered and locked as decisions 25–27; **both collision debts were paid**, which made the hill
+genuinely walkable; and PR #3 was brought up to date with an accurate title and description. **One
+orchestrator error, corrected in the same session** — see the PR note below.
 
 ### `KNOWLEDGE_BASE.md` is refreshed — 500 → 705 lines
 
@@ -320,6 +353,36 @@ CSM is the fix) and §6.4 (**fog is 120–900 m against a far longer sightline**
 untouched, because locked decision 11 makes that exact `Fog` object the world-edge-fade mechanism).
 Neither was run 2's scope. **CSM's real cost remains the biggest unmeasured unknown in the project**,
 and the 72 calls of headroom exist for it.
+
+---
+
+### PR #3 is current — and an orchestrator error about it, corrected
+
+**All 9 held-back commits were pushed at the user's instruction.** PR #3 now carries an accurate title
+(*"3D migration: Phase 1 vertical slice + Phase 2 world"*) and a rewritten description; the old one
+still said Phase 1, 105 tests, and 57 calls against a 60 ceiling. **Open, MERGEABLE, +29,101 / −0, 74
+files. The review and the merge remain the user's.**
+
+⚠️ **An error worth recording, because it produced confident wrong advice.** The orchestrator reported
+that PR #3's diff falsely showed a ~4,100-line change to `kodaman_prototype.html`, blamed a stale base
+branch, and offered the user three remedies. **All of it was wrong.** The cause was a **stale local
+`dev` ref** — the merge-base was computed without fetching first. `origin/dev` was already at
+`5f62309`, identical to `main`, and GitHub's own diff never included the file. **Lesson, now in the
+code-review brief: `git fetch` before computing any merge-base, and verify against `origin/*` rather
+than local branches.** The wrong section was removed from the PR description and the local ref reset.
+
+### Cost log — session 10
+
+| Agent | Tokens |
+|---|---|
+| Engineer — Phase 2, run 2 (Opus) | 395,367 |
+| **Session 10 total** | **~395,367** |
+
+Cross-session observable total: **~3,031,000.** **At ~395k, just under the 400k prep-to-pause mark —
+the user was told and chose to close here.** Everything else this session — the knowledge-base
+refresh, decisions 25–27, both collision debts, the browser verification, the PR work and this brief —
+was inline orchestrator work. Report raw counts only, never a percentage, and **never attempt to look
+up account usage.**
 
 ---
 
