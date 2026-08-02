@@ -30,7 +30,7 @@ npm install       # pinned dependency tree; must produce zero EBADENGINE warning
 npm run dev       # dev server on http://localhost:5173
 npm run build     # production bundle into dist/
 npm run preview   # serve the built bundle on http://localhost:4173
-npm test          # vitest, 60 unit tests, environment: 'node'
+npm test          # vitest, 185 unit tests, environment: 'node'
 npm run test:watch
 ```
 
@@ -88,7 +88,16 @@ kodaman3d/
 │   │   ├── LocomotionController.js  the grounded/takeoff/flying/landing FSM
 │   │   └── CameraRig.js             spring-arm camera, obstruction, ground/flight blend
 │   ├── world/
-│   │   ├── StreetBlock.js           the one authored block (data-driven)
+│   │   ├── districts.js             authored data for both districts (no geometry)
+│   │   ├── District.js              builds a district from that data
+│   │   ├── annex.js                 Phase 1's block, absorbed into District B (dec. 24)
+│   │   ├── facadeFamilies.js        the 7 facade families
+│   │   ├── facadeAtlas.js           shared procedural facade-painting kit
+│   │   ├── massing.js               the 5 massing recipes
+│   │   ├── props.js                 deterministic prop placement (data)
+│   │   ├── WorldProps.js            the instanced prop pools (geometry)
+│   │   ├── landmarks.js             District A's tower crown, District B's mast
+│   │   ├── terrain.js               Coco Hill — a real height field
 │   │   ├── Collision.js             static AABBs + capsule resolution (pure logic)
 │   │   └── Sky.js                   static midday lighting, fog, background
 │   ├── ui/
@@ -97,7 +106,9 @@ kodaman3d/
 │       └── tuning.js                every movement/camera constant, one source of truth
 └── tests/
     ├── locomotion.test.js           FSM, hover, dash, framerate independence
-    └── collision.test.js            ground, push-out, corners, boundary
+    ├── collision.test.js            ground, push-out, corners, boundary
+    ├── world.test.js                the annex, disposal, whole-world draw calls
+    └── districts.test.js            district data and built geometry
 ```
 
 ## Things worth knowing before you change anything

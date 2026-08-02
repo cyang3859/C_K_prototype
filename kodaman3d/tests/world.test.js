@@ -19,6 +19,8 @@ import { Sky } from '../src/world/Sky.js';
 import { Hero } from '../src/entities/Hero.js';
 import { HILL, Terrain, hillColliderBoxes, hillHeight } from '../src/world/terrain.js';
 import { WorldProps } from '../src/world/WorldProps.js';
+import { annexPropPlacements } from '../src/world/props.js';
+import { createHash } from 'node:crypto';
 import { createdContexts, installCanvasStub } from './support/canvas2d.js';
 
 /**
@@ -528,6 +530,75 @@ describe('District B with its annex, built', () => {
 
     expect(world.buildings).toEqual([theirs]);
     expect(world.boxes).toContain(theirs);
+  });
+
+  it('LOCKED DECISION 21/24: the annex prop placements are frozen', () => {
+    // Decision 24 says the absorbed block's content moves bit for bit, and
+    // decision 21 rests on it directly: District B KEEPS the Mexican fan palm,
+    // so the absorbed palms must stay exactly as Phase 1 placed them. The
+    // session-11 code review found that claim had no executable check at all --
+    // annexPalms, annexLamps, annexAwnings and annexBladeSigns appeared nowhere
+    // under tests/. The review verified by hand against 05eb5df:StreetBlock.js
+    // that they DO reproduce Phase 1 exactly; this freezes that so the next
+    // change to props.js cannot quietly move them.
+    const p = annexPropPlacements();
+
+    // Counts first, so an accidental duplication fails loudly and legibly.
+    expect(Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.length]))).toEqual({
+      parapets: 40,
+      parapetColliders: 40,
+      hvac: 22,
+      hvacColliders: 22,
+      awnings: 8,
+      bladeSigns: 4,
+      mexicanPalms: 50,
+      lamps: 24,
+    });
+
+    // Spot values, so a digest failure below is diagnosable rather than opaque.
+    expect(p.mexicanPalms[0].x).toBeCloseTo(-144, 10);
+    expect(p.mexicanPalms[0].z).toBeCloseTo(12.1, 10);
+    expect(p.lamps[0]).toEqual({ x: -132, z: 14.2, yaw: Math.PI });
+    expect(p.parapets[0].cy).toBeCloseTo(9.225, 10);
+
+    // And the whole set, digested. Any drift in any field of any placement moves
+    // one of these. Regenerate ONLY with a decision behind it.
+    const digest = (list) =>
+      createHash('sha256')
+        .update(
+          JSON.stringify(
+            JSON.parse(
+              JSON.stringify(list, (k, v) => (typeof v === 'number' ? Number(v.toFixed(6)) : v)),
+            ),
+          ),
+        )
+        .digest('hex')
+        .slice(0, 16);
+
+    expect({
+      awnings: digest(p.awnings),
+      bladeSigns: digest(p.bladeSigns),
+      hvac: digest(p.hvac),
+      hvacColliders: digest(p.hvacColliders),
+      lamps: digest(p.lamps),
+      mexicanPalms: digest(p.mexicanPalms),
+      parapetColliders: digest(p.parapetColliders),
+      parapets: digest(p.parapets),
+    }).toEqual({
+      awnings: 'd3ed8e1178e88546',
+      bladeSigns: '69f0f0d9a4b8f71b',
+      hvac: '2784b76ee3c78c5b',
+      hvacColliders: '69b7b54b2e216742',
+      lamps: '501d49b2496da260',
+      mexicanPalms: 'bc8e2d8b368e435d',
+      parapetColliders: '1549518ad9b809c4',
+      parapets: '11a04a879f14f827',
+    });
+
+    // Decision 21's other half: the annex's palms are the MEXICAN FAN, and the
+    // key is named so a Canary palm cannot arrive here without a rename.
+    expect(p.mexicanPalms.length).toBeGreaterThan(0);
+    expect(p.canaryPalms).toBeUndefined();
   });
 
   it('LOCKED DECISION 14: the hero has FOUR material groups, cape its own', () => {
