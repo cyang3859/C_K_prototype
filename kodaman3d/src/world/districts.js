@@ -341,20 +341,40 @@ export function annexBuildings() {
  * modular test gives whatever count the arithmetic happens to produce — the
  * first draft of this file silently shipped 19 primaries where §DA-2's share
  * called for 21, and nothing but a test caught it. Here the counts are the
- * input. The stride is coprime with `total`, so the walk visits every slot
+ * input. The stride must be coprime with `total`, so the walk visits every slot
  * exactly once and neighbouring slots get different bands.
+ *
+ * ⚠️ THE STRIDE IS SEARCHED FOR, NOT ASSUMED. It used to be
+ * `total % 2 === 0 ? total / 2 + 1 : 3` under a comment asserting coprimality —
+ * true for the only two totals this file passes (32 → 17, 36 → 19) and false in
+ * general: 10 → 6, 30 → 16 and 33 → 3 all share a factor. When it failed it
+ * failed SILENTLY, because the count check above has already passed and the
+ * holes are `undefined` that every consumer reads straight through to its final
+ * `else`. Since this file exists so that "a third district is data rather than a
+ * rewrite", a third district with 30 slots was a silently corrupt deal waiting
+ * to happen. Found by the session-11 code review.
  *
  * @param {number} total
  * @param {Array<[string, number]>} counts
  * @returns {string[]}
  */
-function dealBands(total, counts) {
+export function dealBands(total, counts) {
   const pool = [];
   for (const [name, n] of counts) for (let i = 0; i < n; i++) pool.push(name);
   if (pool.length !== total) {
     throw new Error(`dealBands: ${pool.length} labels for ${total} slots`);
   }
-  const stride = total % 2 === 0 ? total / 2 + 1 : 3;
+
+  // Start near total/2 so the deal spreads rather than clusters, then walk up to
+  // the first stride actually coprime with `total`. For 32 and 36 this returns
+  // 17 and 19 — the values that shipped — so no existing layout moves.
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  let stride = Math.floor(total / 2) + 1;
+  while (stride < total && gcd(stride, total) !== 1) stride++;
+  if (gcd(stride, total) !== 1) {
+    throw new Error(`dealBands: no stride coprime with ${total}`);
+  }
+
   const out = new Array(total);
   for (let i = 0; i < total; i++) out[(i * stride) % total] = pool[i];
   return out;

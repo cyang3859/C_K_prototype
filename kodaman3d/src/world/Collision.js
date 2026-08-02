@@ -128,9 +128,14 @@ export function createBoundaryBoxes(halfExtent, height = 400, thickness = 5) {
  *   Defaults to the current y (i.e. "no vertical motion this step").
  * @param {boolean} [options.groundPlane=true] whether an infinite plane at y=0 exists.
  * @param {number} [options.snapTolerance] how far below the feet still counts as contact.
- * @returns {{onGround:boolean, groundY:number, pushed:boolean, surfaceIndex:number}}
- *   `surfaceIndex` is the index in `boxes` of the roof landed on, or -1 for the
- *   ground plane / no contact.
+ * @returns {{onGround:boolean, groundY:number, pushed:boolean, surfaceBoxIndex:number}}
+ *   `surfaceBoxIndex` indexes the `boxes` ARGUMENT — the roof landed on, or -1
+ *   for the ground plane / no contact. ⚠️ It is NOT an index into
+ *   `CollisionWorld.buildings`, and the rename from `surfaceIndex` is there to
+ *   stop that mistake being spellable. `CollisionWorld.resolve` passes
+ *   `this.boxes`, which is `[...boundaries, ...SOLID buildings]`: the boundary
+ *   walls are present and the non-solid terrace colliders are absent, so the two
+ *   arrays diverge in both directions.
  */
 export function resolveCapsule(position, radius, height, boxes, options = {}) {
   const {
@@ -141,7 +146,7 @@ export function resolveCapsule(position, radius, height, boxes, options = {}) {
     maxTerrainStep = DEFAULT_MAX_TERRAIN_STEP,
   } = options;
 
-  const result = { onGround: false, groundY: position.y, pushed: false, surfaceIndex: -1 };
+  const result = { onGround: false, groundY: position.y, pushed: false, surfaceBoxIndex: -1 };
 
   // ---------------------------------------------------------------- vertical
   const from = previousY;
@@ -198,7 +203,7 @@ export function resolveCapsule(position, radius, height, boxes, options = {}) {
       position.y = bestY;
       result.onGround = true;
       result.groundY = bestY;
-      result.surfaceIndex = bestIndex;
+      result.surfaceBoxIndex = bestIndex;
     }
   }
 

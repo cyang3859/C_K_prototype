@@ -180,7 +180,7 @@ export class LocomotionController {
     this._delta = new THREE.Vector3();
 
     /** Last contact report, exposed for the debug HUD. */
-    this.lastContact = { onGround: true, groundY: 0, pushed: false, surfaceIndex: -1 };
+    this.lastContact = { onGround: true, groundY: 0, pushed: false, surfaceBoxIndex: -1 };
   }
 
   /**

@@ -21,6 +21,7 @@ import {
   buildingWorldBox,
   districtABuildings,
   districtBBuildings,
+  dealBands,
   localToWorld,
   slotCentres,
 } from '../src/world/districts.js';
@@ -32,6 +33,7 @@ import { HILL_NAME } from '../src/world/terrain.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { TUNING } from '../src/config/tuning.js';
 import { installCanvasStub } from './support/canvas2d.js';
 import { allPropPlacements, localKeepOutBoxes } from '../src/world/props.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
@@ -132,6 +134,77 @@ describe('facade families (§4)', () => {
     expect(FACADE_FAMILIES.fam4CreamStucco).toEqual(FACADE_VARIANTS.lowriseA);
     expect(FACADE_FAMILIES.fam6SteelBlueGlass).toEqual(FACADE_VARIANTS.midriseA);
     expect(FACADE_FAMILIES.fam7BronzeGlass).toEqual(FACADE_VARIANTS.midriseB);
+  });
+
+  it('the fence and the world geometry are the SAME 610, not two of them', () => {
+    // `PLAYABLE_HALF_EXTENT` is what the running game passes to CollisionWorld
+    // (Game.js); `WORLD_HALF_EXTENT` is derived from District A's 36°-rotated
+    // envelope and is what every test constructs a world with. Two independent
+    // constants encoded "the true edge", and tuning.js's own comment said this
+    // one "must track it" -- in prose. So the shipped fence sat at the true edge
+    // by coincidence, and the tests never exercised the number the game runs
+    // with. Move District A and the fence silently stays put, ending up inside
+    // built geometry: exactly the "unreachable safety net, never the player's
+    // experience" property of locked decision 11, broken. Found by the
+    // session-11 code review.
+    expect(TUNING.PLAYABLE_HALF_EXTENT).toBe(WORLD_HALF_EXTENT);
+
+    // And the derivation still holds: District A's rotated envelope is what sets
+    // the number, so it must actually fit inside the fence.
+    const envelope = 300 * (Math.cos(DISTRICT_A_ROTATION) + Math.sin(DISTRICT_A_ROTATION));
+    const a = DISTRICTS.find((d) => d.id === 'districtA');
+    expect(Math.abs(a.origin.x) + envelope / 2).toBeLessThanOrEqual(WORLD_HALF_EXTENT);
+  });
+
+  it('dealBands leaves no holes, for any total a third district might use', () => {
+    // The stride used to be `total % 2 === 0 ? total / 2 + 1 : 3` under a comment
+    // asserting it was coprime with `total`. That held for the only two totals
+    // this file passes (32, 36) and failed for many others -- 10, 30 and 33 all
+    // share a factor -- and when it failed it failed SILENTLY: the count check
+    // has already passed, so the deal simply left `undefined` holes that every
+    // consumer read straight through to its final `else`. This file exists so
+    // "a third district is data rather than a rewrite", which makes untested
+    // totals the case that matters. Found by the session-11 code review.
+    for (let total = 4; total <= 64; total++) {
+      const counts = [
+        ['primary', Math.floor(total / 2)],
+        ['secondary', Math.ceil(total / 2) - 1],
+        ['podium', 1],
+      ];
+      const bands = dealBands(total, counts);
+      expect(bands, `total ${total}`).toHaveLength(total);
+      expect(bands.filter((b) => b === undefined), `holes at total ${total}`).toEqual([]);
+      // And the deal is EXACT -- the property the function exists for.
+      for (const [name, n] of counts) {
+        expect(bands.filter((b) => b === name).length, `${name} at total ${total}`).toBe(n);
+      }
+    }
+  });
+
+  it('dealBands still deals 32 and 36 exactly as it shipped', () => {
+    // The searched stride must return 17 and 19 for the two totals in the build,
+    // or the fix would silently re-lay both districts.
+    // Literals, not the formula -- recomputing the implementation would make
+    // this test agree with any stride the code happened to pick.
+    for (const [total, stride] of [
+      [32, 17],
+      [36, 19],
+    ]) {
+      const bands = dealBands(total, [
+        ['primary', total - 3],
+        ['secondary', 2],
+        ['podium', 1],
+      ]);
+      const expected = new Array(total);
+      const pool = [
+        ...Array(total - 3).fill('primary'),
+        'secondary',
+        'secondary',
+        'podium',
+      ];
+      for (let i = 0; i < total; i++) expected[(i * stride) % total] = pool[i];
+      expect(bands).toEqual(expected);
+    }
   });
 
   it('FAM-5 adds a cornice course to lowriseB and changes NOTHING else', () => {

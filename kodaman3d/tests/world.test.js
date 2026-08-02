@@ -530,6 +530,40 @@ describe('District B with its annex, built', () => {
     expect(world.boxes).toContain(theirs);
   });
 
+  it('LOCKED DECISION 14: the hero has FOUR material groups, cape its own', () => {
+    // Decision 14 was AMENDED specifically to reject the 3-group reading -- "suit,
+    // skin, accent/cape" -- because 3 groups is 3 main + 3 shadow = 6 calls, not
+    // the 8 that decision states. The code shipped the rejected shape anyway: three
+    // materials, with the cape drawing `accent` and no other user. The session-11
+    // code review caught it.
+    //
+    // The hero is not rigged yet, so this pins the GROUPING the code commits to,
+    // not the draw-call number. It matters now because whoever merges the
+    // Quaternius rig inherits this object's shape, and a 3-key `materials` is
+    // what silently produces 3 groups and no accent.
+    const local = new THREE.Scene();
+    const hero = new Hero({ scene: local });
+
+    expect(Object.keys(hero.materials).sort()).toEqual(['accent', 'cape', 'skin', 'suit']);
+    // The cape's material is its own object, not an alias of accent.
+    expect(hero.materials.cape).not.toBe(hero.materials.accent);
+    // §CAPE-1: the cape is double-sided and the accent group is not.
+    expect(hero.materials.cape.side).toBe(THREE.DoubleSide);
+    expect(hero.materials.accent.side).not.toBe(THREE.DoubleSide);
+    // The cape mesh actually uses it.
+    expect(local.getObjectByName('hero').getObjectByName('cape').material).toBe(
+      hero.materials.cape,
+    );
+
+    // A persona swap still repaints the cape, so nothing about the look changes.
+    hero.setPersona('civilian');
+    expect(hero.materials.cape.color.getHex()).toBe(hero.materials.accent.color.getHex());
+    hero.setPersona('super');
+    expect(hero.materials.cape.color.getHex()).toBe(hero.materials.accent.color.getHex());
+
+    hero.dispose();
+  });
+
   it('Terrain.dispose() drops its height field, not just its camera boxes', () => {
     // The leak the session-11 code review found. `addTerrain` had no removal
     // path at all, so `Terrain.dispose()` could undo its colliders and never its

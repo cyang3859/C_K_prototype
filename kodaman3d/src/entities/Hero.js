@@ -99,12 +99,32 @@ export class Hero {
     this.group.name = 'hero';
     this.group.position.copy(this.state.position);
 
-    // Shared materials. Three of them, reused across every part, which is what
-    // makes a persona swap a three-line colour write rather than a mesh rebuild.
+    // Shared materials, reused across every part, which is what makes a persona
+    // swap a colour write rather than a mesh rebuild.
+    //
+    // FOUR GROUPS — SUIT, SKIN, ACCENT, AND THE CAPE AS ITS OWN — per LOCKED
+    // DECISION 14. ⚠️ This shipped as THREE, with the cape drawing `accent` and
+    // no other user, which is precisely the "3 material groups, accent/cape
+    // folded together" reading decision 14 was AMENDED to reject (3 groups is
+    // 3 main + 3 shadow = 6 calls, not the 8 that row states). The session-11
+    // code review caught the code quietly committing to the rejected shape.
+    //
+    // It costs nothing today because the hero is not rigged: the number that
+    // matters is the 8-call budget once a Quaternius rig lands, and whoever
+    // merges that rig inherits THIS object's shape. A 3-key `materials` is the
+    // thing that silently produces 3 groups and no accent at all. Splitting now
+    // is a one-line change; splitting later is a signature change.
+    //
+    // The cape keeps the accent COLOUR — it is the same red, and nothing about
+    // how the hero looks changes here — but it owns its material, which it needs
+    // regardless: §CAPE-1 requires double-sided, and `accent` should not be
+    // double-sided for belt/emblem/boot geometry that is closed.
+    const capeRed = 0xc0392b;
     this.materials = {
       suit: new THREE.MeshStandardMaterial({ color: 0x3a6fd9, roughness: 0.6, metalness: 0.05 }),
-      accent: new THREE.MeshStandardMaterial({
-        color: 0xc0392b,
+      accent: new THREE.MeshStandardMaterial({ color: capeRed, roughness: 0.7 }),
+      cape: new THREE.MeshStandardMaterial({
+        color: capeRed,
         roughness: 0.7,
         side: THREE.DoubleSide,
       }),
@@ -199,7 +219,7 @@ export class Hero {
     // rather than being centred on them.
     capeGeo.translate(0, -0.55, 0);
 
-    const cape = new THREE.Mesh(capeGeo, this.materials.accent);
+    const cape = new THREE.Mesh(capeGeo, this.materials.cape);
     cape.name = 'cape';
     cape.castShadow = true;
     this.capeAnchor.add(cape);
@@ -457,6 +477,9 @@ export class Hero {
     this.state.persona = persona;
     this.materials.suit.color.setHex(colors.suit);
     this.materials.accent.color.setHex(colors.accent);
+    // The cape is its own group (decision 14) but tracks the accent colour, so a
+    // persona swap still reads as one costume change.
+    this.materials.cape.color.setHex(colors.accent);
     this.materials.skin.color.setHex(colors.skin);
   }
 

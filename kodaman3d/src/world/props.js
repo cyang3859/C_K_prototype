@@ -132,11 +132,16 @@ export function parapetPlacements(buildings, yaw = 0) {
  */
 export function annexPropPlacements() {
   const buildings = ANNEX.buildings;
+  const hvacUnitsOnce = hvacUnits(buildings);
   return {
     parapets: parapetPlacements(buildings),
     parapetColliders: buildings.flatMap((b) => parapetBoxes(b)),
-    hvac: hvacUnits(buildings).map((u) => ({ ...u, yaw: 0 })),
-    hvacColliders: hvacUnits(buildings).map((u) => hvacBox(u)),
+    hvac: hvacUnitsOnce.map((u) => ({ ...u, yaw: 0 })),
+    // ⚠️ The SAME list, not a second generated one. This used to call
+    // `hvacUnits(buildings)` twice and box the second result, so the colliders
+    // wrapped units that only coincided with the drawn ones because the
+    // generator is deterministic — an implicit coupling one `const` removes.
+    hvacColliders: hvacUnitsOnce.map((u) => hvacBox(u)),
     awnings: annexAwnings(),
     bladeSigns: annexBladeSigns(),
     mexicanPalms: annexPalms(),
@@ -292,10 +297,10 @@ export function frontage(b) {
   if (dz <= dx) {
     // Fronting a street that runs along X: the facade normal is ±Z.
     const sign = b.lz > nz ? -1 : 1;
-    return { axis: 'z', sign, yaw: sign > 0 ? 0 : Math.PI, width: b.w, depth: b.d };
+    return { axis: 'z', sign, yaw: sign > 0 ? 0 : Math.PI, width: b.w };
   }
   const sign = b.lx > nx ? -1 : 1;
-  return { axis: 'x', sign, yaw: sign > 0 ? Math.PI / 2 : -Math.PI / 2, width: b.d, depth: b.w };
+  return { axis: 'x', sign, yaw: sign > 0 ? Math.PI / 2 : -Math.PI / 2, width: b.d };
 }
 
 /**

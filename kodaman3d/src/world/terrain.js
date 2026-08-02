@@ -36,28 +36,40 @@ import { hash01 } from './facadeAtlas.js';
  * design decision nobody has made.
  *
  * ===========================================================================
- * WHAT §PROP-3 ASKED FOR THAT THIS FILE DOES **NOT** DO
+ * WHAT §PROP-3 ASKED FOR THAT THIS FILE STILL DOES **NOT** DO
  * ===========================================================================
  * §PROP-3 also proposes "gentle grade relief riding on the existing ground
- * subdivision" across the districts, on the argument that it is close to free.
- * It is free in triangles and it is NOT free in behaviour: `Collision.js` models
- * the ground as an implicit flat plane at y = 0 with no height query anywhere,
- * so displacing the district ground would put the hero's feet through every
- * slope in the world. Grading the districts needs a terrain height lookup in the
- * locomotion resolve path, which is a `Collision.js` change and is not this
- * run's. **The relief is cut and the reason is mechanical, not budgetary.**
+ * subdivision" across the districts. It is still not built — but as of `c09f9db`
+ * the reason has changed, and the distinction matters to whoever picks it up.
+ *
+ * ⚠️ HISTORY, KEPT BECAUSE THIS PARAGRAPH IS THE REASON OF RECORD FOR A CUT.
+ * This header used to say the relief was blocked MECHANICALLY: that
+ * `Collision.js` modelled the ground as an implicit flat plane with no height
+ * query anywhere, so displacing the district ground would put the hero's feet
+ * through every slope. **That was true when written and is now false.**
+ * `CollisionWorld.addTerrain` / `groundHeightAt` exist, `resolve` consumes the
+ * field, and the step-up allowance is implemented. The session-11 code review
+ * caught this paragraph still asserting the old constraint as a live fact —
+ * which would have told the next reader that shipped work was still impossible.
+ *
+ * **The blocker is now a DESIGN call, not a mechanical one.** Nobody has decided
+ * whether the district ground should be graded, and locked decision 21's lesson
+ * about un-anticipated interactions applies with force: the districts' buildings,
+ * roads and ~1,376 props all assume a flat y = 0.
  *
  * ===========================================================================
- * THE COLLIDER IS A STEPPED APPROXIMATION, STATED RATHER THAN HIDDEN
+ * THE HILL'S COLLISION, AND WHY THE TERRACE BOXES ARE STILL HERE
  * ===========================================================================
- * The same AABB-only collision model cannot represent a slope. The hill
- * registers a stack of nested boxes, each one's TOP at the true surface height
- * for its own footprint — so the hero landing anywhere on it lands ON the
- * surface or slightly above it, never inside. The error direction is deliberate:
- * a terrace edge may leave a metre of daylight under the hero's feet, where the
- * opposite choice would bury them in the hillside. Walking UP the hill is not
- * possible (there is no step-up logic); flying onto it is, which is how this
- * game is played. Real terrain collision is a follow-on.
+ * The hill is REAL TERRAIN: it registers its height field with
+ * `CollisionWorld.addTerrain`, so the ground under the hero simply *is* the
+ * surface and he walks continuously from rim to summit. See the constructor.
+ *
+ * The stack of nested boxes it used to rely on is still registered, but with
+ * `solid: false` — meaning the CAMERA sees them and the hero does not. They
+ * exist so the camera arm cannot sink through the hillside (`spherecast` reads
+ * `buildings`, not terrain). Making them solid again would put their vertical
+ * faces back in the push-out path and re-create the exact defect the height
+ * field removes, which is why walking up the hill was impossible before.
  */
 
 /**

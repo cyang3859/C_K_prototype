@@ -74,7 +74,7 @@ describe('resolveCapsule — vertical / ground', () => {
     const r = resolveCapsule(pos, R, H, boxes, { previousY: 40 });
     expect(r.onGround).toBe(true);
     expect(pos.y).toBe(30);
-    expect(r.surfaceIndex).toBe(0);
+    expect(r.surfaceBoxIndex).toBe(0);
   });
 
   it('does not snap down onto a rooftop while ascending past it', () => {
