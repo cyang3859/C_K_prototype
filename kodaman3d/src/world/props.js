@@ -648,7 +648,11 @@ export function allPropPlacements() {
   for (const spec of DISTRICTS) {
     sets.push(
       districtPropPlacements(spec, {
-        roofProps: spec.id === 'districtA', // §10 item 5
+        // §10 item 5 scoped roof furniture to District A. **User decision
+        // 2026-08-01: they go on District B's generated buildings too.** Zero
+        // draw calls — both pools already exist and already span the annex, so
+        // this only adds instances to them. Locked as decision 26.
+        roofProps: true,
         storefront: spec.id === 'districtB', // §10 item 6
         canaryPalms: spec.id === 'districtA', // locked decision 21
         mexicanPalms: spec.id === 'districtB', // locked decision 21

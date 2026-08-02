@@ -377,9 +377,16 @@ describe('District B with its annex, built', () => {
     }
     // 46 District B footprints + 1 landmark, plus everything WorldProps
     // registers for the WHOLE world (it is world-shared, so it does not care
-    // that only District B was built here): 40 annex parapet bars + 86 rooftop
-    // units, 22 of them the annex's and 64 District A's.
-    expect(collision.buildings.length).toBe(46 + 1 + 40 + 86);
+    // that only District B was built here): 40 annex parapet bars + 158 rooftop
+    // units — 22 the annex's, 64 District A's and 72 District B's.
+    //
+    // ⚠️ 86 -> 158 is locked decision 26, not a drift. Roof furniture used to be
+    // scoped to District A (§10 item 5); the user extended it to District B's
+    // generated buildings on 2026-08-01. Rooftop units are colliders ON PURPOSE
+    // — a player who can land on a roof can walk into one — so extending the
+    // pool necessarily extends the collider count. Draw calls are unchanged at
+    // zero: both pools already existed and already spanned the annex.
+    expect(collision.buildings.length).toBe(46 + 1 + 40 + 158);
   });
 
   it('registers a collider for every rooftop mechanical unit', () => {

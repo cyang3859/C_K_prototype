@@ -9,6 +9,7 @@ import {
 import {
   CELL_PITCH,
   DISTRICTS,
+  DISTRICT_HALF,
   STREET_LINES,
   WORLD_HALF_EXTENT,
   DISTRICT_A_ROTATION,
@@ -27,6 +28,7 @@ import { CollisionWorld } from '../src/world/Collision.js';
 import { District } from '../src/world/District.js';
 import { FACADE_VARIANTS } from '../src/world/annex.js';
 import { MAST_SIGN_TEXT } from '../src/world/landmarks.js';
+import { HILL_NAME } from '../src/world/terrain.js';
 import { installCanvasStub } from './support/canvas2d.js';
 import { allPropPlacements, localKeepOutBoxes } from '../src/world/props.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
@@ -477,6 +479,58 @@ describe('District, built', () => {
     }
   });
 
+  it('the annex boulevard reaches the district grid (decision 27)', () => {
+    // Run 2 left the boulevard dead-ending 20 m short of District B's grid:
+    // floored but empty, and a traversal dead end for anyone walking east. The
+    // user's call on 2026-08-01 was to join them. These assertions pin the join
+    // itself, not the cosmetics.
+    const b = DISTRICTS.find((d) => d.id === 'districtB');
+    const [boulevard, connector] = b.annexStreets;
+
+    // 1. The boulevard runs along X and now ends at the connector's west kerb,
+    //    NOT at the annex's old east edge (-170).
+    expect(boulevard.axis).toBe('x');
+    expect(boulevard.to).toBeCloseTo(-DISTRICT_HALF - HALF_ROADWAY, 9);
+    expect(boulevard.to).toBeGreaterThan(-170);
+
+    // 2. A north-south connector sits ON the district boundary. It has to: the
+    //    boulevard runs at local z = 0, which is a CELL CENTRE and not a street
+    //    line, so continuing straight would drive it into the building row.
+    expect(connector.axis).toBe('z');
+    expect(connector.line).toBeCloseTo(-DISTRICT_HALF, 9);
+    expect(STREET_LINES).not.toContain(0);
+
+    // 3. The connector spans between BOTH cross-streets, stopping a half-roadway
+    //    short of each so the quads abut rather than overlap. Coplanar roadway
+    //    at the same y is a z-fight, and it is invisible in a mesh count.
+    expect(connector.from).toBeCloseTo(STREET_LINES[0] + HALF_ROADWAY, 9);
+    expect(connector.to).toBeCloseTo(STREET_LINES[1] - HALF_ROADWAY, 9);
+
+    // 4. The boulevard's east end and the connector's west kerb are the SAME
+    //    line -- no gap left, no overlap introduced.
+    expect(boulevard.to).toBeCloseTo(connector.line - HALF_ROADWAY, 9);
+  });
+
+  it('the boundary connector clears District B’s western building row', () => {
+    // The margin between the district edge and the westernmost footprint is
+    // exactly ROW / 2 -- half a right-of-way, which is the grid's tiling intent
+    // rather than an accident. That is why the connector sits ON the boundary:
+    // centred there, its right-of-way abuts the buildings precisely. Centred
+    // any further east and its sidewalk would run through them.
+    const b = DISTRICTS.find((d) => d.id === 'districtB');
+    const connector = b.annexStreets[1];
+    const rowEast = connector.line + ROW / 2;
+
+    // Grid buildings only. `buildings()` also returns the absorbed annex, whose
+    // local X sits ~320 m further west because it is Phase 1's block expressed
+    // in District B's frame — it is nowhere near this connector.
+    const grid = b.buildings().filter((x) => x.band !== 'annex');
+    const westmost = Math.min(...grid.map((x) => x.lx - SLOT_SPAN / 2));
+    expect(rowEast).toBeLessThanOrEqual(westmost + 1e-9);
+    // And the margin really is half a right-of-way, so this is not luck.
+    expect(westmost - -DISTRICT_HALF).toBeCloseTo(ROW / 2, 6);
+  });
+
   it('there is no centreline MESH anywhere — §6 folds it into the road texture', () => {
     // Phase 1's seventh ground/road mesh is an InstancedMesh of dashes. Removing
     // that whole category district-wide is the entire difference between §6's
@@ -538,6 +592,25 @@ describe('District, built', () => {
     // unnoticed, which is the whole reason the placeholder it replaced was
     // deliberately implausible.
     expect(MAST_SIGN_TEXT).toBe('AKC ENTERPRISE');
+  });
+
+  it('the hill carries only the user-approved name (decisions 6/25)', () => {
+    // Same rule, same route, second name. `Coco Hill` arrived by explicit
+    // sign-off on 2026-08-01 and is locked as decision 25.
+    //
+    // NOTHING RENDERS THIS YET and that is deliberate -- there is no signage,
+    // map label or HUD for a landform name to appear on. The constant reserves
+    // the name ahead of the surface that will show it, so the name cannot drift
+    // in the meantime and so whatever displays it later has one place to read.
+    expect(HILL_NAME).toBe('Coco Hill');
+  });
+
+  it('these are the ONLY two names in the build (decision 6)', () => {
+    // The real invariant is not what the two strings say, it is that there are
+    // exactly two. Every other proper noun in this world is still the user's to
+    // supply, and an agent adding a third by inventing a shop name or a street
+    // should fail here rather than ship.
+    expect([MAST_SIGN_TEXT, HILL_NAME]).toEqual(['AKC ENTERPRISE', 'Coco Hill']);
   });
 
   it('the grid group carries the district rotation, not the ground plane', () => {

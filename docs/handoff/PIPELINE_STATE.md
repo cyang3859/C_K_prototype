@@ -103,6 +103,10 @@ Targeted `grep` only.
 | 23 | The mast's name | **`AKC ENTERPRISE`.** User-supplied and approved 2026-08-01, on the sign/observation mast of locked decision 20. **This is the ONLY name anywhere in `kodaman3d/`** — everything else stays generic pending the trademark naming table, and locked decision 6 still reserves every future name to the user. It replaced the literal string `PLACEHOLDER`, which was deliberately implausible so an unapproved name could not ship by looking reasonable; that worked, and the question reached the user instead of being settled by an agent. The text now lives in one exported constant, `MAST_SIGN_TEXT` (`landmarks.js`), **pinned by a test** (`districts.test.js`) — not because this string is aesthetically load-bearing, but so a name can only ever change by the same sign-off that put it there. |
 | 24 | Phase 1's block is ABSORBED into the districts | **The Phase 1 `StreetBlock` does not survive as a separate third area. Its content is folded into District B and the standalone block goes away.** User decision 2026-08-01, resolving the §BGT-1 reconciliation the Engineer's run 1 surfaced. **The spec's ~69-call rollup budgeted as though the two districts ARE the world; the build preserved Phase 1's block as well, which is why it measured 83 with 67 headroom rather than 81.** Left unreconciled, run 2's ~35-call props line would have landed the world near ~118 and left only ~32 for CSM — whose cost is still the biggest unmeasured unknown in the project. **District B is the natural home: it is the cardinal-grid mixed-height boulevard corridor, which is exactly what the Phase 1 block already is.** ⚠️ **This is real engineering work, not bookkeeping** — the block carries the hero spawn, the browser-verified 90 m helipad tower, its collider registrations, and most of `tests/world.test.js`. **None of that may be lost in the move**; the helipad tower in particular has been signed off by a human across five browser passes. Scoped into **Engineer run 2**, ahead of the props line it pays for. |
 
+| 25 | The hill's name | **`Coco Hill`.** User-supplied and approved 2026-08-01, on the §PROP-3 landform Engineer run 2 built. **The second name in `kodaman3d/`**, after decision 23's `AKC ENTERPRISE`; locked decision 6 still reserves every future name to the user. Lives in one exported constant, `HILL_NAME` (`terrain.js`), **pinned by a test** — plus a second test asserting these are the **only two** names in the build, so an agent inventing a third (a shop, a street) fails rather than ships. ⚠️ **Nothing renders it yet and that is deliberate:** there is no signage, map label or HUD for a landform name to appear on. The constant reserves the name ahead of the surface that will display it. **Do not invent a hillside sign to justify it** — that is a design decision nobody has made. |
+| 26 | Roof furniture on District B | **Rooftop HVAC and parapet coping rings go on District B's generated buildings too, not just District A's.** User decision 2026-08-01. The design spec's §10 item 5 scoped them to District A and run 2 followed it. **Zero draw calls** — both pools already existed and already spanned the annex, so this only adds instances: parapet bars **168 → 312**, rooftop units **86 → 158**, world total **still 78 (44/34)**, verified in a browser. ⚠️ **One real consequence: rooftop units are colliders on purpose** (a player who can land on a roof can walk into one), so the world's collider count rises by 72. That is why `world.test.js`'s collider-count assertion changed, and the change is this decision rather than drift. |
+| 27 | The annex/District B road join | **The absorbed boulevard joins District B's grid via a connector on the district boundary.** User decision 2026-08-01, choosing the orchestrator's recommendation over the two alternatives in run 2's report §8.2. Run 2 left the boulevard dead-ending 20 m short — floored but empty, and **a traversal dead end for anyone walking east**, not merely an aerial blemish. **A straight extension does not work:** the boulevard runs at local z = 0, which is a *cell centre* in District B's grid, not a street line (`STREET_LINES` is ±50), so continuing it drives the road into the western building row — which is exactly the objection run 2 raised. **The connector answers it:** the boulevard T-junctions into a north–south link centred on the district boundary, and that link meets both of District B's east–west streets. **It sits ON the boundary because the margin there is exactly `ROW / 2`** — half a right-of-way, which is the grid's tiling intent rather than an accident, so a boundary street abuts the building row precisely. Shifting District B's origin west was the argued alternative and is rejected: it moves 36 reviewed-in-aggregate buildings for a cosmetic gain. **Zero draw calls** — the strips merge into the same three geometries as every other district street. |
+
 ## Model assignment
 
 Per user instruction: **all agents run Sonnet except the Engineer agent, which runs Opus.**
@@ -244,7 +248,28 @@ its summit (`atan2` undefined at r=0), and scaffolding that rendered as a bare g
 was scaled on Y instead of instanced per lift. **All fixed.** This is the third run in a row where
 the browser caught something neither review nor the test suite could.
 
-### ⚠️ Four things need the user — none guessed
+### ⚠️ Four things needed the user — ALL FOUR ARE ANSWERED
+
+**Answered 2026-08-01, same session, and applied inline by the orchestrator. 173/173 tests, world
+still 78 draw calls (44/34), verified in a browser.**
+
+1. ~~The hill has no name~~ — **`Coco Hill`, locked as decision 25.**
+2. ~~The boulevard dead-ends 20 m short~~ — **joined via a boundary connector, locked as decision
+   27.** The road network is now continuous and it was confirmed by screenshot, not just by data.
+3. ~~Parapet rings on District B?~~ — **yes, locked as decision 26.** Zero draw calls; +72 colliders.
+4. ~~Grade relief~~ — **stays cut, and the reason stays mechanical.** The user approved proceeding on
+   the stated recommendation, which was that it **needs a `Collision.js` terrain height query before
+   it can exist at all** — the AABB model has no height-at-point concept, so displacing the district
+   ground would put the hero's feet through every slope. **Nothing was built for this.** It is a
+   collision-system design change, and it is the natural companion to the two other collision debts
+   below. **The hill itself is built and unaffected** — it carries a stepped-box collider.
+
+**Two collision debts are now pending together, and they are the same shape:** the per-owner
+`CollisionWorld` handle (so `dispose()` can drop one owner's colliders without dropping everyone's)
+and the terrain height query. Neither is urgent; both are design changes rather than patches, and
+whoever takes one should look at the other.
+
+### The original four, as run 2 reported them
 
 1. **The hill has no name.** Locked decision 6; the Engineer correctly did not invent even a
    placeholder. `AKC ENTERPRISE` remains the only name in `kodaman3d/`.

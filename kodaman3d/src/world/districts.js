@@ -430,7 +430,51 @@ export const DISTRICTS = Object.freeze([
         axis: 'x',
         line: ANNEX_ORIGIN.z - DISTRICT_B_ORIGIN.z,
         from: ANNEX_ORIGIN.x - ANNEX_HALF_EXTENT - DISTRICT_B_ORIGIN.x,
-        to: ANNEX_ORIGIN.x + ANNEX_HALF_EXTENT - DISTRICT_B_ORIGIN.x,
+        /**
+         * ⚠️ NOT the annex's own east edge (local −170). **User decision
+         * 2026-08-01, locked as decision 27: the boulevard joins the district
+         * grid instead of dead-ending 20 m short of it.**
+         *
+         * It stops at the boundary connector's west kerb rather than at the
+         * connector's centreline, so the two roadway quads ABUT instead of
+         * overlapping — coplanar roadway at the same y is a z-fight, and the
+         * district's own `segments()` breaks its strips at exactly this offset
+         * for exactly this reason.
+         */
+        to: -DISTRICT_HALF - HALF_ROADWAY,
+      }),
+      /**
+       * The boundary connector — the piece that makes the join work.
+       *
+       * WHY A CONNECTOR AND NOT JUST A LONGER BOULEVARD. The annex boulevard
+       * runs at local z = 0, and z = 0 is a CELL CENTRE in District B's grid,
+       * not a street line (`STREET_LINES` is ±50, `CELL_CENTRES` is −100/0/100).
+       * Driving the boulevard straight on would run it into the western
+       * building row — which is the objection run 2's report raised against
+       * extending it at all. A north–south link at the boundary answers it: the
+       * boulevard T-junctions into the connector, and the connector meets both
+       * of District B's east–west streets, so the road network is continuous.
+       *
+       * WHY IT SITS EXACTLY ON THE DISTRICT BOUNDARY. The margin between the
+       * district edge (local −150) and the westernmost building footprint
+       * (−134.76) is 15.24 m — exactly `ROW / 2`, half a right-of-way. That is
+       * not a coincidence to design around, it is the grid's tiling intent: a
+       * street on the boundary is shared between neighbours. Centred on −150 the
+       * connector's right-of-way abuts the building row precisely, and its
+       * western half lands on the already-floored gap the annex left.
+       *
+       * It stops short of both cross-streets by `HALF_ROADWAY`, same abutment
+       * rule as above.
+       *
+       * COST: ZERO DRAW CALLS. These strips are appended to the same three
+       * arrays as every other district street and land in the same three merged
+       * geometries (`District._buildRoads`).
+       */
+      Object.freeze({
+        axis: 'z',
+        line: -DISTRICT_HALF,
+        from: STREET_LINES[0] + HALF_ROADWAY,
+        to: STREET_LINES[1] - HALF_ROADWAY,
       }),
     ]),
     /**

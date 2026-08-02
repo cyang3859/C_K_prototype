@@ -20,9 +20,20 @@ import { hash01 } from './facadeAtlas.js';
  * districts' landmarks, so the three of them triangulate the bounded world
  * rather than lining up.
  *
- * ⚠️ IT HAS NO NAME AND MUST NOT ACQUIRE ONE HERE. Locked decision 6 reserves
- * all naming to the user, and §PROP-3 says so again in as many words. Nothing in
- * this file is a proper noun; the mesh is called `hill`.
+ * ITS NAME IS `COCO HILL` — user-supplied and approved 2026-08-01, locked as
+ * decision 25. It is the SECOND name in `kodaman3d/`, after the mast's
+ * `AKC ENTERPRISE` (decision 23), and locked decision 6 still reserves every
+ * future name to the user. The name lives in one exported constant, `HILL_NAME`,
+ * pinned by a test — the same treatment `MAST_SIGN_TEXT` gets, and for the same
+ * reason: not because the string is load-bearing, but so it can only ever change
+ * by the same sign-off that put it there.
+ *
+ * ⚠️ NOTHING RENDERS IT YET, AND THAT IS DELIBERATE. There is no signage, map
+ * label or HUD in this build for a landform name to appear on. The constant
+ * reserves the name in code ahead of the surface that will show it; the mesh is
+ * still called `hill`, because that is a scene-graph identifier and not a proper
+ * noun. **Do not invent a sign to justify the constant** — a hillside sign is a
+ * design decision nobody has made.
  *
  * ===========================================================================
  * WHAT §PROP-3 ASKED FOR THAT THIS FILE DOES **NOT** DO
@@ -48,6 +59,16 @@ import { hash01 } from './facadeAtlas.js';
  * possible (there is no step-up logic); flying onto it is, which is how this
  * game is played. Real terrain collision is a follow-on.
  */
+
+/**
+ * The hill's name — **`Coco Hill`**, user-supplied and approved 2026-08-01,
+ * locked as decision 25.
+ *
+ * Nothing renders this yet; see the header note. It is exported and pinned by a
+ * test so the name cannot drift, and so the next thing that needs to display a
+ * landform name has one place to read it from.
+ */
+export const HILL_NAME = 'Coco Hill';
 
 /**
  * The hill's authored shape. All metres.
