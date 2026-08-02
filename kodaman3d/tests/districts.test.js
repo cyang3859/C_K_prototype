@@ -30,6 +30,7 @@ import { District } from '../src/world/District.js';
 import { FACADE_VARIANTS } from '../src/world/annex.js';
 import { MAST_SIGN_TEXT } from '../src/world/landmarks.js';
 import { HILL_NAME } from '../src/world/terrain.js';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -161,6 +162,52 @@ describe('facade families (§4)', () => {
     const envelope = 300 * (Math.cos(DISTRICT_A_ROTATION) + Math.sin(DISTRICT_A_ROTATION));
     const a = DISTRICTS.find((d) => d.id === 'districtA');
     expect(Math.abs(a.origin.x) + envelope / 2).toBeLessThanOrEqual(WORLD_HALF_EXTENT);
+  });
+
+  it('REFACTOR GUARD: every building and prop placement in the world is frozen', () => {
+    // Added 2026-08-02 BEFORE the code review's duplication cleanup (Standards
+    // 4, 5, 8, 10), as the safety net for it. Those refactors touch the
+    // generators for 68 buildings and ~1,400 prop instances, and the one thing
+    // that must not change is a single number any of them produces.
+    //
+    // Digested rather than enumerated because the enumeration is the world. A
+    // failure here means a "pure" refactor moved something -- go and find out
+    // what before regenerating anything.
+    const digest = (o) =>
+      createHash('sha256')
+        .update(
+          JSON.stringify(
+            JSON.parse(
+              JSON.stringify(o, (k, v) => (typeof v === 'number' ? Number(v.toFixed(6)) : v)),
+            ),
+          ),
+        )
+        .digest('hex')
+        .slice(0, 16);
+
+    expect({ districtA: digest(districtABuildings()), districtB: digest(districtBBuildings()) })
+      .toEqual({ districtA: 'faffed3953de4979', districtB: '77d28831ca0db211' });
+
+    const p = allPropPlacements();
+    const got = Object.fromEntries(Object.keys(p).sort().map((k) => [k, digest(p[k])]));
+    expect(got).toEqual({
+      awnings: '215cba52e1f1e8fd',
+      bladeSigns: '6f41e28f42013c0d',
+      bollards: '6fa4f2dcc4017b80',
+      cafeProps: 'eff3cd6461b39138',
+      canaryPalms: '2b81b612a0083c87',
+      hvac: 'f50da0c6767e4512',
+      hvacColliders: 'c61804aff37837cc',
+      lamps: '13237cd283dbe553',
+      mexicanPalms: '5ca418f34807b1f6',
+      parapetColliders: 'ab8146e814ff752e',
+      parapets: 'd494e3c0fb77b0b8',
+      parkedCars: '874a03ba8df28146',
+      scaffolding: '45e7c6dea28e7813',
+      shadeTrees: 'd2b2ca846c4cdada',
+      smallProps: 'c1b5e7dc8b217f27',
+      utilityPoles: 'ee6cf9f2620541a9',
+    });
   });
 
   it('dealBands leaves no holes, for any total a third district might use', () => {
