@@ -379,16 +379,26 @@ describe('District B with its annex, built', () => {
     }
     // 46 District B footprints + 1 landmark, plus everything WorldProps
     // registers for the WHOLE world (it is world-shared, so it does not care
-    // that only District B was built here): 40 annex parapet bars + 158 rooftop
-    // units — 22 the annex's, 64 District A's and 72 District B's.
+    // that only District B was built here): 40 annex parapet bars + 144 District
+    // B generated parapet bars + 158 rooftop units — 22 the annex's, 64 District
+    // A's and 72 District B's.
     //
-    // ⚠️ 86 -> 158 is locked decision 26, not a drift. Roof furniture used to be
-    // scoped to District A (§10 item 5); the user extended it to District B's
-    // generated buildings on 2026-08-01. Rooftop units are colliders ON PURPOSE
-    // — a player who can land on a roof can walk into one — so extending the
-    // pool necessarily extends the collider count. Draw calls are unchanged at
-    // zero: both pools already existed and already spanned the annex.
-    expect(collision.buildings.length).toBe(46 + 1 + 40 + 158);
+    // ⚠️ 86 -> 158 rooftop units is locked decision 26, not a drift. Roof
+    // furniture used to be scoped to District A (§10 item 5); the user extended
+    // it to District B's generated buildings on 2026-08-01. Rooftop units are
+    // colliders ON PURPOSE — a player who can land on a roof can walk into one —
+    // so extending the pool necessarily extends the collider count. Draw calls
+    // are unchanged at zero: both pools already existed and already spanned the
+    // annex.
+    //
+    // ⚠️ THE 144 IS NEW, 2026-08-02, and is also a decision rather than a drift.
+    // The session-11 code review found the coping ring stopping the hero walking
+    // off an ANNEX roof and not off District B's generated roof next door — same
+    // district, same visual coping, decision 26 having only ever costed HVAC.
+    // 36 generated buildings x 4 bars. District A is deliberately still excluded:
+    // its grid is yawed 36°, and a circumscribed AABB around a bar this thin is
+    // mostly empty space.
+    expect(collision.buildings.length).toBe(46 + 1 + 40 + 144 + 158);
   });
 
   it('registers a collider for every rooftop mechanical unit', () => {

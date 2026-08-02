@@ -315,6 +315,7 @@ export function districtPropPlacements(spec, opts) {
   const buildings = spec.buildings();
   const out = {
     parapets: [],
+    parapetColliders: [],
     hvac: [],
     hvacColliders: [],
     canaryPalms: [],
@@ -339,6 +340,30 @@ export function districtPropPlacements(spec, opts) {
       for (const bar of parapetBars(roof)) {
         const w = districtLocalToWorld({ lx: bar.cx, lz: bar.cz }, spec);
         out.parapets.push({ ...bar, cx: w.x, cz: w.z, yaw: spec.rotation });
+
+        // ⚠️ COLLIDERS ONLY ON A CARDINAL GRID, and the asymmetry is the point.
+        // The coping ring stops a hero walking off a roof, and the absorbed
+        // annex's buildings have had that since Phase 1 — so District B's
+        // GENERATED buildings not having it meant the ring stopped you on one
+        // roof and not on the roof next door, same district, same visual coping.
+        // Locked decision 26 put the ring on District B and its arithmetic only
+        // ever accounted for HVAC's colliders; the session-11 code review found
+        // the gap, and the user's call on 2026-08-02 was to close it.
+        //
+        // District A is EXCLUDED and stays excluded: its grid is yawed 36°, and
+        // a circumscribed AABB around a bar this long and this thin is mostly
+        // empty space — it would wall off roof area nobody can see a reason for.
+        // That is the same documented limitation as its building colliders, not
+        // a new one. A cardinal bar needs no circumscription at all: the box IS
+        // the bar.
+        if (spec.rotation === 0) {
+          out.parapetColliders.push(
+            new THREE.Box3(
+              new THREE.Vector3(w.x - bar.sx / 2, roof.h, w.z - bar.sz / 2),
+              new THREE.Vector3(w.x + bar.sx / 2, roof.h + bar.sy, w.z + bar.sz / 2),
+            ),
+          );
+        }
       }
       for (const u of hvacUnits([roof])) {
         const w = districtLocalToWorld({ lx: u.x, lz: u.z }, spec);

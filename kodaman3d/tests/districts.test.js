@@ -35,7 +35,14 @@ import { join } from 'node:path';
 
 import { TUNING } from '../src/config/tuning.js';
 import { installCanvasStub } from './support/canvas2d.js';
-import { allPropPlacements, localKeepOutBoxes } from '../src/world/props.js';
+import {
+  allPropPlacements,
+  districtLocalToWorld,
+  districtPropPlacements,
+  localKeepOutBoxes,
+  roofOf,
+} from '../src/world/props.js';
+import { WorldProps } from '../src/world/WorldProps.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
 
 /**
@@ -640,6 +647,64 @@ describe('District, built', () => {
     // 4. The boulevard's east end and the connector's west kerb are the SAME
     //    line -- no gap left, no overlap introduced.
     expect(boulevard.to).toBeCloseTo(connector.line - HALF_ROADWAY, 9);
+  });
+
+  it('the coping ring stops the hero on a GENERATED District B roof too', () => {
+    // Finding S1 from the session-11 code review, and the behaviour it is
+    // actually about rather than a collider count. The annex's buildings have
+    // had parapet colliders since Phase 1; District B's generated buildings did
+    // not, so the ring stopped a hero walking off one roof and not off the roof
+    // next door -- same district, same visual coping. User's call, 2026-08-02.
+    //
+    // Built with its own world because the props (which own these colliders) are
+    // world-shared and are not part of this suite's district-only fixture.
+    const local = new THREE.Scene();
+    const world = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const b = DISTRICTS.find((d) => d.id === 'districtB');
+    const district = new District({ scene: local, collision: world, spec: b });
+    const props = new WorldProps({ scene: local, collision: world });
+
+    const generated = b.buildings().filter((x) => x.band !== 'annex');
+    expect(generated.length).toBeGreaterThan(0);
+
+    const target = generated[0];
+    const roof = roofOf(target);
+    const w = districtLocalToWorld({ lx: roof.x, lz: roof.z }, b);
+
+    // Walk east from the roof centre, straight at the coping.
+    const pos = { x: w.x, y: roof.h, z: w.z };
+    let pushed = false;
+    for (let i = 0; i < 400; i++) {
+      const prevY = pos.y;
+      pos.x += 0.125;
+      const r = world.resolve(pos, 0.35, 1.85, { previousY: prevY });
+      if (r.pushed) pushed = true;
+    }
+
+    expect(pushed, 'the coping pushed back').toBe(true);
+    // And the hero is still ON the roof, not out in the air past its edge.
+    expect(pos.x).toBeLessThan(w.x + roof.w / 2);
+    expect(pos.y).toBeCloseTo(roof.h, 6);
+
+    props.dispose();
+    district.dispose();
+  });
+
+  it('District A is deliberately NOT given parapet colliders', () => {
+    // The exclusion is not an oversight and should fail loudly if someone
+    // "fixes" it: District A's grid is yawed 36°, and a circumscribed AABB
+    // around a bar this long and this thin is mostly empty space -- it would
+    // wall off roof area for no visible reason. Same documented limitation as
+    // its building colliders.
+    const a = DISTRICTS.find((d) => d.id === 'districtA');
+    const bSpec = DISTRICTS.find((d) => d.id === 'districtB');
+    expect(a.rotation).not.toBe(0);
+    expect(bSpec.rotation).toBe(0);
+
+    const opts = { roofProps: true };
+    expect(districtPropPlacements(a, opts).parapetColliders).toHaveLength(0);
+    // ...and District B's generated buildings DO get them: 36 buildings x 4 bars.
+    expect(districtPropPlacements(bSpec, opts).parapetColliders).toHaveLength(144);
   });
 
   it('no annex sidewalk or curb is laid ACROSS an annex roadway (decision 27)', () => {
