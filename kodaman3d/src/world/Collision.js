@@ -458,7 +458,15 @@ export class CollisionWorld {
     this.boxes = [...this.boundaries];
     /** @type {Array<(x:number,z:number)=>number>} registered terrain height fields. */
     this._terrain = [];
+    /** @type {Array<object|null>} who registered each field; index-aligned with `_terrain`. */
+    this._terrainOwners = [];
     this.halfExtent = halfExtent;
+    /**
+     * Pre-bound so `resolve` does not allocate a closure on the per-step path.
+     * It is swapped for `undefined` while no terrain exists, so a flat world
+     * keeps the exact path it has always had.
+     */
+    this._groundHeightAt = this.groundHeightAt.bind(this);
   }
 
   /**
@@ -506,14 +514,30 @@ export class CollisionWorld {
     this._owners = owners;
     this._solid = solid;
     this._rebuildBoxes();
+
+    // Terrain fields are owned the same way, and are dropped here rather than in
+    // a separate call so that one `removeOwner(this)` in a module's dispose()
+    // undoes everything that module registered.
+    const fields = [];
+    const fieldOwners = [];
+    for (let i = 0; i < this._terrain.length; i++) {
+      if (this._terrainOwners[i] === owner) continue;
+      fields.push(this._terrain[i]);
+      fieldOwners.push(this._terrainOwners[i]);
+    }
+    this._terrain = fields;
+    this._terrainOwners = fieldOwners;
+
     return removed;
   }
 
-  /** Drop every building collider, keeping the boundary. For teardown/HMR. */
+  /** Drop every building collider and terrain field, keeping the boundary. For teardown/HMR. */
   clearBuildings() {
     this.buildings.length = 0;
     this._owners.length = 0;
     this._solid.length = 0;
+    this._terrain.length = 0;
+    this._terrainOwners.length = 0;
     this.boxes = [...this.boundaries];
   }
 
@@ -533,10 +557,18 @@ export class CollisionWorld {
    * A provider MUST return 0 outside its own footprint, so several can coexist
    * and the tallest simply wins.
    *
+   * `owner` exists for the same reason `addBuilding`'s does — so teardown can be
+   * scoped. Without it `Terrain.dispose()` could not undo its own registration,
+   * and because HMR re-evaluates modules on every save, each save appended
+   * another closure that `groundHeightAt` then scanned on every capsule resolve,
+   * forever. Found by the session-11 code review.
+   *
    * @param {(x:number, z:number) => number} heightAt
+   * @param {object|null} [owner] whatever registered it; identity-compared.
    */
-  addTerrain(heightAt) {
+  addTerrain(heightAt, owner = null) {
     this._terrain.push(heightAt);
+    this._terrainOwners.push(owner);
     return heightAt;
   }
 
@@ -566,8 +598,10 @@ export class CollisionWorld {
   resolve(position, radius, height, options) {
     return resolveCapsule(position, radius, height, this.boxes, {
       // Only pay for the lookup when terrain actually exists, so a world without
-      // any keeps the exact flat-plane path it has always had.
-      groundHeightAt: this._terrain.length ? (x, z) => this.groundHeightAt(x, z) : undefined,
+      // any keeps the exact flat-plane path it has always had. Pre-bound in the
+      // constructor: this runs every fixed step, and the arrow wrapper that used
+      // to sit here allocated a closure on each one.
+      groundHeightAt: this._terrain.length ? this._groundHeightAt : undefined,
       ...options,
     });
   }

@@ -277,8 +277,7 @@ export class Terrain {
      * not.** Leaving them solid would put the terraces' vertical faces back in
      * the push-out path and re-create the defect this change removes.
      */
-    this.collision = collision;
-    collision.addTerrain((x, z) => hillHeight(x - HILL.cx, z - HILL.cz));
+    collision.addTerrain((x, z) => hillHeight(x - HILL.cx, z - HILL.cz), this);
     for (const box of hillColliderBoxes()) {
       collision.addBuilding(box, this, { solid: false });
     }
@@ -288,8 +287,12 @@ export class Terrain {
   update(_dt) {}
 
   dispose() {
+    // Same order as District/WorldProps/Sky: traverse-and-free, detach, then
+    // drop this owner's colliders AND its terrain field. `disposeObject3D` has
+    // already disposed the material and its textures, so no bare
+    // `material.dispose()` belongs here -- it added nothing and invited a future
+    // reader to assume textures were covered by it rather than by the traversal.
     disposeObject3D(this.mesh);
-    this.mesh.material.dispose();
     this.scene.remove(this.mesh);
     this.collision.removeOwner(this);
   }

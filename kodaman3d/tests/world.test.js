@@ -529,6 +529,46 @@ describe('District B with its annex, built', () => {
     expect(world.buildings).toEqual([theirs]);
     expect(world.boxes).toContain(theirs);
   });
+
+  it('Terrain.dispose() drops its height field, not just its camera boxes', () => {
+    // The leak the session-11 code review found. `addTerrain` had no removal
+    // path at all, so `Terrain.dispose()` could undo its colliders and never its
+    // height field. HMR re-evaluates modules on every save -- which is the whole
+    // reason `removeOwner` exists -- so each save appended another closure that
+    // `groundHeightAt` then scanned on EVERY capsule resolve, forever.
+    const local = new THREE.Scene();
+    const world = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+
+    const summit = () => world.groundHeightAt(HILL.cx, HILL.cz);
+    expect(summit()).toBe(0);
+
+    const t = new Terrain({ scene: local, collision: world });
+    expect(summit()).toBeGreaterThan(50);
+    t.dispose();
+
+    // The ground is flat again, and nothing is left behind to scan.
+    expect(summit()).toBe(0);
+    expect(world._terrain).toHaveLength(0);
+    expect(world._terrainOwners).toHaveLength(0);
+  });
+
+  it('a rebuild does not stack height fields, and a co-owner’s survives', () => {
+    // The symptom the leak actually produced: build, dispose, build again -- the
+    // shape of every HMR save -- must leave exactly one field, not two.
+    const local = new THREE.Scene();
+    const world = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const someoneElse = {};
+    world.addTerrain(() => 3, someoneElse);
+
+    for (let i = 0; i < 3; i++) {
+      const t = new Terrain({ scene: local, collision: world });
+      t.dispose();
+    }
+
+    expect(world._terrain).toHaveLength(1);
+    // And the co-owner's field still answers, exactly as its colliders do.
+    expect(world.groundHeightAt(9999, 9999)).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------
