@@ -210,6 +210,70 @@ describe('facade families (§4)', () => {
     });
   });
 
+  it('REFACTOR GUARD: every instance matrix WorldProps writes is frozen', () => {
+    // Added 2026-08-02, session 12, because the guard above DOES NOT COVER
+    // Standards 10 -- the `_fill` conversion in `WorldProps.js`, which is the
+    // refactor it was written as the safety net for.
+    //
+    // The guard above digests what the GENERATORS produce (`props.js`,
+    // `districts.js`). `WorldProps.js` then reads those placements and writes
+    // instance matrices, and NOTHING checked that second step: perturbing a
+    // `_fill` callback by 1 mm left all 188 tests green. Verified, not assumed
+    // -- the perturbation was actually run. That is the same hollow-enforcement
+    // pattern the session-11 review found three times, in the test written to
+    // prevent it.
+    //
+    // This closes it at the other end: the matrices themselves, per pool,
+    // including per-instance colour where a pool varies it. A `_fill` callback
+    // that drops a rotation, forgets a scale or writes to the wrong index fails
+    // here and cannot fail above.
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    const props = new WorldProps({ scene, collision });
+
+    const m4 = new THREE.Matrix4();
+    const got = {};
+    for (const [name, mesh] of [...props.pools].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const h = createHash('sha256');
+      const push = (arr) => {
+        for (const v of arr) h.update(String(Number(v.toFixed(5))));
+      };
+      if (mesh.isBatchedMesh) {
+        // `smallProps`. Its matrices live in a data texture rather than an
+        // attribute, so they are read back through `getMatrixAt` instead.
+        h.update(`${name}:${mesh.instanceCount}`);
+        for (let i = 0; i < mesh.instanceCount; i++) push(mesh.getMatrixAt(i, m4).elements);
+      } else {
+        h.update(`${name}:${mesh.count}`);
+        push(mesh.instanceMatrix.array);
+        if (mesh.instanceColor) push(mesh.instanceColor.array);
+      }
+      got[name] = h.digest('hex').slice(0, 16);
+    }
+
+    expect(got).toEqual({
+      awnings: '924c4ec3ee9457fa',
+      bladeSigns: '95bbe4b5ef48396d',
+      bollards: 'c370953b6dd17a77',
+      cafeProps: '78d63b0ed32710c4',
+      canaryCrowns: 'd61ed6bdaa1a5c5e',
+      canaryTrunks: 'c82a0a9ca866ee79',
+      palmCrowns: '99cf34ed78fb51f0',
+      palmTrunks: '2fd0397f70947541',
+      parkedSedans: '9295960349a766af',
+      parkedVans: 'f3f3975068bbaf29',
+      roofParapets: '7750e3f4d78e1fca',
+      roofUnits: '8ec757db7cad6b53',
+      scaffolding: '989b0de6dbe6c1a8',
+      shadeTrees: '0c4b499f029d11c3',
+      smallProps: '38a63aba022d7ae5',
+      streetLamps: '78482df4ff58fa36',
+      utilityPoles: '9de4910081f12fd4',
+    });
+
+    props.dispose();
+  });
+
   it('dealBands leaves no holes, for any total a third district might use', () => {
     // The stride used to be `total % 2 === 0 ? total / 2 + 1 : 3` under a comment
     // asserting it was coprime with `total`. That held for the only two totals

@@ -124,16 +124,11 @@ export class WorldProps {
     });
     const mesh = this._pool('roofParapets', geo, mat, bars.length, { receive: true });
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < bars.length; i++) {
-      const bar = bars[i];
+    this._fill(mesh, bars, (m, bar) => {
       m.position.set(bar.cx, bar.cy, bar.cz);
       m.rotation.set(0, bar.yaw ?? 0, 0);
       m.scale.set(bar.sx, bar.sy, bar.sz);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   /** G2 — rooftop mechanical units. One draw call. */
@@ -146,18 +141,12 @@ export class WorldProps {
     });
     const mesh = this._pool('roofUnits', geo, mat, units.length, { receive: true });
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < units.length; i++) {
-      const u = units[i];
+    this._fill(mesh, units, (m, u) => {
       // `u.y` is the unit's BASE (it rests on the roof surface itself), so the
       // mesh centre is half a box-height above it.
       m.position.set(u.x, u.y + HVAC.H / 2, u.z);
       m.rotation.set(0, u.yaw ?? 0, 0);
-      m.scale.set(1, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   // ----------------------------------------------------------- street façade
@@ -185,22 +174,16 @@ export class WorldProps {
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.0 });
     const mesh = this._pool('awnings', geo, mat, awnings.length, { receive: true });
 
-    const m = new THREE.Object3D();
     const color = new THREE.Color();
-    for (let i = 0; i < awnings.length; i++) {
-      const a = awnings[i];
+    this._fill(mesh, awnings, (m, a, i) => {
       m.position.set(a.x, a.y, a.z);
       // Tilt about the LOCAL X axis, then yaw: order matters once a district
       // rotation is involved, and `Euler`'s default 'XYZ' applies X first.
       m.rotation.set(a.tilt, a.yaw ?? 0, 0);
       m.scale.set(a.width, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
       color.setHex(a.color);
       mesh.setColorAt(i, color);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    });
   }
 
   /**
@@ -218,16 +201,11 @@ export class WorldProps {
     });
     const mesh = this._pool('bladeSigns', geo, mat, signs.length, { receive: true });
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < signs.length; i++) {
-      const s = signs[i];
+    this._fill(mesh, signs, (m, s) => {
       m.position.set(s.x, s.y, s.z);
       m.rotation.set(0, s.yaw ?? 0, 0);
       m.scale.set(1, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   // -------------------------------------------------------------- vegetation
@@ -267,23 +245,16 @@ export class WorldProps {
       palms.length,
     );
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < palms.length; i++) {
-      const p = palms[i];
+    this._fill(trunks, palms, (m, p) => {
       m.position.set(p.x, 0, p.z);
       m.rotation.set(p.lean, p.yaw, p.lean * 0.5);
       m.scale.set(1, p.height, 1);
-      m.updateMatrix();
-      trunks.setMatrixAt(i, m.matrix);
-
+    });
+    this._fill(crowns, palms, (m, p) => {
       m.position.set(p.x + p.lean * p.height * 0.5, p.height, p.z);
       m.rotation.set(0, p.crownYaw, 0);
       m.scale.set(p.crown, p.crown, p.crown);
-      m.updateMatrix();
-      crowns.setMatrixAt(i, m.matrix);
-    }
-    trunks.instanceMatrix.needsUpdate = true;
-    crowns.instanceMatrix.needsUpdate = true;
+    });
   }
 
   /**
@@ -322,23 +293,16 @@ export class WorldProps {
       palms.length,
     );
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < palms.length; i++) {
-      const p = palms[i];
+    this._fill(trunks, palms, (m, p) => {
       m.position.set(p.x, 0, p.z);
       m.rotation.set(0, p.yaw, 0);
       m.scale.set(1, p.height, 1);
-      m.updateMatrix();
-      trunks.setMatrixAt(i, m.matrix);
-
+    });
+    this._fill(crowns, palms, (m, p) => {
       m.position.set(p.x, p.height, p.z);
       m.rotation.set(0, p.yaw, 0);
       m.scale.set(p.crown, p.crown, p.crown);
-      m.updateMatrix();
-      crowns.setMatrixAt(i, m.matrix);
-    }
-    trunks.instanceMatrix.needsUpdate = true;
-    crowns.instanceMatrix.needsUpdate = true;
+    });
   }
 
   /**
@@ -382,16 +346,11 @@ export class WorldProps {
       trees.length,
     );
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < trees.length; i++) {
-      const t = trees[i];
+    this._fill(mesh, trees, (m, t) => {
       m.position.set(t.x, 0, t.z);
       m.rotation.set(0, t.yaw, 0);
       m.scale.setScalar(t.scale);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   // ---------------------------------------------------------------- lighting
@@ -432,16 +391,11 @@ export class WorldProps {
       lamps.length,
     );
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < lamps.length; i++) {
-      const l = lamps[i];
+    this._fill(mesh, lamps, (m, l) => {
       m.position.set(l.x, 0, l.z);
       m.rotation.set(0, l.yaw, 0);
       m.scale.set(1, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   /**
@@ -471,18 +425,13 @@ export class WorldProps {
       poles.length,
     );
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < poles.length; i++) {
-      const p = poles[i];
+    this._fill(mesh, poles, (m, p) => {
       m.position.set(p.x, 0, p.z);
       // The crossarm is authored across local X, so a pole's yaw puts it
       // perpendicular to the street rather than along it.
       m.rotation.set(0, p.yaw + Math.PI / 2, 0);
       m.scale.set(1, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    });
   }
 
   // ------------------------------------------------------------ street level
@@ -523,20 +472,13 @@ export class WorldProps {
         list.length,
         { receive: true },
       );
-      const m = new THREE.Object3D();
       const col = new THREE.Color();
-      for (let i = 0; i < list.length; i++) {
-        const c = list[i];
+      this._fill(mesh, list, (m, c, i) => {
         m.position.set(c.x, 0, c.z);
         m.rotation.set(0, c.yaw, 0);
-        m.scale.set(1, 1, 1);
-        m.updateMatrix();
-        mesh.setMatrixAt(i, m.matrix);
         col.setHex(paint[Math.floor(c.tint * paint.length) % paint.length]);
         mesh.setColorAt(i, col);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      });
     };
 
     build('parkedSedans', carGeometry(4.5, 1.28, 1.82, 0.42), sedans);
@@ -617,15 +559,9 @@ export class WorldProps {
       bollards.length,
       { cast: false, receive: true },
     );
-    const m = new THREE.Object3D();
-    for (let i = 0; i < bollards.length; i++) {
-      m.position.set(bollards[i].x, 0, bollards[i].z);
-      m.rotation.set(0, 0, 0);
-      m.scale.set(1, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    this._fill(mesh, bollards, (m, b) => {
+      m.position.set(b.x, 0, b.z);
+    });
   }
 
   /**
@@ -648,15 +584,10 @@ export class WorldProps {
       tables.length,
       { cast: false, receive: true },
     );
-    const m = new THREE.Object3D();
-    for (let i = 0; i < tables.length; i++) {
-      m.position.set(tables[i].x, 0, tables[i].z);
-      m.rotation.set(0, tables[i].yaw, 0);
-      m.scale.set(1, 1, 1);
-      m.updateMatrix();
-      mesh.setMatrixAt(i, m.matrix);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
+    this._fill(mesh, tables, (m, t) => {
+      m.position.set(t.x, 0, t.z);
+      m.rotation.set(0, t.yaw, 0);
+    });
   }
 
   /**
@@ -701,19 +632,52 @@ export class WorldProps {
       { receive: true },
     );
 
-    const m = new THREE.Object3D();
-    for (let i = 0; i < bays.length; i++) {
-      const b = bays[i];
+    this._fill(mesh, bays, (m, b) => {
       m.position.set(b.x, b.y, b.z);
       m.rotation.set(0, b.yaw, 0);
       m.scale.set(1, 1, 1);
+    });
+  }
+
+  // ----------------------------------------------------------------- plumbing
+
+  /**
+   * Write one instance matrix per item and flag the buffers dirty.
+   *
+   * The second half of the shape `_pool` already extracts. Every `_build*`
+   * method above ended with the same twelve lines — allocate an `Object3D`, loop,
+   * `updateMatrix`, `setMatrixAt`, set `instanceMatrix.needsUpdate` — fifteen
+   * times over, which the session-11 code review flagged as the largest single
+   * duplication in the file. The real gain is not the ~120 lines: it is that
+   * **forgetting `needsUpdate` is no longer possible**, and that was a silent
+   * failure mode (the pool renders, every instance stacked at the origin).
+   *
+   * `place` receives the scratch `Object3D`, the item, its index and the mesh —
+   * the mesh so a pool that varies colour per instance can `setColorAt` in the
+   * same pass rather than looping twice.
+   *
+   * @param {THREE.InstancedMesh} mesh
+   * @param {ReadonlyArray<object>} list
+   * @param {(m: THREE.Object3D, item: object, i: number, mesh: THREE.InstancedMesh) => void} place
+   * @returns {THREE.InstancedMesh} the same mesh, so calls can be chained or returned
+   */
+  _fill(mesh, list, place) {
+    const m = new THREE.Object3D();
+    for (let i = 0; i < list.length; i++) {
+      // Reset the scratch object each time. Without this a `place` that sets
+      // only position inherits the previous item's rotation and scale, which is
+      // the kind of bug that looks like bad data rather than bad plumbing.
+      m.position.set(0, 0, 0);
+      m.rotation.set(0, 0, 0);
+      m.scale.set(1, 1, 1);
+      place(m, list[i], i, mesh);
       m.updateMatrix();
       mesh.setMatrixAt(i, m.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    return mesh;
   }
-
-  // ----------------------------------------------------------------- plumbing
 
   /**
    * Create, name, register and add one instanced pool.
