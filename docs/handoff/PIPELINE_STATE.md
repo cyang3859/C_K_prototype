@@ -97,7 +97,7 @@ Targeted `grep` only.
 | 18 | Quaternius tiers | **The "60–70% free" figure is a CONTENT/FORMAT tier, not a licence split. Everything is CC0.** Orchestrator-verified 2026-08-01 — see the §ASSET-2 correction in the session 7 block. Free tiers ship **glTF/GLB**, which is the only format this project needs. **Start on the free tiers; the paid tiers are a $9.99–$20 content upgrade, not a licence unlock, and can be bought later without rework.** |
 | 19 | District A landmark cap | **Sculpted, non-flat crown on the 150 m landmark alone.** User decision 2026-08-01, on the design spec's §12 item 1 / §DA-4. Every other District A roof stays flat per §3.3's ordinance. The landmark's job is to be a **navigation beacon**, which directly serves the user's own "empty world, too few landmarks" feedback; a distinctive silhouette does that and equal height alone does not. Flat-topped was the argued alternative and is rejected: it preserves "every roof is a legible helipad" with no exceptions, but the cost of the exception is **one un-landable roof out of ~40**, which is cheap against a district-scale readability gain. **Two consequences the Engineer owns:** the crown is bespoke geometry, so it is the exact case §11 item 1's `BatchedMesh` per-instance-material question decides (batchable → 0 extra calls; not → the dedicated `Mesh` line stands), and its triangles must fit the §BGT-1 headroom rather than being assumed free. |
 | 20 | District B landmark identity | **A sign / observation mast, not a landmark building.** User decision 2026-08-01, taking the spec's own recommendation at §12 item 2 / §DB-4. Cheaper, authentic to a boulevard corridor per §5.9, and it reads as a **distinct silhouette class** against District A's tower plateau — which reinforces the district contrast that locked decision 10 exists for. A landmark building was the argued alternative; `MAS-3` stays on the shelf as a fallback recipe, so overturning this later costs no redesign. **The mast's name, signage text and specific art remain the user's per locked decision 6** — nothing has proposed them and no agent may invent them. |
-| 21 | Vegetation species split | **District A swaps to Canary Island date palm; District B keeps Phase 1's shipped Mexican fan palm.** User decision 2026-08-01, on §12 item 3 / §PROP-2. District differentiation is the point of the two-district pairing, this is cheap to author, and both species are confirmed in `RESEARCH_LA_WORLDBUILDING.md`. **Note this is a real change to what Phase 1 currently renders**, not a new-content-only choice — the shipped block's palms change species. |
+| 21 | Vegetation species split | **District A swaps to Canary Island date palm; District B keeps Phase 1's shipped Mexican fan palm.** User decision 2026-08-01, on §12 item 3 / §PROP-2. District differentiation is the point of the two-district pairing, this is cheap to author, and both species are confirmed in `RESEARCH_LA_WORLDBUILDING.md`. ⚠️ **This row's original closing note said "the shipped block's palms change species." That is now WRONG, and decision 24 is what made it wrong** — corrected 2026-08-01, session 10, after the Engineer flagged it. The note was written when Phase 1's block was still a separate area. **Decision 24 folds that block into District B, and District B is the district that KEEPS the Mexican fan palm** — which the block already had. So decision 21 requires the absorbed content to *stay* as it is, and Phase 2 changes no shipped palm at all. **Neither decision anticipated the other; the interaction is only visible once both are applied.** Verified: the absorbed palms' placement hashes are byte-identical to Phase 1's. |
 | 22 | Shipped facade constants | **Leave `towerShared` / `midriseA` / `midriseB` exactly as they ship. Do NOT nudge toward glassiness.** User decision 2026-08-01, on §12 item 4 / §MAT-1. Spot-check 5 measured the far towers at **+780% / +637% mean luminance** under the env map at these exact values; the dark-tower defect is closed and there is no problem left for a constants change to solve. Changing browser-verified values with no defect driving them is how regressions enter. **This closes the metalness-raise question for the third and last time** — sessions 5 and 8 both closed it on the same reasoning, once by eye and once on measurement. The option stays physically defensible if a later phase finds a real reason; "it would be cheap right now" is not one. |
 
 | 23 | The mast's name | **`AKC ENTERPRISE`.** User-supplied and approved 2026-08-01, on the sign/observation mast of locked decision 20. **This is the ONLY name anywhere in `kodaman3d/`** — everything else stays generic pending the trademark naming table, and locked decision 6 still reserves every future name to the user. It replaced the literal string `PLACEHOLDER`, which was deliberately implausible so an unapproved name could not ship by looking reasonable; that worked, and the question reached the user instead of being settled by an agent. The text now lives in one exported constant, `MAST_SIGN_TEXT` (`landmarks.js`), **pinned by a test** (`districts.test.js`) — not because this string is aesthetically load-bearing, but so a name can only ever change by the same sign-off that put it there. |
@@ -186,10 +186,84 @@ figure in it was re-measured against the code and the document tree rather than 
 which was the unsourced session-5 claim session 8 had already flagged — the document's result boxes
 were empty. It was actually run in session 8. Now says so.
 
-### The next action is UNCHANGED: **Engineer run 2**
+### Engineer run 2 has LANDED — the world half of Phase 2 is complete
 
-Session 10 touched no code and made no pipeline decisions. Everything in the session 9 block below
-stands exactly as written — the scope, the model, the brief to work from, and the budget note.
+| Stage | Model | Status | Output |
+|---|---|---|---|
+| Engineer — Phase 2, run 2 of 2 | **Opus** | **done** — 395,367 tokens, 169 tool calls, 4 commits | `ENGINEER_PHASE_2_RUN2.md`; brief was `ENGINEER_BRIEF_PHASE_2_RUN2.md`; **148 → 169 tests** |
+
+**`StreetBlock.js` is gone.** Its content is District B's **annex**, and nothing moved in world
+space — District B is the cardinal district, so Phase 1's block at the origin is a pure −320
+translation inside its grid group. **The hero still spawns at exactly `(0, 0, 13)`; the helipad tower
+still stands at `(−2, 31)`.** Items 4–10 of the spec's §10 all built; **nothing was cut from the
+priority order.**
+
+### The measured budget — orchestrator-verified, not taken from the report
+
+| | Phase 2 run 1 | After absorption | After props | Ceiling |
+|---|---:|---:|---:|---:|
+| Draw calls (main/shadow) | 83 (49/34) | **58** | **78 (44/34)** | 150 |
+
+**The absorption's own delta was −25 (−16 main / −9 shadow)**, measured before a single prop was
+added — which is what justified doing it first, and nobody had that number until now. The props line
+then cost 34 against §PROP-4's estimate of ~35. **72 calls of headroom, unspent, for CSM.**
+
+**Independently re-measured by the orchestrator in a browser:** graph walk **44 main / 34 shadow =
+78**, exactly matching. GPU frame time **0.5 ms median / 0.9 ms p95**. `WEBGL_multi_draw` present.
+Console clean apart from the pre-existing favicon 404 and the known `PCFSoftShadowMap` deprecation.
+**The helipad was confirmed by screenshot** — ring, yellow FATO circle and "H" all read correctly.
+
+**The 78 reconciles exactly against §BGT-1's ~69, which also closes run 1's open §6.1:** +6 is the
+still-un-rigged hero (decision 14's 8-call budget applies only once a rig exists), +4 is decision
+24's two irreducible meshes. **No double-counting risk remains, because the block no longer has a
+separate budget line.**
+
+### Two doc-vs-code contradictions, both resolved in the code's favour
+
+1. **§8 says awnings and blade signs don't cast shadows. The shipped code sets `castShadow = true`
+   on both.** They cost 2 calls each, not 1. Verified at `WorldProps.js:175`.
+2. **§8 files rooftop HVAC and parapet rings as District A exclusive. They are not** — the annex has
+   carried both since Phase 1. Sharing the pools instead saves 4 calls.
+
+**That is the fifth time an agent in this pipeline has been right to distrust a document it was
+handed.** The practice continues to pay.
+
+### One collider-teardown behaviour change, self-flagged rather than buried
+
+`StreetBlock.dispose()` called `collision.clearBuildings()`. **Nothing does now** — `WorldProps`
+cannot, because clearing the shared list would drop the districts' colliders too, and
+`District.dispose()` never cleared them either. **Not a leak in practice**: `Game.destroy()` discards
+the whole `CollisionWorld` and `init()` builds a fresh one, so HMR starts clean. But the old test
+asserted `world.buildings.length === 0` after dispose and **that assertion is gone**. The real fix,
+if anyone wants one, is a per-owner handle from `CollisionWorld` — **a design change, not a patch.**
+
+### Three defects only screenshots caught
+
+A 300 m square drawn around the hill (flat corners of a displaced square plane), a pinched crease at
+its summit (`atan2` undefined at r=0), and scaffolding that rendered as a bare gantry because one bay
+was scaled on Y instead of instanced per lift. **All fixed.** This is the third run in a row where
+the browser caught something neither review nor the test suite could.
+
+### ⚠️ Four things need the user — none guessed
+
+1. **The hill has no name.** Locked decision 6; the Engineer correctly did not invent even a
+   placeholder. `AKC ENTERPRISE` remains the only name in `kodaman3d/`.
+2. **The annex's boulevard dead-ends 20 m short of District B's grid.** Three options in report
+   §8.2; all are design calls.
+3. **Whether District B's generated buildings should also get parapet rings.** §10 scopes them to
+   District A, so they don't. **Zero-call change** if wanted.
+4. **`§PROP-3`'s district grade relief was cut for a MECHANICAL reason, not a budgetary one** —
+   `Collision.js` has no terrain height query, so displacing the district ground would put the hero's
+   feet through every slope. The hill itself is built, at 2 calls where the spec carried an
+   un-rederived 4–6. **Grade relief needs a collision feature before it can exist.**
+
+### Still open, unchanged
+
+Run 1's §6.3 (**the districts cast no shadows** — `Sky.js`'s frustum is ±60 m in a now-1,220 m world;
+CSM is the fix) and §6.4 (**fog is 120–900 m against a far longer sightline** — deliberately
+untouched, because locked decision 11 makes that exact `Fog` object the world-edge-fade mechanism).
+Neither was run 2's scope. **CSM's real cost remains the biggest unmeasured unknown in the project**,
+and the 72 calls of headroom exist for it.
 
 ---
 
