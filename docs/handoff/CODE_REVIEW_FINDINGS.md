@@ -34,28 +34,53 @@ directions — one as a documented-standard breach, one as a spec-fidelity probl
 
 ---
 
+## STATUS: 16 of 18 fixed, 2026-08-02. 177 → 185 tests.
+
+**Every fix was verified in a browser, not only by the suite.** 78 draw calls (44 main / 34 shadow)
+— unmoved by any of this; the T-junction reads as an open junction in a screenshot; the hero still
+walks the hill from rim to summit at 71.2 m through the real resolve path, never pushed back;
+exactly one terrain field registered after a full init; console clean apart from the known favicon
+404 and `PCFSoftShadowMap` deprecation.
+
+**Two are left, deliberately:** #17 needs a user decision, and #18 is a refactor filed rather than
+taken. Both are described below.
+
+⚠️ **Fixing C3 surfaced a SECOND instance of the same defect that neither axis found.** District B's
+own *grid* sidewalk also ran across the connector's carriageway at both ends, because `segments()`
+cuts only at `STREET_LINES` and knows nothing about annex streets. The new built-geometry test
+caught it immediately. Both are now one mechanism — grid and annex strips cut against one combined
+street list — which is why the fix is larger than the finding. **The review's value was not only the
+defect it named but the test it forced.**
+
+**Three fixes were verified to FAIL before being trusted**, because the whole finding class here was
+tests that could not fail: nudging `towerShared.winMetal` to 0.70 now fails decision 22's lock (it
+passed before); adding `SHOP_NAME = 'Ruby Diner'` to `props.js` — the review's own example — now
+fails decision 25's; and the C3 test failed at both intermediate stages of its own fix.
+
+---
+
 ## Ranked — what I intend to fix, most severe first
 
 | # | Axis | Finding | Status |
 |---|---|---|---|
-| 1 | Spec C3 | Decision 27's connector lays a sidewalk + curb **across** the boulevard roadway | **fix** |
-| 2 | Std 1 | Terrain height fields registered but never disposed — HMR leak | **fix** |
-| 3 | Spec C1 | Decision 22's "byte-identical" test is a tautology | **fix** |
-| 4 | Spec C2 | Decision 25's "only two names" test cannot see a third name | **fix** |
-| 5 | Std 6 | `strictPort: false` under a comment saying "fail loudly" | **fix** |
-| 6 | Std 3 | `dealBands` asserts coprimality in prose; false for many totals | **fix** |
-| 7 | Std 2 / Spec S3 | `terrain.js`'s header asserts the opposite of its own code | **fix** |
-| 8 | Spec S2 | Hero commits to the 3-group cape/accent reading decision 14 rejected | **fix** |
-| 9 | Spec S5 | Annex prop placements have no test; decision 21's claim rests on nothing | **fix** |
-| 10 | Spec S4 | `PLAYABLE_HALF_EXTENT` and `WORLD_HALF_EXTENT` are two unrelated 610s | **fix** |
-| 11 | Std 7 | `surfaceIndex` is dead and now mis-indexes across the `boxes`/`buildings` split | **fix** |
-| 12 | Std 8 | `hvacUnits()` called twice; colliders wrap a second generated list | **fix** |
-| 13 | Std 9 | `frontage()` returns an undeclared dead `depth` | **fix** |
-| 14 | Std 11 | `Terrain.dispose()` idiom drift; duplicate `this.collision =` | **fix** |
-| 15 | Std 12 | Closure allocated per fixed step in the collision hot path | **fix** |
-| 16 | Std — | `README.md` / `KNOWLEDGE_BASE.md` still document `world/StreetBlock.js` | **fix** |
-| 17 | Spec S1 | District B's generated parapets have no colliders; the annex's do | **user** |
-| 18 | Std 4, 5, 10 | Duplication in `districts.js` / `props.js` / `WorldProps.js` | **defer** |
+| 1 | Spec C3 | Decision 27's connector lays a sidewalk + curb **across** the boulevard roadway | **FIXED** |
+| 2 | Std 1 | Terrain height fields registered but never disposed — HMR leak | **FIXED** |
+| 3 | Spec C1 | Decision 22's "byte-identical" test is a tautology | **FIXED** |
+| 4 | Spec C2 | Decision 25's "only two names" test cannot see a third name | **FIXED** |
+| 5 | Std 6 | `strictPort: false` under a comment saying "fail loudly" | **FIXED** |
+| 6 | Std 3 | `dealBands` asserts coprimality in prose; false for many totals | **FIXED** |
+| 7 | Std 2 / Spec S3 | `terrain.js`'s header asserts the opposite of its own code | **FIXED** |
+| 8 | Spec S2 | Hero commits to the 3-group cape/accent reading decision 14 rejected | **FIXED** |
+| 9 | Spec S5 | Annex prop placements have no test; decision 21's claim rests on nothing | **FIXED** |
+| 10 | Spec S4 | `PLAYABLE_HALF_EXTENT` and `WORLD_HALF_EXTENT` are two unrelated 610s | **FIXED** |
+| 11 | Std 7 | `surfaceIndex` is dead and now mis-indexes across the `boxes`/`buildings` split | **FIXED** |
+| 12 | Std 8 | `hvacUnits()` called twice; colliders wrap a second generated list | **FIXED** |
+| 13 | Std 9 | `frontage()` returns an undeclared dead `depth` | **FIXED** |
+| 14 | Std 11 | `Terrain.dispose()` idiom drift; duplicate `this.collision =` | **FIXED** |
+| 15 | Std 12 | Closure allocated per fixed step in the collision hot path | **FIXED** |
+| 16 | Std — | `README.md` / `KNOWLEDGE_BASE.md` still document `world/StreetBlock.js` | **FIXED** |
+| 17 | Spec S1 | District B's generated parapets have no colliders; the annex's do | **OPEN — user** |
+| 18 | Std 4, 5, 10 | Duplication in `districts.js` / `props.js` / `WorldProps.js` | **FILED** |
 
 **17 needs a decision, not a patch** — see below. **18 is real but is a refactor of ~200 lines of
 working, tested, browser-verified code**; taking it now trades a measured-good world against churn

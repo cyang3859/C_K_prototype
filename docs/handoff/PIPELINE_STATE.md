@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-08-01 (session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
+**Last updated:** 2026-08-02 (session 11 — the code review ran and 16 of its 18 findings are fixed; see the resume block. Previously session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -155,7 +155,54 @@ session-5 snapshot.
 
 ---
 
-## >>> RESUME HERE — session 10 closed 2026-08-01, deliberately, by the user <<<
+## >>> RESUME HERE — session 11, 2026-08-02: THE CODE REVIEW IS DONE AND ITS FINDINGS ARE FIXED <<<
+
+**Read `CODE_REVIEW_FINDINGS.md` first** — 18 findings, ranked, with what was fixed and what was not.
+The two axis reports (`REVIEW_STANDARDS_AXIS.md`, `REVIEW_SPEC_AXIS.md`) hold the full detail.
+
+**185/185 tests** (was 177). Working tree clean apart from the pre-existing untracked
+`KODAMAN_HANDOFF.md`. `main` untouched at `5f62309`. `kodaman_prototype.html` zero diff.
+**Verified in a browser after the fixes: 78 draw calls (44 main / 34 shadow), unmoved.**
+
+### What the review found, in one paragraph
+
+Two parallel Opus sub-agents (Standards and Spec), **230,594 tokens**. **16 of 18 findings fixed.**
+The worst was a real traversal defect: **decision 27's connector shipped with a sidewalk and curb
+laid across the mouth of its own T-junction** — the thing the decision existed to remove. Fixing it
+surfaced a **second instance neither agent found**, where District B's grid sidewalk crossed the
+connector too, because `segments()` cuts only at `STREET_LINES` and knew nothing about annex
+streets. Both are one mechanism now.
+
+**The most important pattern is not any single defect.** Three findings were **locked decisions
+whose "pinning" tests could not fail**: decision 22's byte-identical test compared a constant to its
+own spread; decision 25's "only two names" test restated the two names instead of scanning the
+build; decision 21's byte-identical placement claim had no test at all. **In all three the code was
+correct and the enforcement was hollow** — §9's own rule failing inside the tests written to satisfy
+it. All three now fail for the right reason, and **each was verified to fail before being trusted.**
+
+**The brief's predicted #1 risk — `Collision.js`'s three parallel arrays — came back clean.** Neither
+agent could desync it. The worst defect was in `District.js`, which was not on the risk list.
+
+### ⚠️ ONE THING NEEDS YOU before the merge
+
+**Finding S1: District B's generated buildings have no parapet colliders; the absorbed annex's do.**
+Same district, same visual coping, different collision — the ring stops the hero walking off one roof
+and not off the roof next door. The code matches the **letter** of decision 26, whose arithmetic
+accounts only for HVAC's +72 colliders. District B is cardinal, so its parapet boxes would be exactly
+as correct as the annex's and cost only AABBs in a linear scan. **Decision 26 did not consider this;
+it is a decision, not a patch.**
+
+**Also filed but NOT done:** Standards 4, 5 and 10 — real duplication in `districts.js`, `props.js`
+and `WorldProps.js` (~200 lines). Taking it now would churn working, tested, browser-verified code on
+the eve of a merge. **Deliberately deferred, not forgotten.**
+
+### Then: you read the diff → merge → QA on the merged base
+
+Locked decision 4 keeps the merge with you. PR #3 is open against `dev`.
+
+---
+
+## Session 10 closed 2026-08-01, deliberately, by the user
 
 **Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` in
 sync, **0 unpushed commits**, working tree clean apart from the pre-existing untracked
