@@ -29,13 +29,14 @@ prompt.
 **Read these in order to get current:**
 0. **`CLAUDE.md` (repo root) — loads automatically, but know it exists.** New in session 8. Carries
    the Playwright-first browser-testing rule and the `window.__game` driving notes.
-0. **`KNOWLEDGE_BASE.md` (478 lines) — START HERE.** The Overview agent's consolidated map: module
+0. **`KNOWLEDGE_BASE.md` (705 lines) — START HERE.** The Overview agent's consolidated map: module
    wireframe, app lifecycle, the flight FSM written from the code, the settled decisions, and an
    index of every other document with when to read it. It exists precisely so nobody has to read the
-   document pile cold. **⚠️ Written 2026-07-31 — its §8 document index does NOT list the four
-   documents added in session 7 (items 2–4 below), and its decision list stops at 11.** Everything it
-   does say is still accurate; it is incomplete, not wrong. **Refreshing it is a good cheap job for
-   the next Overview run.**
+   document pile cold. **✅ REFRESHED 2026-08-01, session 10 — the staleness warning that used to sit
+   here is resolved.** Its wireframe, decision list (now 1–24), open-items list and document index
+   are all current and were re-measured rather than carried forward. It gained a §2 subsection on the
+   `WEBGL_multi_draw` dependency and a §9 on working practices. **Its header documents exactly what
+   changed**, so an older document's figures can still be placed.
 1. This file — decisions 1–18, status, resume pointer. **The locked-decisions table is authoritative
    over every other document**, including the knowledge base.
 2. **`RESEARCH_PHASE_2_WORLD.md`** (1,009 lines) and **`RESEARCH_PHASE_2_CHARACTER.md`** (937 lines) —
@@ -146,7 +147,53 @@ Total planning corpus: **4,132 lines across 7 documents.** Plus **6,691 lines of
 
 ---
 
-## >>> RESUME HERE — session 9 closed 2026-08-01, deliberately, by the user <<<
+## >>> RESUME HERE — session 10, opened 2026-08-01 <<<
+
+**State re-verified independently at the top of the session, not taken from this file:** 148/148
+tests, working tree clean apart from the pre-existing untracked `KODAMAN_HANDOFF.md`, **0 unpushed
+commits**, nothing interrupted or stranded.
+
+**The user chose housekeeping over spawning Engineer run 2.** Zero subagent tokens spent; all work
+inline.
+
+### `KNOWLEDGE_BASE.md` is refreshed — 500 → 705 lines
+
+It had drifted in five places, because it was written in session 5 before Phase 2 existed. **Every
+figure in it was re-measured against the code and the document tree rather than carried forward:**
+
+| What was stale | Was | Now |
+|---|---|---|
+| Build wireframe | 15 files / ~5,100 lines | **21 files / 7,199 lines**, with the 6 new Phase 2 modules described |
+| Settled decisions | stopped at 9 | **1–24** |
+| Open items | envMap "in progress"; Phase 2 research pending | envMap **landed** (`6a07c13`); research complete. Both removed |
+| Document index | missing **11** documents | all 32 listed, line counts re-measured |
+| Draw-call position | 57 against a 60 ceiling | **83 against a 150 ceiling**, 67 headroom |
+
+**Two things it did not previously carry, now recorded:**
+
+1. **The `WEBGL_multi_draw` dependency, verified at source again this session** rather than taken
+   from session 9's note. `WebGLRenderer.js`'s `object.isBatchedMesh` branch issues **one real
+   `renderer.render()` per geometry** when the extension is absent — ~170 calls instead of 7, which
+   blows the 150 ceiling on its own. **It is a budget dependency, not a correctness one**: the scene
+   still renders, it just costs an order of magnitude more, and it is invisible in every measurement
+   taken so far because every measurement was taken on hardware that has it.
+2. **A §9 on working practices that have repeatedly paid** — measure rather than look harder; size
+   from measurement rather than constants; **"the object renders" is not "the object reads"**;
+   enforce decisions in code rather than prose; write briefs that invite an agent to distrust what it
+   was handed. Each is there because it caught something real, several of them more than once.
+
+**Also corrected: spot-check 5's date.** The knowledge base said "verified in a browser 2026-07-31,"
+which was the unsourced session-5 claim session 8 had already flagged — the document's result boxes
+were empty. It was actually run in session 8. Now says so.
+
+### The next action is UNCHANGED: **Engineer run 2**
+
+Session 10 touched no code and made no pipeline decisions. Everything in the session 9 block below
+stands exactly as written — the scope, the model, the brief to work from, and the budget note.
+
+---
+
+## Session 9 closed 2026-08-01, deliberately, by the user
 
 **Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` in
 sync, **0 unpushed commits**, working tree clean apart from the pre-existing untracked

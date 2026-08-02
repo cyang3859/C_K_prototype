@@ -1,13 +1,24 @@
 # Knowledge Base — 3D Migration Project
 
-**Status:** written by the Overview agent, session 5, 2026-07-31. This is the terminal stage of
-the 6-agent pipeline (Research → Review → Design → Engineer → QA → Overview). It exists so a
-reader — especially the Phase 2 Research agent — does not have to read fourteen other documents
-to know what exists.
+**Status:** written by the Overview agent, session 5, 2026-07-31. **Refreshed inline by the
+orchestrator, session 10, 2026-08-01** — every figure below was re-measured against the code and
+the document tree rather than carried forward. This is the terminal stage of the 6-agent pipeline
+(Research → Review → Design → Engineer → QA → Overview). It exists so a reader does not have to
+read thirty other documents to know what exists.
 
-**If this file and an older doc disagree, this file is the corrected version** (it was written
-after the corrections landed). **If this file and the code disagree, the code wins** — say so
-inline rather than silently trusting either.
+**If this file and an older doc disagree, this file is the corrected version.** **If this file and
+the code disagree, the code wins** — say so inline rather than silently trusting either. **The one
+exception: `PIPELINE_STATE.md`'s locked-decisions table is authoritative over this file** for any
+decision's binding text; §6 below is a summary of it, not a second source.
+
+### What changed in the session-10 refresh
+
+The previous revision was written before Phase 2 existed and had drifted in five places, all now
+corrected: the build wireframe (**15 files / ~5,100 lines → 21 files / 7,199 lines**), the settled-
+decision list (**stopped at 9 → now 24**), the open-items list (the envMap work it described as
+"in progress" **landed in `6a07c13`**), the document index (**missing 11 documents** added since),
+and the draw-call position (**57 against a 60 ceiling → 83 against a 150 ceiling**). A new §2
+subsection records the `WEBGL_multi_draw` hardware dependency the whole batching strategy rests on.
 
 ---
 
@@ -21,6 +32,7 @@ inline rather than silently trusting either.
 6. Decisions already made (settled)
 7. What is open
 8. Map of `docs/handoff/`
+9. Working practices that have repeatedly paid
 
 ---
 
@@ -46,37 +58,65 @@ new proper nouns — see the naming section under Open Items.
 deploy target. Six-agent pipeline (Research → Review → Design → Engineer → QA → Overview) with a
 human orchestrator gating every handoff — agents do not spawn each other.
 
-**Where the project actually is right now:** Phase 1 (a vertical slice — walk/fly hero, one LA
-street block, third-person camera) is built, tested (105/105), and human-verified across four
-browser spot-checks. All known visual defects are fixed. PR #3 is open, unreviewed, unmerged.
-Phase 2 (broader world, skeletal animation, trademark-safe names, realism pass) has not started.
-See §6–7 below for what's settled vs. open.
+**Where the project actually is right now (2026-08-01, end of session 9):** Phase 1 (a vertical
+slice — walk/fly hero, one LA street block, third-person camera) is built and human-verified across
+four browser spot-checks; all known visual defects are fixed. **Phase 2's world half is half-built.**
+Its research is complete (two runs, 1,946 lines), its district design spec passed Review's
+feasibility gate, and **Engineer run 1 of 2 has landed** — both districts exist, at the two
+different grid rotations locked decision 10 exists for. **148/148 tests.** PR #3 is open, unreviewed,
+unmerged.
+
+**What is NOT built:** Phase 2's props half (Engineer run 2 — vegetation, rooftop detail, street
+furniture, parked cars), the whole **character half** (skeletal animation; fully researched and
+decided in decisions 12–18, but unstarted), the day/night cycle, CSM shadows, and the trademark-safe
+renaming. See §6–7 for what's settled vs. open, and `PIPELINE_STATE.md`'s resume pointer for the
+next action.
+
+**There is a playtester build:** `npm run build:standalone` emits `kodaman3d/dist-standalone/
+kodaman3d.html`, the whole game as one 0.6 MB self-contained double-clickable file, gitignored and
+overwritten in place. It works **only because the build has no asset files** — every texture is
+painted procedurally and the env map is PMREM-baked from a synthetic sky. Decisions 15/18 bring
+Quaternius glTF in for the hero rig, and that ends; the script has a hard guard that fails loudly
+rather than emitting a file that 404s on a tester's machine.
 
 ---
 
 ## 2. Build wireframe — `kodaman3d/src/`
 
-15 files, ~5,100 lines (measured directly: `wc -l` across the tree, 2026-07-31 — this
-supersedes the "25 files, 6,691/6,691" figures in `PIPELINE_STATE.md`, which counted build
-artifacts and docs from an earlier snapshot before Phase 1 closed out).
+**21 files, 7,199 lines** (measured directly: `wc -l` across `src/`, 2026-08-01, session 10). This
+supersedes both the "15 files / ~5,100 lines" of this document's previous revision and the "25 files
+/ 6,691 lines" in `PIPELINE_STATE.md`, which counted build artifacts and docs from a pre-Phase-1-
+close snapshot.
+
+**Six modules are new in Phase 2 run 1**, all under `world/`, and they are marked ★ below. Note
+`StreetBlock.js` **shrank 1,608 → 1,288 lines** in that run: its private canvas-painting kit was
+lifted into `facadeAtlas.js` so seven new facade families could share it instead of duplicating
+~200 lines. The lift was behaviour-preserving and the Phase 1 canvas-call assertions in
+`tests/world.test.js` are what pin that down — they are unmodified.
 
 | File | Lines | Owns |
 |---|---:|---|
 | `main.js` | 37 | Entry point. Constructs `Game`, awaits `init()`, calls `start()`. Wires Vite HMR teardown to `game.destroy()`. Exposes `window.__game` for headless test/devtools access only — nothing under `src/` may read `window`. |
-| `core/Game.js` | 235 | Owns every system instance and runs the fixed-timestep loop (see §3). The orchestration hub — everything else is a system it drives. |
+| `core/Game.js` | 258 | Owns every system instance and runs the fixed-timestep loop (see §3). The orchestration hub — everything else is a system it drives. |
 | `core/Time.js` | 158 | Fixed-timestep accumulator: clamps raw frame delta, tracks owed steps, guards against the spiral of death. |
 | `core/Input.js` | 311 | Raw keyboard/mouse/pointer-lock state → a derived per-step snapshot (`beginStep`/`endStep`), including edge-triggered flags (`personaPressed`, `debugPressed`) and mouse-delta accumulation. Clears held keys on blur. |
 | `core/Renderer.js` | 125 | `WebGLRenderer`, camera, canvas sizing/resize. |
 | `core/Scale.js` | 120 | Shared unit-conversion / scale constants used across world and character code. |
 | `core/dispose.js` | 88 | `disposeObject3D()` — walks a scene graph and frees GPU geometries/materials/textures. Exists because Vite HMR re-evaluates modules on every save; without disciplined disposal, `npm run dev` leaks a full scene per save. |
-| `config/tuning.js` | 281 | **The single source of truth for every tunable constant** — movement speeds, friction/damping, camera, world extent, etc. Carries a long, load-bearing block comment on unit conversion (see §6, hover-damping correction). Exposed live via lil-gui. |
+| `config/tuning.js` | 312 | **The single source of truth for every tunable constant** — movement speeds, friction/damping, camera, world extent, etc. Carries a long, load-bearing block comment on unit conversion (see §6, hover-damping correction). Exposed live via lil-gui. |
 | `entities/Hero.js` | 509 | The hero's **visual** representation: primitive meshes (capsule torso, limbs, cape polygon), material/color, persona toggle, per-frame pose application. Deliberately holds no movement logic. |
 | `controllers/LocomotionController.js` | 569 | The hero's **simulation**: the flight/ground finite-state machine, velocity integration, collision resolution calls. Deliberately holds no rendering. This split from `Hero.js` is load-bearing — see the callout below. |
 | `controllers/CameraRig.js` | 288 | Third-person camera: follows the hero's post-locomotion transform, arm raycast against `CollisionWorld` to avoid clipping through buildings, yaw/pitch from mouse input. |
 | `world/Collision.js` | 466 | `CollisionWorld` — AABB (`Box3`) registry and capsule/box resolution. Shared by the hero (movement collision) and the camera rig (arm raycast), which is why `Game.init()` constructs it before `StreetBlock`. |
-| `world/StreetBlock.js` | 1,608 | The largest module by far. Procedurally builds the one Phase-1 city block: building meshes (via `InstancedMesh` for draw-call economy), the roof/facade texture atlases (`CanvasTexture`), parapet colliders, ground plane. Registers its building AABBs into the shared `CollisionWorld` as it builds. |
-| `world/Sky.js` | 222 | Static midday lighting, fog, background colour, and the PMREM-baked environment map — see the note at the end of this section. |
-| `ui/DebugHud.js` | 199 | On-screen debug readout (fps, draw calls, geometries/textures counts, FSM state) plus lil-gui tuning panel wiring. Not part of the simulation; purely observational. |
+| `world/StreetBlock.js` | 1,288 | Procedurally builds the one Phase-1 city block: building meshes (via `InstancedMesh` for draw-call economy), parapet colliders, ground plane. Registers its building AABBs into the shared `CollisionWorld` as it builds. Exports `FACADE_VARIANTS`, which `facadeFamilies.js` spreads from directly. **⚠️ Locked decision 24 dissolves this module's block into District B** — it is the first item of Engineer run 2, and it carries the hero spawn, the browser-verified 90 m helipad tower, its collider registrations and most of `tests/world.test.js`. None of that may be lost in the move. |
+| `world/Sky.js` | 222 | Static midday lighting, fog, background colour, and the PMREM-baked environment map — see the note at the end of this section. Its shadow frustum is **±60 m in what is now a 1,220 m world**, which is why the districts cast no shadows; CSM is the fix and it is not built. |
+| ★ `world/districts.js` | 426 | **Data, not geometry** — the authored numbers and pure functions for both districts (grid, lot sizes, roadway/sidewalk widths, per-building family and recipe assignment). Same `BLOCK`-beside-the-builders separation `StreetBlock.js` uses, kept deliberately so a third district is data rather than a rewrite. Holds the two grid rotations locked decision 10 exists for: District A at 36°, District B at 0°. |
+| ★ `world/District.js` | 530 | Consumes `districts.js` and builds the meshes: the `BatchedMesh` per facade family, and the §6 merged ground/road surfaces (4 per district, **not** 7 per tile — the `BUD-2` trap, avoided and measured). |
+| ★ `world/facadeAtlas.js` | 397 | The shared procedural-facade painting kit, lifted verbatim out of `StreetBlock.js`. **Read its flipY/canvas-y convention comment before touching any of it** — `CanvasTexture` defaults to `flipY = true`, so UV v=0 samples the canvas's bottom row. |
+| ★ `world/facadeFamilies.js` | 142 | The seven facade families (3 District A, 4 District B). **The family count IS the building draw-call count** — one family = one `BatchedMesh` = 1 main + 1 shadow, however many buildings are in it, because `BatchedMesh` has no per-instance material override (see §2's batching note). 7 families = **14 calls both passes** for the entire building population of both districts. **Locked decision 22 is enforced here, not promised:** FAM-1/4/6/7 are spread directly from `FACADE_VARIANTS` rather than re-typed, and a byte-equality test pins it. |
+| ★ `world/massing.js` | 244 | The five massing recipes as pure functions — 2–4 stacked boxes per building (podium, setback, cap), the fix for `DEN-1`'s "every building is one `BoxGeometry`" diagnosis. **Massing costs triangles, not draw calls:** every box joins its family's existing batch. Returns boxes in building-local space. |
+| ★ `world/landmarks.js` | 483 | The two district landmarks — District A's 150 m tower with decision 19's sculpted crown (which **cannot** join its family's batch, so it costs its own `Mesh`), and District B's sign/observation mast per decision 20. Exports `MAST_SIGN_TEXT` (`AKC ENTERPRISE`, locked decision 23), **pinned by a test** so a name can only change by the same sign-off that put it there. |
+| `ui/DebugHud.js` | 226 | On-screen debug readout (fps, draw calls, geometries/textures counts, FSM state) plus lil-gui tuning panel wiring. Not part of the simulation; purely observational. Takes a `startHidden` flag so the standalone playtest build (`VITE_PLAYTEST=1`) boots with every debug surface hidden; **F1 still reveals them**, so a tester can be talked through showing them. |
 
 **Dependency shape (informal):** `main.js` → `Game.js`, which imports and wires everything else.
 `Game.js` is the only module that knows about all systems simultaneously; other modules do not
@@ -130,16 +170,64 @@ tests construct `new Sky(scene)` with no GL context and take an analytic-lights-
 `ENV_INTENSITY` is live in lil-gui, and 0 disables image-based lighting entirely — the honest
 before/after.
 
-**Verified in a browser 2026-07-31, spot-check 5, 4/4.** The towers read as glass at street level
-and at distance — the exact case that failed before. Matte surfaces did not go milky, draw calls
-and frame rate were unchanged, and `ENV_INTENSITY` was left at its 1.0 default.
+**Verified in a browser under Playwright, spot-check 5, 4/4.** ⚠️ **Date corrected in the session-10
+refresh:** this previously read "2026-07-31," but that claim was never backed by a recorded run —
+`BROWSER_SPOT_CHECK_5.md`'s result boxes were empty. It was **actually executed in session 8,
+2026-08-01**, and the filled-in document is the authority. The towers read as glass at street level
+and at distance — the exact case that failed before. Matte surfaces did not go milky, draw calls and
+frame rate were unchanged, and `ENV_INTENSITY` was left at its 1.0 default.
 
-**The towers' metalness was deliberately NOT raised back**, and that is now settled rather than
-pending. It sits where the palette pass put it (0.32 wall / 0.50 window, reduced from 0.45/0.70
-to compensate for the then-missing environment map). The plan was to restore it if the
-environment map alone proved insufficient; it proved sufficient. Restoring it is still physically
-defensible and remains available to a Phase 2 pass that wants more glassiness — but as an
-enhancement, not a fix.
+**⚠️ The env map turned out to be the scene's global ambient fill, not just a tower-glass fix.** An
+environment map feeds **diffuse irradiance** to every `MeshStandardMaterial`, and **the diffuse term
+does not care about metalness** — so the prediction that matte surfaces would "barely move" was
+wrong. Measured ENV 0 → 1: road **+70%**, sidewalk **+33%**, mid-rise **+253%**, hero cape **+637%**,
+far towers **+780%/+637%**, sky unchanged. **Consequence: anything that changes `ENV_INTENSITY` is
+changing scene-wide brightness, not just glass.** If ambient fill ever gets its own control,
+`ENV_INTENSITY` must stop carrying it.
+
+**The towers' metalness was deliberately NOT raised back, and that question is now CLOSED for the
+third and last time** (locked decision 22). It sits where the palette pass put it (0.32 wall / 0.50
+window, reduced from 0.45/0.70 to compensate for the then-missing environment map). Sessions 5 and 8
+both closed it on the same reasoning — once by eye, once on the measurements above — and session 9
+locked it. **The dark-tower defect is fixed; there is no problem left for a constants change to
+solve, and changing browser-verified values with no defect driving them is how regressions enter.**
+The option stays physically defensible if a later phase finds a real reason. "It would be cheap right
+now" is not one.
+
+### ⚠️ `BatchedMesh` has an unstated hardware dependency — `WEBGL_multi_draw`
+
+**The entire Phase 2 batching strategy (`BUD-3`, §BGT-1, and every draw-call figure in this
+document) silently assumes the `WEBGL_multi_draw` extension is present.** Verified at source in the
+installed `three@0.185.1` — `node_modules/three/src/renderers/WebGLRenderer.js`, in the
+`object.isBatchedMesh` branch:
+
+```js
+if ( ! extensions.get( 'WEBGL_multi_draw' ) ) {
+  for ( let i = 0; i < drawCount; i ++ ) {
+    uniforms.setValue( _gl, '_gl_DrawID', i );
+    renderer.render( starts[ i ] / bytesPerElement, counts[ i ] );   // a REAL draw call, per geometry
+  }
+} else {
+  renderer.renderMultiDraw( ... );                                    // one call for the whole batch
+}
+```
+
+**Without the extension a `BatchedMesh` is not one draw call — it is one per geometry.** For this
+build that is roughly **170 calls instead of 7**, which blows the 150 ceiling on its own.
+
+The extension was **measured present** in the test environment, so the build is fine there. But
+this is a **hardware/driver dependency of the budget, not of correctness** — the scene still renders,
+it just costs an order of magnitude more. It is invisible in every measurement taken so far because
+every measurement was taken on hardware that has the extension. **A runtime capability check is a
+real candidate**, and any future performance report from a machine whose numbers look inexplicably
+bad should check this first.
+
+**A second, related fact settled by reading the same library:** `BatchedMesh` takes **one `material`
+for the whole batch** (`BatchedMesh.js:192`), `geometryInfo` carries no material-index field
+(`:632`), and the render path unconditionally reads `this.material` (`:1390`). **There is no
+per-instance material override.** Two consequences: the facade-family count *is* the building
+draw-call count (§2's `facadeFamilies.js` row), and **decision 19's sculpted crown cannot join its
+family's batch** — it costs its own `Mesh`.
 
 ---
 
@@ -360,6 +448,21 @@ confirmed here by reading `frictionFactor()` and `hoverDampingFactor()` directly
 | 7 | Draw-call ceiling: raised for Phase 2 from a **measured worst case**, not a guess — see the correction below; the real Phase-1 worst case is 57, not the ~45–49 figures used before 2026-07-31. |
 | 8 | World extent: vast and explorable but **explicitly bounded**, not endless. |
 | 9 | Skeletal animation: pulled forward into **Phase 2** (was Phase 5); Phase 2 onward accepts imported rigged assets, superseding the Phase-1 primitives-only rule. |
+| 10 | The two Phase 2 districts: **a dense tower plateau on the 36°-rotated historic grid, paired with a mixed-height boulevard corridor on the cardinal grid.** The rotation difference is the point — the same sun rakes them differently at the same hour, so the day/night cycle gets per-district differentiation for free. **Confirmed to work** in spot-check 6. |
+| 11 | World edge: **a hard wall behind an atmospheric fade — both, not either.** Phase 1's four-`Box3` mechanism moves out to the true edge; a radial distance-from-centre fade whites out visibility well before the hero reaches it. No new rendering system — the fade feeds the existing `Fog`. |
+| 12 | Hero shading: **stay on PBR (`MeshStandardMaterial`). No toon.** `MeshToonMaterial` has no `envMap` property at all, so it would opt the hero out of the env-map mechanism entirely. Proportion carries the comic read instead. |
+| 13 | Outline treatment: **none. Not built, not toggled.** Screen-space edge detection is blocked until Phase 7 by the no-post-processing rule; inverted hull costs +1 call per outlined group. |
+| 14 | Hero material grouping: **4 groups — suit, skin, accent, and the cape as its own group. Visible face, NOT a full cowl. 8 draw calls both passes** (4 main / 4 shadow), down from Phase 1's 14. **The 8 is a budget the Engineer must hit, not an aspiration** — a rig built object-by-object instead of merged stays at 14 and silently wastes the whole gain. ⚠️ This row's *group description* was wrong until session 9 (it said 3 groups, which is 6 calls, contradicting its own 8); the **number was always right**. |
+| 15 | Asset source: **Quaternius only for Phase 2. Mixamo is OUT of scope this phase** — a permanently-archived public git history of Mixamo-derived `.glb` is not a scenario its terms clearly anticipate. Quaternius is unambiguous CC0, so this **sidesteps the question rather than answering it.** |
+| 16 | Animation scope: **floor first, then decide on the enhanced tier.** Ship 4 assets (idle/walk/run sourced CC0 + one custom flight hold), see the rig move in a browser, then decide on the remaining ~6. Deferred, **not** rejected. |
+| 17 | Floating-origin precision: **run the §ORG-6 synthetic test as soon as a rigged hero exists.** It is **a test, not a system.** Running it late risks discovering jitter after the animation work is already built on the rig. |
+| 18 | Quaternius tiers: **the "60–70% free" figure is a CONTENT/FORMAT tier, not a licence split. Everything is CC0.** Free tiers ship glTF/GLB, the only format this project needs. Paid is a content upgrade, **not** a licence unlock, and can be bought later without rework. |
+| 19 | District A landmark cap: **sculpted, non-flat crown on the 150 m landmark alone.** Every other roof stays flat. Its job is to be a navigation beacon, which serves the "empty world, too few landmarks" feedback. Cost: one un-landable roof out of ~40, and it **cannot join a batch** (see §2). |
+| 20 | District B landmark: **a sign / observation mast, not a landmark building.** Cheaper, authentic to a boulevard corridor, and a **distinct silhouette class** against District A's tower plateau — which reinforces what decision 10 exists for. |
+| 21 | Vegetation split: **District A swaps to Canary Island date palm; District B keeps Phase 1's Mexican fan palm.** ⚠️ This is a real change to what Phase 1 currently renders, not new-content-only. **Not yet built — it is Engineer run 2.** |
+| 22 | Shipped facade constants: **leave `towerShared` / `midriseA` / `midriseB` exactly as they ship. Do NOT nudge toward glassiness.** See §2's metalness paragraph — closed for the third and last time, and enforced by a byte-equality test rather than a promise. |
+| 23 | The mast's name: **`AKC ENTERPRISE`.** User-supplied. **This is the ONLY name anywhere in `kodaman3d/`** — everything else stays generic pending the naming table, and decision 6 still reserves every future name to the user. It replaced the literal string `PLACEHOLDER`, which was deliberately implausible **so an unapproved name could not ship by looking reasonable. That worked** — the question reached the user instead of being settled by an agent. |
+| 24 | **Phase 1's block is ABSORBED into District B.** The standalone `StreetBlock` does not survive as a third area. The spec's budget assumed the two districts *are* the world; the build kept Phase 1's block as well, which is why it measured 83 rather than 81. Left unreconciled, run 2's ~35-call props line would land the world near ~118 and leave only ~32 for CSM. ⚠️ **Real engineering, not bookkeeping** — see `StreetBlock.js`'s row in §2 for what must not be lost. |
 
 ### Architecture-level, verified against the code in this pass
 
@@ -410,39 +513,70 @@ This was independently verified in the project (by direct read of the installed 
 per `PIPELINE_STATE.md`) and is **not** re-verified again in this pass, but nothing in the code
 read here contradicts it.
 
-| | Main pass | Shadow pass | **Total** |
-|---|---:|---:|---:|
-| Phase 1, before the building realism pass | 28 | 21 | **49** |
-| Phase 1, after (shipped) | 32 | 25 | **57** |
+| | Main pass | Shadow pass | **Total** | Ceiling |
+|---|---:|---:|---:|---:|
+| Phase 1, before the building realism pass | 28 | 21 | **49** | 60 |
+| Phase 1, after (shipped) | 32 | 25 | **57** | 60 |
+| **Phase 2 run 1 (current)** | **49** | **34** | **83** | **150** |
 
-**The true position is 57 against a 60 ceiling — three calls of headroom, not the eleven that
-`DESIGN_SPEC_PHASE_1_BUILDINGS.md` promises** (that document's ledger counts main-pass objects
-only). Any Phase 2 draw-call ceiling must state explicitly whether it counts one pass or both, or
-this exact mistake repeats at a larger scale.
+**`DESIGN_SPEC_PHASE_1_BUILDINGS.md`'s ledger counts main-pass objects only**, which is why it
+promised eleven calls of headroom where three existed. **Every draw-call figure in this project must
+state whether it counts one pass or both.** All figures in this document count both.
+
+**The current position: 83 against a 150 ceiling, 67 headroom** — a graph walk, with a measured
+worst-viewpoint `info.render.calls` of **81**. Triangles are **14,724** against a ~500,000 ceiling,
+so triangles were never the binding constraint and still are not. **GPU frame time is 0.5 ms median
+/ 1.1 ms p95** against a 16.7 ms budget at 60 Hz — about 3% used.
+
+**Three things to know before budgeting against that 83:**
+
+1. **It assumes `WEBGL_multi_draw`.** Without it the number is ~10× worse. See §2.
+2. **The 83 includes Phase 1's block, which locked decision 24 dissolves into District B.** The
+   spec's ~69-call rollup budgeted as though the two districts *are* the world; the build preserved
+   the block as well. The absorption is the first item of Engineer run 2 precisely because it is
+   what pays for run 2's own ~35-call props line.
+3. **CSM's real shadow cost is still the biggest unmeasured unknown in the project** — nothing has
+   measured it, and it is what the remaining headroom is being protected for.
+
+**Prefer GPU frame time over fps in every report.** Headless Chrome pins rAF to 60, so the fps HUD
+is meaningless there; and on real hardware a flat 60 is **vsync, not a cap and not a problem**.
+Nothing in the code limits frame rate — the loop renders once per `requestAnimationFrame`,
+independent of the fixed simulation step. **fps cannot distinguish "capped by vsync" from "just
+barely managing"; frame time can.**
 
 ---
 
 ## 7. What is open
 
+**Two items this list carried in its previous revision are DONE and have been removed:** the envMap
+work (landed in `6a07c13`; see §2) and Phase 2 research (complete, two runs, all its decisions locked
+as 10–24). The cape-fix browser look was subsumed by later spot-checks.
+
 ### Active / near-term
 
-1. **The envMap work** (`Renderer.js`, `Sky.js`) — in progress concurrently with this document,
-   see §2 and §5. Goal: fix the distant tower facades, which read as near-black slabs at street
-   level and distance even after the palette fix (`DESIGN_SPEC_TOWER_PALETTE.md`) made close-up
-   glass read correctly. Judgement call the user hasn't finally made — the flatness is cosmetic,
-   not a defect anyone has called blocking.
-2. **A one-step browser look at the cape fix.** `CAPE_Z` (0.14→0.32) and `CAPE_MIN_STANDOFF`
-   (new, 0.4 rad) are unverified beyond spot-check 4's confirmation of "no interpenetration" —
-   the standing-pose screenshot was front-on and edge-on to the cape, so "hangs as a sheet against
-   the back" specifically has not been confirmed visually, only inferred.
-3. **PR #3** (`github.com/cyang3859/C_K_prototype/pull/3`, `feat/3d-open-world` → `dev`) is open
-   and unmerged. Review and merge are the user's call, not an agent's.
-4. **Phase 2 research** — scoped by locked decisions 7–9 (§6) plus the user's deferred design
-   feedback: character not human enough / wants a comic-accurate read, world feels empty with too
-   few landmarks, buildings/landscape "too blocky and rigid," open-world inspiration named as
-   RDR2, the Watch Dogs series, and Ghost of Tsushima for animation fluidity. This was explicitly
-   recognized as scope creep against Phase 1 and deferred by the user themselves — it is Phase 2
-   Research input, not a Phase 1 defect list.
+1. **Engineer run 2 — the props half of Phase 2's world.** This is the designated next action.
+   Scope, in order: **locked decision 24's block absorption first** (it is what pays for the rest),
+   then the design spec's §10 items 4–11 — vegetation (decision 21), rooftop HVAC and parapet rings,
+   awnings and blade signs, streetlamps, small props, parked cars, utility poles, the terrain
+   landmark, and the cut-priority tier. **Budget from the measured 83, not the spec's ~69.**
+2. **The whole character half is unstarted and fully briefed.** Decisions 12–18 settle its art
+   direction and `RESEARCH_PHASE_2_CHARACTER.md` is its research. The two halves are independent, so
+   this is an equally valid thing to pick up. Two hard requirements carry into whatever builds it:
+   **decision 14's 8 calls both passes**, and **decision 17's ORG-6 precision test as soon as any
+   rigged mesh exists.**
+3. **CSM shadows.** The new districts cast none — `Sky.js`'s shadow frustum is ±60 m in a 1,220 m
+   world. Pre-existing, correctly out of run 1's scope, and **CSM is the fix**. Its real cost is the
+   biggest unmeasured unknown in the project and is what the draw-call headroom is being saved for.
+4. **PR #3** (`github.com/cyang3859/C_K_prototype/pull/3`, `feat/3d-open-world` → `dev`) — open,
+   unmerged, 51+ commits. **Review and merge are the user's call, not an agent's.**
+
+### Deliberately not touched, so nobody "fixes" them
+
+- **Fog is 120–900 m against a 1,725 m sightline.** This looks like a bug and is not one to fix
+  independently: **locked decision 11 makes that exact `Fog` object the world-edge-fade mechanism**,
+  so retuning it now would pre-empt a locked design decision.
+- **`JUMP_FORCE`** is ported into `tuning.js` and exposed in lil-gui but wired into nothing.
+  Takeoff's vertical motion is entirely scripted. Left as a decision, not implemented speculatively.
 
 ### Requires a user decision, not further investigation
 
@@ -454,10 +588,9 @@ this exact mistake repeats at a larger scale.
   occurrences across 10+ marks in `kodaman_prototype.html` (that file is never edited; this is
   about what Phase 2 ports forward). Suggested split, offered previously and still standing: the
   user names the highest-reference character personally, agents propose the rest for sign-off.
-- **Phase 2's draw-call ceiling** needs to be set from the corrected 57 (§6), with an explicit
-  statement of whether it counts one render pass or both.
-- **`JUMP_FORCE`** is ported into `tuning.js` and exposed in lil-gui but wired into nothing. Left
-  as a decision, not implemented speculatively.
+- ~~**Phase 2's draw-call ceiling**~~ — **SET at 150, both passes**, per locked decision 7. See §6.
+- **Day/night cycle length.** Deliberately not put to the user yet: it is a feel call that needs
+  `DayNightCycle.js` to exist before it can be judged, and asking now would only collect a guess.
 
 ### Lower-priority / hygiene
 
@@ -474,12 +607,20 @@ this exact mistake repeats at a larger scale.
 
 ## 8. Map of `docs/handoff/`
 
-This file is meant to replace the need to read the other 21 documents end-to-end. Consult them
-**by section**, and only when this file doesn't answer the question.
+This file is meant to replace the need to read the other **32 documents (14,006 lines)** end-to-end.
+Consult them **by section**, and only when this file doesn't answer the question. Line counts
+re-measured 2026-08-01; **11 documents were missing from the previous revision** and are added below.
+
+**Two files outside `docs/handoff/` load or matter before any of them:**
+
+| File | What it's for |
+|---|---|
+| `CLAUDE.md` (repo root) | **Loads automatically every session.** Carries the Playwright-first browser-testing rule and the `window.__game` driving notes. It supersedes the "agents in this pipeline have no browser" premise that still appears throughout the older documents below. |
+| `KODAMAN_HANDOFF.md` (repo root) | Pre-pipeline handoff for the 2D prototype. **Stale — do not use.** Wrong line count (~5,200 vs actual 16,507) and wrong cape description (claims bezier quad-strip; it's a 7-segment closed polygon). Deliberately left untracked and uncommitted, because committing a known-wrong document would give it authority it should not have. |
 
 | Document | Lines | What it's for | Read it when... |
 |---|---:|---|---|
-| `PIPELINE_STATE.md` | 630 | **The single source of truth for status, decisions, and the resume pointer.** Everything in this knowledge base's §6/§7 traces back to it. | You need the *current* status of anything, or the full history of a decision. Read first, always. |
+| `PIPELINE_STATE.md` | 1,493 | **The single source of truth for status, decisions, and the resume pointer.** Everything in this knowledge base's §6/§7 traces back to it. | You need the *current* status of anything, or the full history of a decision. Read first, always. |
 | `RESEARCH_FINDINGS.md` | 920 | Architecture/character/constraints research: A1–A13 (technical), C1–C4 (trademark mapping table, characters), D1–D4. | You need the *reasoning* behind an architecture choice, or the trademark mapping table structure (not yet usable names, see §7). |
 | `RESEARCH_LA_WORLDBUILDING.md` | 688 | LA-specific worldbuilding research — landmarks, street classifications, block dimensions. | Phase 2 world content work; sourced the S-470-1 boulevard spec used in `StreetBlock.js`. |
 | `PHASE_1_SPEC.md` | 511 | The original Research-agent Phase 1 spec. | Historical reference only — superseded by `ENGINEER_BRIEF.md` for anything binding. Has a known citation bug (Hero.js section cites §C4, means §C3). |
@@ -492,9 +633,73 @@ This file is meant to replace the need to read the other 21 documents end-to-end
 | `QA_HUMAN_RESULTS.md` | 209 | First human test pass: 10 pass, 1 pass-with-defect, 1 fail. | Historical — the defects it found are fixed; read for the *methodology* of a human pass, or to see the original B2 apex-height miscalculation caught here. |
 | `HUMAN_TEST_GUIDE.md` | 263 | The 13-criteria guide the first human pass followed. | Template for writing a future test pass guide. |
 | `SPOT_CHECK_RESULTS.md` | 97 | Diagnosis notes behind the B5 flight-pose decision. | Understanding the arm/leg sign-flip reasoning before it was committed. |
-| `BROWSER_SPOT_CHECK.md` / `_2` / `_3` / `_4` | 198 / 218 / 165 / 77 | Sequential browser spot-check guides (9, then follow-ups) written for the user to run and report back against. | You need the exact verification steps for a specific fix, or want to write the next one following the established format. `_3` covers the cape-fix diagnosis correction and the tower-facade screenshots; `_4` is the cape-fix re-verification. |
-| `DESIGN_AGENT_BRIEF.md` | 168 | Charter for the sixth pipeline stage (Design), added session 3. | Before spawning any Design-stage agent. |
+| `BROWSER_SPOT_CHECK.md` / `_2` / `_3` / `_4` | 198 / 218 / 165 / 77 | Sequential browser spot-check guides, **written for the user to run** back when that was the only option. `_5` and `_6` are in the Phase 2 table below and were run by the assistant instead. | You need the exact verification steps for a specific fix, or want to write the next one. `_3` covers the cape-fix diagnosis correction and the tower-facade screenshots; `_4` is the cape-fix re-verification. **Their "the human is the only instrument" framing is obsolete** — see `CLAUDE.md`. |
+| `DESIGN_AGENT_BRIEF.md` | 220 | Charter for the sixth pipeline stage (Design), added session 3. **Corrected at source 2026-08-01** — five stale places, including a constraints table that still said *45 measured / 60 ceiling* and *primitives-only*. Phase 1 figures were kept and **labelled as history rather than deleted**, because this project has repeatedly been bitten by documents that quietly changed a number. | Before spawning any Design-stage agent. Safe to spawn from directly again. |
 | `DESIGN_SPEC_PHASE_1_BUILDINGS.md` | 446 | Building realism design spec — facades, roof atlas, parapet/HVAC/awning/sign instancing. | Understanding why `StreetBlock.js` looks the way it does. **Its draw-call ledger is wrong** — see §6's correction. |
 | `REVIEW_DESIGN_SPEC_BUILDINGS.md` | 330 | Feasibility gate on the buildings spec — APPROVED WITH CORRECTIONS (roof-atlas aspect fix, second `Box3` for parapet collision). | Understanding which parts of the buildings spec shipped as-is vs. corrected. |
 | `DESIGN_SPEC_TOWER_PALETTE.md` | 197 | The tower-facade palette fix (metalness pulled down to compensate for no envMap) and the envMap recommendation that's now in progress. | Understanding the current metalness values in `StreetBlock.js`'s tower material, or the reasoning behind the in-flight envMap work in §2/§5. |
-| `KODAMAN_HANDOFF.md` (repo root, not in `docs/handoff/`) | — | Pre-pipeline handoff doc. **Stale — do not use.** Wrong line count (~5,200 vs actual 16,507) and wrong cape description (claims bezier quad-strip; it's a 7-segment closed polygon). | Never, except to confirm it's still the thing everyone correctly avoids. |
+
+### Phase 2 documents — all added after this file's first revision
+
+| Document | Lines | What it's for | Read it when... |
+|---|---:|---|---|
+| `RESEARCH_PHASE_2_WORLD.md` | 1,009 | Phase 2 research run 1 of 2 — the world half. 38 findings: `DIS-*` (districts), `BUD-*` (draw-call budget strategy), `DEN-*` (massing/density), `PROP-*`, `MAT-*`, `ORG-1..3`. | **Consult by finding ID, never end-to-end.** IDs are unique across both research runs — run 2 continued run 1's numbering, so bare citations are safe. |
+| `RESEARCH_PHASE_2_CHARACTER.md` | 937 | Phase 2 research run 2 of 2 — the character half. 29 findings: `ASSET-*`, `RIG-*`, `ANIM-*`, `PROC-*`, `CAPE-*`, `ART-*`, `DRAW-*`, `ORG-4..7`, `CLIP-*`. | Anything to do with the hero rig, animation, or the cape. **This is the character half's brief** — it plus decisions 12–18 is everything that work needs. |
+| `PHASE_2_RESEARCH_BRIEF.md` / `_CHARACTER.md` | 227 / 184 | The two research briefs. | Historical, or as a template for writing the next research brief. |
+| `DESIGN_BRIEF_PHASE_2_DISTRICTS.md` | 235 | The Design agent's brief for the districts, written to the charter's five-part Research→Design contract. | Template for a future Design brief. Notable for **overriding three stale rows in the charter as a visible table rather than a quiet restatement** — left uncorrected the agent would have designed to less than half the real budget. |
+| `DESIGN_SPEC_PHASE_2_DISTRICTS.md` | 781 | **The spec Engineer runs 1 and 2 build from.** 7 facade families, 5 massing recipes, the §6 merged ground/road scheme, both landmarks, and the §10 priority order that defines run 2's scope. | Before any district work. **§BGT-1 carries an annotated orchestrator correction** — its hero row originally used 14 calls where decision 14 says 8. The error was conservative (it over-budgeted), so nothing specified was ever at risk. |
+| `REVIEW_DESIGN_SPEC_PHASE_2_DISTRICTS.md` | 222 | Review's feasibility gate on that spec — **budget and feasibility only; it gets no vote on taste.** | Understanding which parts of the spec were challenged. Its most valuable act was closing §11 item 1 (the `BatchedMesh` per-instance material question, §2 above). One of its two findings, `RVW-9`, was **itself wrong** and was fixed differently than it framed. |
+| `ENGINEER_BRIEF_PHASE_2_DISTRICTS.md` | 234 | Run 1's build order. | **Before briefing Engineer run 2** — it is a good template and its process rules, budget facts and trap warnings all still apply. |
+| `ENGINEER_PHASE_2_DISTRICTS.md` | 431 | Run 1's own report: what was built, the measured budget, and **four places the spec was wrong**, all handled. | Understanding why the districts are shaped the way they are. §3.1 documents FAM-5's terracotta landing on every roof — a defect **caught in a screenshot, not in review.** |
+| `BROWSER_SPOT_CHECK_5.md` | 162 | The PMREM env map, run under Playwright in session 8, 4/4. | The measured ENV 0→1 luminance table (§2 above summarizes it). |
+| `BROWSER_SPOT_CHECK_6.md` | 83 | The two districts, run under Playwright in session 9. | Confirmation that decision 10's central bet pays off — the districts do read as two distinct places. Also records the mast-signage defect and its three fixes. |
+
+---
+
+## 9. Working practices that have repeatedly paid
+
+Added in the session-10 refresh. These are not style preferences — each one is here because it
+caught something real, and in several cases caught it more than once.
+
+**Measure; don't estimate, and don't look harder.** The three mast-signage fixes are the cleanest
+example. Fix 2 was diagnosed by comparing the sign board's 7 m width against the mast column's
+radius *at that height*; fix 3 by reading the texture atlas back with `getImageData` and measuring
+the text's bounding box — which showed the texture was **already** correct at 88% of face width and
+the board's portrait aspect ratio was the real problem. Enlarging text that was already the right
+size would have wasted several rounds. Similarly, `gl.readPixels` over fixed screen regions turned
+"the towers look dark" into a defensible +780% before/after.
+
+**Size from measurement, not from constants.** The original signage defect came precisely from a
+font size hard-coded at `bh * 0.11`, a constant that happened to suit the old `PLACEHOLDER` string
+and broke the moment a real name replaced it. Everything now sizes from `measureText`, so a future
+approved name of any length or word count fits without another round.
+
+**"The object renders" is not the same check as "the object reads."** Session 9's automated pass
+verified the mast existed and its sign text was present, and signed the landmark off. **A human
+caught in one screenshot what that pass had approved.** The Playwright-first rule is still right —
+it caught FAM-5's terracotta, which no human would have hunted for — but legibility, silhouette and
+"does this look right" are a different question from presence.
+
+**Two defects in Phase 2 run 1 were catchable only in a browser** — FAM-5's terracotta on every roof,
+and the signage overflow. Neither was catchable by review or by the test suite. That is the strongest
+evidence in the project for driving the browser rather than reasoning about it.
+
+**Write briefs that invite an agent to distrust what it was handed.** Four times now an agent has
+been right to contradict its own brief or the document it was given — and once, an agent's own
+finding needed the same treatment (`RVW-9`, which called two readings "identical either way" when
+they differed by two draw calls). Both halves of that practice should continue.
+
+**Enforce decisions in code, not in prose.** Locked decision 22 is a byte-equality test, not a
+promise. Locked decision 23's name is one exported constant pinned by a test — not because the
+string is aesthetically load-bearing, but so it can only ever change by the same sign-off that put
+it there. And `PLACEHOLDER` was deliberately implausible so an unapproved name could not ship by
+looking reasonable; **that worked**, and the question reached the user instead of being settled by
+an agent.
+
+**Re-derive numbers rather than checking someone's arithmetic for plausibility.** Every draw-call
+and triangle figure in run 1 was recomputed from scratch rather than sanity-checked, which is how
+the §BGT-1 reconciliation (locked decision 24) surfaced at all.
+
+**Never quietly change a number and leave readers unable to tell which figure an older document
+meant.** When `DESIGN_AGENT_BRIEF.md` was corrected, its Phase 1 figures were kept and **labelled as
+history** rather than deleted. This document's header does the same for its own refresh.
