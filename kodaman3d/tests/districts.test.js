@@ -28,6 +28,7 @@ import { District } from '../src/world/District.js';
 import { FACADE_VARIANTS } from '../src/world/annex.js';
 import { MAST_SIGN_TEXT } from '../src/world/landmarks.js';
 import { installCanvasStub } from './support/canvas2d.js';
+import { allPropPlacements, localKeepOutBoxes } from '../src/world/props.js';
 import { TRIANGLES_PER_BOX, massingBoxes } from '../src/world/massing.js';
 
 /**
@@ -566,3 +567,122 @@ describe('District, built', () => {
     expect(d._disposables.length).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// §8 props — the checks a draw-call count cannot make
+// ---------------------------------------------------------------------------
+
+describe('prop placement (§8)', () => {
+  const placements = allPropPlacements();
+
+  it('locked decision 21: Canary palm in District A, Mexican fan palm in District B', () => {
+    // The species split is not decoration — §PROP-2 uses it to carry a
+    // formal-plaza vs boulevard distinction for free. A pool that leaked across
+    // the district line would undo that silently.
+    const [a, b] = DISTRICTS;
+    const inA = (p) => localOf(p, a);
+    const inB = (p) => localOf(p, b);
+    for (const p of placements.canaryPalms) {
+      const l = inA(p);
+      expect(Math.max(Math.abs(l.lx), Math.abs(l.lz)), 'canary palm outside District A').toBeLessThan(151);
+    }
+    for (const p of placements.mexicanPalms) {
+      const l = inB(p);
+      const inGrid = Math.max(Math.abs(l.lx), Math.abs(l.lz)) < 151;
+      const inAnnex = Math.max(Math.abs(p.x), Math.abs(p.z)) <= 150;
+      expect(inGrid || inAnnex, 'fan palm outside District B').toBe(true);
+    }
+    expect(placements.canaryPalms.length).toBeGreaterThan(0);
+    expect(placements.mexicanPalms.length).toBeGreaterThan(0);
+  });
+
+  it('THE SPECIES REALLY DIFFER: the two palms are not the same tree twice', () => {
+    // §PROP-2's whole argument is silhouette contrast. A stocky 9-14 m trunk
+    // under a big round crown, against a bare 12-18 m stick with a small tuft.
+    const canaryH = placements.canaryPalms.map((p) => p.height);
+    const fanH = placements.mexicanPalms.map((p) => p.height);
+    expect(Math.max(...canaryH)).toBeLessThan(Math.min(...fanH) + 3);
+    expect(Math.min(...placements.canaryPalms.map((p) => p.crown))).toBeGreaterThan(
+      Math.max(...placements.mexicanPalms.map((p) => p.crown)),
+    );
+  });
+
+  it('nothing is planted inside a building footprint, in either district', () => {
+    // The defect a prop pass produces most easily and a draw-call count cannot
+    // see. Checked in each district's OWN frame, where even the 36°-yawed grid
+    // is axis-aligned and the test is exact rather than conservative.
+    for (const spec of DISTRICTS) {
+      const boxes = localKeepOutBoxes(spec);
+      for (const key of ['canaryPalms', 'mexicanPalms', 'shadeTrees', 'lamps', 'utilityPoles']) {
+        for (const p of placements[key]) {
+          const l = localOf(p, spec);
+          for (const box of boxes) {
+            const inside =
+              l.lx > box.min.x && l.lx < box.max.x && l.lz > box.min.z && l.lz < box.max.z;
+            expect(inside, `${key} inside a footprint at ${l.lx},${l.lz}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it('props on the 36° grid carry the district rotation', () => {
+    // A streetlamp row that ignores District A's yaw reads as broken — the props
+    // would march across the facades at an angle instead of along the kerb.
+    const [a] = DISTRICTS;
+    const rotated = placements.lamps.filter((p) => Math.abs(p.yaw % (Math.PI / 2)) > 1e-6);
+    expect(rotated.length, 'no lamp carries a non-cardinal yaw').toBeGreaterThan(0);
+    for (const p of rotated) {
+      const off = ((p.yaw - a.rotation) % (Math.PI / 2) + Math.PI) % (Math.PI / 2);
+      expect(Math.min(off, Math.PI / 2 - off)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('parked cars sit in the roadway, never on the sidewalk', () => {
+    // "Are parked cars floating, or half-buried, or facing into the kerb?" —
+    // this pins the one of those three that is pure arithmetic.
+    for (const spec of DISTRICTS) {
+      for (const c of placements.parkedCars) {
+        const l = localOf(c, spec);
+        if (Math.max(Math.abs(l.lx), Math.abs(l.lz)) > 151) continue;
+        const nearest = (v) =>
+          STREET_LINES.reduce((best, s) => (Math.abs(v - s) < Math.abs(v - best) ? s : best), STREET_LINES[0]);
+        const dx = Math.abs(l.lx - nearest(l.lx));
+        const dz = Math.abs(l.lz - nearest(l.lz));
+        // Inside the kerb line on at least one axis, i.e. on the asphalt.
+        expect(Math.min(dx, dz)).toBeLessThan(HALF_ROADWAY);
+      }
+    }
+  });
+
+  it('nothing stands in the middle of an intersection', () => {
+    for (const spec of DISTRICTS) {
+      for (const key of ['lamps', 'utilityPoles', 'canaryPalms', 'mexicanPalms']) {
+        for (const p of placements[key]) {
+          const l = localOf(p, spec);
+          if (Math.max(Math.abs(l.lx), Math.abs(l.lz)) > 151) continue;
+          const onX = STREET_LINES.some((s) => Math.abs(l.lz - s) < ROW / 2);
+          const onZ = STREET_LINES.some((s) => Math.abs(l.lx - s) < ROW / 2);
+          expect(onX && onZ, `${key} in a crossing at ${l.lx},${l.lz}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('is deterministic — the same world builds the same props every load', () => {
+    const again = allPropPlacements();
+    for (const key of Object.keys(placements)) {
+      expect(again[key].length, key).toBe(placements[key].length);
+    }
+    expect(again.mexicanPalms[0]).toEqual(placements.mexicanPalms[0]);
+  });
+});
+
+/** World -> a district's local frame. The inverse of `districtLocalToWorld`. */
+function localOf(p, district) {
+  const cos = Math.cos(district.rotation);
+  const sin = Math.sin(district.rotation);
+  const dx = p.x - district.origin.x;
+  const dz = p.z - district.origin.z;
+  return { lx: dx * cos - dz * sin, lz: dx * sin + dz * cos };
+}

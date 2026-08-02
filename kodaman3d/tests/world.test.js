@@ -374,8 +374,11 @@ describe('District B with its annex, built', () => {
         expect(found, `parapet bar for building at ${b.x},${b.z}`).toBe(true);
       }
     }
-    // 46 District B footprints + 1 landmark + 40 parapet bars + 22 rooftop units.
-    expect(collision.buildings.length).toBe(46 + 1 + 40 + 22);
+    // 46 District B footprints + 1 landmark, plus everything WorldProps
+    // registers for the WHOLE world (it is world-shared, so it does not care
+    // that only District B was built here): 40 annex parapet bars + 86 rooftop
+    // units, 22 of them the annex's and 64 District A's.
+    expect(collision.buildings.length).toBe(46 + 1 + 40 + 86);
   });
 
   it('registers a collider for every rooftop mechanical unit', () => {
@@ -549,48 +552,59 @@ function buildWorld() {
 }
 
 describe('worst-case draw calls, both passes', () => {
-  it('is 58: 33 main + 25 shadow, against the 150 ceiling', () => {
+  it('is 72: 40 main + 32 shadow, against the 150 ceiling', () => {
     const { scene } = buildWorld();
     const inv = drawCallInventory(scene);
 
-    // MAIN, 33:
+    // MAIN, 40:
     //   District A   8 = ground + roadway + sidewalk + curb + 3 batches + landmark
     //   District B  11 = ground + roadway + sidewalk + curb + 5 batches
     //                    + bespoke helipad tower + landmark
-    //   props        7 = parapets, HVAC, awnings, blades, palm trunks,
-    //                    palm crowns, streetlamps
+    //   props       14 = one pool per silhouette, world-shared (§PROP-1)
     //   hero         7 = torso + head + 4 limbs + cape
     //   sky          0 = two lights and a Color background; no skybox mesh
-    expect(inv.main.length).toBe(33);
+    expect(inv.main.length).toBe(40);
 
-    // SHADOW, 25: every castShadow object above. No ground or road surface
+    // SHADOW, 32: every castShadow object above. No ground or road surface
     // casts, in either district — §6, and Phase 1's own convention.
-    expect(inv.shadow.length).toBe(25);
+    expect(inv.shadow.length).toBe(32);
     for (const spec of DISTRICTS) {
       for (const surface of ['ground', 'roadway', 'sidewalk', 'curb']) {
         expect(inv.shadow).not.toContain(`${spec.id}_${surface}`);
       }
     }
 
-    expect(inv.total).toBe(58);
+    expect(inv.total).toBe(72);
     // The Phase 2 ceiling, both passes (RESEARCH_PHASE_2_WORLD.md §BUD-6). The
-    // headroom is reserved for CSM's unmeasured shadow multiplier — it is not
-    // spare budget.
+    // 78 calls of headroom are reserved for CSM's unmeasured shadow multiplier —
+    // they are not spare budget.
     expect(inv.total).toBeLessThanOrEqual(150);
   });
 
-  it('THE ABSORPTION: the world is 25 calls cheaper than it was before decision 24', () => {
-    // Run 1 measured 83 (49 main / 34 shadow) with Phase 1's block still a
-    // separate area: 25 main + 18 shadow of ground, roads, ten building meshes
-    // and eight prop pools that §BGT-1 never budgeted for. Folding it into
-    // District B left only the two things that genuinely cannot merge — the
-    // bespoke helipad tower's own Mesh, and District B's FAM-1 batch for the
-    // 64 m tower's shipped palette.
-    const { scene } = buildWorld();
+  it('THE ABSORPTION: the world costs 44 calls before a single prop pool', () => {
+    // The measurement locked decision 24 exists to produce, isolated from the
+    // props that came after it.
+    //
+    // BEFORE (run 1, measured): 83 = districts 26 + hero 14 + Phase 1's block
+    // 43, of which the block's own eight prop pools were 16.
+    // AFTER: this figure + the 28 the world-shared pools now cost.
+    //
+    // 83 - 16 = 67 was the pre-absorption world with its prop pools set aside;
+    // 44 is the same world after. The absorption gives back 23 there, plus the
+    // 2 the lamp post/head merge saves inside the pools: 25 in total, which is
+    // exactly the 83 -> 58 measured at the absorption commit.
+    installCanvasStub();
+    const scene = new THREE.Scene();
+    const collision = new CollisionWorld({ halfExtent: WORLD_HALF_EXTENT });
+    new Sky(scene);
+    for (const spec of DISTRICTS) new District({ scene, collision, spec });
+    new Hero({ scene, position: new THREE.Vector3(0, 0, 13) });
+
     const inv = drawCallInventory(scene);
-    expect(83 - inv.total).toBe(25);
-    expect(49 - inv.main.length).toBe(16);
-    expect(34 - inv.shadow.length).toBe(9);
+    expect(inv.main.length).toBe(26);
+    expect(inv.shadow.length).toBe(18);
+    expect(inv.total).toBe(44);
+    expect(67 - inv.total).toBe(23);
   });
 
   it('the annex costs 4 calls where it used to cost 43', () => {
@@ -605,8 +619,12 @@ describe('worst-case draw calls, both passes', () => {
     expect(inv.shadow).toContain('districtB_fam1DarkCurtainWall');
   });
 
-  it('the seven world-shared prop pools cost exactly 14 of those calls', () => {
-    const { scene } = buildWorld();
+  it('the 14 world-shared prop pools cost exactly 28 of those calls', () => {
+    // §PROP-4 budgets the whole props+terrain line at ~35 both passes. This is
+    // the measured figure for everything §10 items 4-8 asked for, and the pool
+    // COUNT is the whole cost — an InstancedMesh draws 4,000 instances for the
+    // same two calls it draws 40.
+    const { scene, props } = buildWorld();
     const inv = drawCallInventory(scene);
     const pools = [
       'roofParapets',
@@ -615,14 +633,30 @@ describe('worst-case draw calls, both passes', () => {
       'bladeSigns',
       'palmTrunks',
       'palmCrowns',
+      'canaryTrunks',
+      'canaryCrowns',
+      'shadeTrees',
       'streetLamps',
+      'utilityPoles',
+      'parkedSedans',
+      'parkedVans',
+      'smallProps',
     ];
+    expect([...props.pools.keys()].sort()).toEqual([...pools].sort());
     for (const name of pools) {
       expect(inv.main, name).toContain(name);
       // One main-pass call and one shadow-pass call each.
       expect(inv.shadow, name).toContain(name);
     }
-    expect(pools.length * 2).toBe(14);
+    expect(pools.length * 2).toBe(28);
+  });
+
+  it('every pool actually has instances — an empty one still costs two calls', () => {
+    const { props } = buildWorld();
+    for (const [name, mesh] of props.pools) {
+      const n = mesh.isBatchedMesh ? mesh.instanceCount : mesh.count;
+      expect(n, `${name} is empty`).toBeGreaterThan(0);
+    }
   });
 
   it('78 buildings cost 8 batch calls + 1 bespoke mesh, not 156', () => {
@@ -630,22 +664,34 @@ describe('worst-case draw calls, both passes', () => {
     const buildings = districts.reduce((n, d) => n + d.buildings.length, 0);
     expect(buildings).toBe(78); // 32 in A, 36 + 10 annex in B
 
-    let batches = 0;
+    let facadeBatches = 0;
     let instances = 0;
     scene.traverse((o) => {
-      if (o.isBatchedMesh) {
-        batches++;
+      if (o.isBatchedMesh && o.name !== 'smallProps') {
+        facadeBatches++;
         instances += o.instanceCount;
       }
     });
-    expect(batches).toBe(8);
+    expect(facadeBatches).toBe(8);
     // Every massing box is its own geometry+instance inside its family's batch.
     // 170 from the generated population + 9 annex single boxes (the tenth is the
     // un-batchable helipad tower).
     expect(instances).toBe(179);
     // One mesh per building would be 78 main + 78 shadow = 156 calls, which
     // exhausts the 150 ceiling on buildings alone. BUD-3 is not polish.
-    expect(batches * 2).toBeLessThan(buildings * 2);
+    expect(facadeBatches * 2).toBeLessThan(buildings * 2);
+  });
+
+  it('only ONE pool is a BatchedMesh, so the no-multi_draw fallback stays small', () => {
+    // `BatchedMesh` falls back to one real draw call PER GEOMETRY when
+    // `WEBGL_multi_draw` is absent. Every prop pool that can be an
+    // `InstancedMesh` is one, and the single batch that earns its place
+    // (`LOD-3`'s multi-variant case) holds three geometries — so the worst case
+    // on a machine without the extension is 3 calls instead of 1, not 200.
+    const { props } = buildWorld();
+    const batched = [...props.pools.values()].filter((m) => m.isBatchedMesh);
+    expect(batched).toHaveLength(1);
+    expect(batched[0].name).toBe('smallProps');
   });
 });
 

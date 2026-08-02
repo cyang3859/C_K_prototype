@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { AWNING, BLADE, HVAC, PARAPET } from './annex.js';
-import { annexPropPlacements } from './props.js';
+import { allPropPlacements } from './props.js';
 import { disposeObject3D } from '../core/dispose.js';
 
 /**
@@ -73,14 +73,20 @@ export class WorldProps {
     /** @type {Map<string, THREE.Object3D>} */
     this.pools = new Map();
 
-    const p = this._gather();
+    const p = allPropPlacements();
+    this.placements = p;
 
     this._buildParapets(p.parapets);
     this._buildHvac(p.hvac);
     this._buildAwnings(p.awnings);
     this._buildBladeSigns(p.bladeSigns);
     this._buildMexicanPalms(p.mexicanPalms);
+    this._buildCanaryPalms(p.canaryPalms);
+    this._buildShadeTrees(p.shadeTrees);
     this._buildLamps(p.lamps);
+    this._buildUtilityPoles(p.utilityPoles);
+    this._buildParkedCars(p.parkedCars);
+    this._buildSmallProps(p.smallProps);
 
     // Colliders. The collision world is created BEFORE this object for the same
     // reason it was created before `StreetBlock`: pools register their AABBs as
@@ -94,26 +100,6 @@ export class WorldProps {
 
   /** Static this run. Present so the update shape matches the districts'. */
   update(_dt) {}
-
-  /**
-   * Collect every placement list this world needs.
-   *
-   * Split out so the set of contributing areas is one readable list rather than
-   * being threaded through six builders.
-   */
-  _gather() {
-    const annex = annexPropPlacements();
-    return {
-      parapets: [...annex.parapets],
-      parapetColliders: [...annex.parapetColliders],
-      hvac: [...annex.hvac],
-      hvacColliders: [...annex.hvacColliders],
-      awnings: [...annex.awnings],
-      bladeSigns: [...annex.bladeSigns],
-      mexicanPalms: [...annex.mexicanPalms],
-      lamps: [...annex.lamps],
-    };
-  }
 
   // -------------------------------------------------------------- roof props
 
@@ -297,6 +283,114 @@ export class WorldProps {
     crowns.instanceMatrix.needsUpdate = true;
   }
 
+  /**
+   * Phoenix canariensis — the Canary Island date palm, District A's species per
+   * locked decision 21.
+   *
+   * THE SILHOUETTE IS THE WHOLE POINT OF THE SPECIES SPLIT (§PROP-2). Where the
+   * Mexican fan palm is a bare 18 m stick with a small tuft, this is a stocky
+   * 9–14 m trunk under a massive near-spherical crown — "formal/estate, not
+   * street". Two districts planted with two silhouettes read as two places for
+   * the same four draw calls either species would have cost alone.
+   *
+   * Two pools again, and for the same reason as the fan palm: crown radius and
+   * trunk height vary independently.
+   */
+  _buildCanaryPalms(palms) {
+    // Much fatter and barely tapered — a date palm's trunk is a column.
+    const trunkGeo = new THREE.CylinderGeometry(0.62, 0.8, 1, 8, 1);
+    trunkGeo.translate(0, 0.5, 0);
+    const trunks = this._pool(
+      'canaryTrunks',
+      trunkGeo,
+      new THREE.MeshStandardMaterial({ color: 0x7a6a55, roughness: 1 }),
+      palms.length,
+      { receive: true },
+    );
+
+    // Detail 1 rather than the fan palm's detail 0, and barely squashed: the
+    // "pineapple" crown is dense and round where the robusta's is a flat tuft.
+    const crownGeo = new THREE.IcosahedronGeometry(1, 1);
+    crownGeo.scale(1, 0.82, 1);
+    const crowns = this._pool(
+      'canaryCrowns',
+      crownGeo,
+      new THREE.MeshStandardMaterial({ color: 0x415c31, roughness: 0.95, flatShading: true }),
+      palms.length,
+    );
+
+    const m = new THREE.Object3D();
+    for (let i = 0; i < palms.length; i++) {
+      const p = palms[i];
+      m.position.set(p.x, 0, p.z);
+      m.rotation.set(0, p.yaw, 0);
+      m.scale.set(1, p.height, 1);
+      m.updateMatrix();
+      trunks.setMatrixAt(i, m.matrix);
+
+      m.position.set(p.x, p.height, p.z);
+      m.rotation.set(0, p.yaw, 0);
+      m.scale.set(p.crown, p.crown, p.crown);
+      m.updateMatrix();
+      crowns.setMatrixAt(i, m.matrix);
+    }
+    trunks.instanceMatrix.needsUpdate = true;
+    crowns.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * A broadleaf shade tree, `DEN-7`'s answer to "not every district should read
+   * as palm-only". District B's cross streets get these where its spine gets
+   * palms.
+   *
+   * ONE MESH, TWO COLOURS: trunk and canopy are merged and tinted per vertex, so
+   * the whole tree is a single draw call rather than the palms' two. It can be
+   * merged where a palm cannot because a shade tree scales as a unit — a bigger
+   * tree has a proportionally thicker trunk, which is not true of a palm.
+   */
+  _buildShadeTrees(trees) {
+    // `IcosahedronGeometry` is NON-INDEXED and `CylinderGeometry` is indexed;
+    // `mergeGeometries` refuses a mix and returns null, which would hand the
+    // pool a null geometry and take the whole scene down. Drop the trunk's index
+    // so both sides match.
+    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 4.2, 7, 1)
+      .translate(0, 2.1, 0)
+      .toNonIndexed();
+    tintGeometry(trunkGeo, 0x6b5844);
+
+    const canopyGeo = new THREE.IcosahedronGeometry(3.4, 1);
+    canopyGeo.scale(1, 0.78, 1);
+    canopyGeo.translate(0, 6.2, 0);
+    tintGeometry(canopyGeo, 0x4f6b3c);
+
+    const merged = mergeGeometries([trunkGeo, canopyGeo]);
+    trunkGeo.dispose();
+    canopyGeo.dispose();
+
+    const mesh = this._pool(
+      'shadeTrees',
+      merged,
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: 0.95,
+        flatShading: true,
+      }),
+      trees.length,
+    );
+
+    const m = new THREE.Object3D();
+    for (let i = 0; i < trees.length; i++) {
+      const t = trees[i];
+      m.position.set(t.x, 0, t.z);
+      m.rotation.set(0, t.yaw, 0);
+      m.scale.setScalar(t.scale);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
   // ---------------------------------------------------------------- lighting
 
   /**
@@ -347,6 +441,160 @@ export class WorldProps {
     mesh.instanceMatrix.needsUpdate = true;
   }
 
+  /**
+   * Timber utility poles with a crossarm — District B only.
+   *
+   * §8 treats District A's dense core as undergrounded, which is a real and
+   * common CBD condition and also keeps a silhouette out of a district that does
+   * not want it. Merged pole + crossarm, vertex-tinted, one draw call.
+   */
+  _buildUtilityPoles(poles) {
+    const poleGeo = new THREE.CylinderGeometry(0.17, 0.22, 9.4, 6, 1);
+    poleGeo.translate(0, 4.7, 0);
+    tintGeometry(poleGeo, 0x6a5a48);
+
+    const armGeo = new THREE.BoxGeometry(2.6, 0.16, 0.16);
+    armGeo.translate(0, 8.5, 0);
+    tintGeometry(armGeo, 0x59493a);
+
+    const merged = mergeGeometries([poleGeo, armGeo]);
+    poleGeo.dispose();
+    armGeo.dispose();
+
+    const mesh = this._pool(
+      'utilityPoles',
+      merged,
+      new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1 }),
+      poles.length,
+    );
+
+    const m = new THREE.Object3D();
+    for (let i = 0; i < poles.length; i++) {
+      const p = poles[i];
+      m.position.set(p.x, 0, p.z);
+      // The crossarm is authored across local X, so a pole's yaw puts it
+      // perpendicular to the street rather than along it.
+      m.rotation.set(0, p.yaw + Math.PI / 2, 0);
+      m.scale.set(1, 1, 1);
+      m.updateMatrix();
+      mesh.setMatrixAt(i, m.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // ------------------------------------------------------------ street level
+
+  /**
+   * Kerbside parked cars — two body shapes, one pool each, `setColorAt` for
+   * colour variety within a shape (§8, and `DEN-4`'s own recommendation).
+   *
+   * WHY `setColorAt` AND NOT TWO MORE POOLS. `InstancedMesh` multiplies the
+   * per-instance colour into the material, so one sedan pool can hold twenty
+   * paint colours for one draw call. `BatchedMesh` could hold both shapes in one
+   * pool, but it has NO per-instance material override and — more importantly —
+   * falls back to one real draw call per geometry without `WEBGL_multi_draw`, so
+   * a 200-car pool would become 200 calls on the wrong machine. Two instanced
+   * pools cost 4 calls and have no such cliff.
+   *
+   * THE VERTEX TINT IS WHAT KEEPS THE GLASS AND TYRES OUT OF THE PAINT. The
+   * instance colour multiplies the vertex colour, so a body authored white takes
+   * the paint at full strength while near-black wheels and dark glazing stay
+   * near-black whatever colour the car is.
+   */
+  _buildParkedCars(cars) {
+    const sedans = [];
+    const vans = [];
+    for (const c of cars) (c.van ? vans : sedans).push(c);
+
+    const paint = [0xb8c0c8, 0x2f3336, 0x8a2f2a, 0x27405c, 0xd8d4c8, 0x4a5a3e, 0x8d7a52];
+    const build = (name, geo, list) => {
+      const mesh = this._pool(
+        name,
+        geo,
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          vertexColors: true,
+          roughness: 0.35,
+          metalness: 0.45,
+        }),
+        list.length,
+        { receive: true },
+      );
+      const m = new THREE.Object3D();
+      const col = new THREE.Color();
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i];
+        m.position.set(c.x, 0, c.z);
+        m.rotation.set(0, c.yaw, 0);
+        m.scale.set(1, 1, 1);
+        m.updateMatrix();
+        mesh.setMatrixAt(i, m.matrix);
+        col.setHex(paint[Math.floor(c.tint * paint.length) % paint.length]);
+        mesh.setColorAt(i, col);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    };
+
+    build('parkedSedans', carGeometry(4.5, 1.28, 1.82, 0.42), sedans);
+    build('parkedVans', carGeometry(5.4, 1.95, 1.98, 0.3), vans);
+  }
+
+  /**
+   * `DEN-4`'s small sidewalk clutter — trash cans, newspaper boxes, hydrants.
+   *
+   * THE ONE PLACE `BatchedMesh` EARNS ITS COMPLEXITY, exactly as `LOD-3`
+   * describes: several genuinely different geometries behind one material, one
+   * call regardless of how many variants exist. Everywhere else in this file an
+   * `InstancedMesh` suffices and is preferred, because `BatchedMesh` without
+   * `WEBGL_multi_draw` degrades to one draw call per geometry.
+   *
+   * The blast radius of that fallback is deliberately small here: THREE
+   * geometries, so the worst case is 3 calls rather than 1, not 200.
+   */
+  _buildSmallProps(props) {
+    if (props.length === 0) return;
+
+    const variants = [
+      tintGeometry(cylinderAt(0.34, 0.3, 0.95), 0x4a4f52), // trash can
+      tintGeometry(boxAt(0.52, 1.05, 0.42), 0x2f4a5c), // newspaper box
+      tintGeometry(cylinderAt(0.16, 0.18, 0.78), 0x9c3a2c), // fire hydrant
+    ];
+
+    const batch = new THREE.BatchedMesh(
+      props.length,
+      variants.reduce((n, g) => n + g.attributes.position.count, 0),
+      variants.reduce((n, g) => n + g.index.count, 0),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: 0.7,
+        metalness: 0.15,
+      }),
+    );
+    batch.name = 'smallProps';
+    batch.castShadow = true;
+    batch.receiveShadow = true;
+    this._disposables.push(batch.material);
+
+    const ids = variants.map((g) => batch.addGeometry(g));
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const pos = new THREE.Vector3();
+    const one = new THREE.Vector3(1, 1, 1);
+    for (const p of props) {
+      const instanceId = batch.addInstance(ids[p.variant % ids.length]);
+      pos.set(p.x, 0, p.z);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw);
+      m.compose(pos, q, one);
+      batch.setMatrixAt(instanceId, m);
+    }
+    for (const g of variants) g.dispose();
+
+    this.pools.set('smallProps', batch);
+    this.group.add(batch);
+  }
+
   // ----------------------------------------------------------------- plumbing
 
   /**
@@ -394,6 +642,66 @@ export class WorldProps {
  * @param {THREE.BufferGeometry} geo
  * @param {number} hex
  */
+/**
+ * A parked car: body, cabin and four wheels merged into ONE geometry, tinted per
+ * vertex so a single instance colour can paint the body without painting the
+ * glass or the tyres.
+ *
+ * The car's nose is local +Z, so a placement's yaw alone decides which way it
+ * points down the street. Everything sits on the roadway surface at y = 0.02 —
+ * a car floating a hand's width above the asphalt, or half sunk into it, is the
+ * defect this geometry's y offsets exist to avoid.
+ *
+ * @param {number} len overall length, m
+ * @param {number} bodyH body height above the wheel centres, m
+ * @param {number} width overall width, m
+ * @param {number} cabinFrac fraction of the length the glasshouse spans
+ */
+function carGeometry(len, bodyH, width, cabinFrac) {
+  const ROAD_Y = 0.02;
+  const wheelR = 0.33;
+  const parts = [];
+
+  const body = new THREE.BoxGeometry(width, bodyH * 0.62, len);
+  body.translate(0, ROAD_Y + wheelR + (bodyH * 0.62) / 2, 0);
+  parts.push(tintGeometry(body, 0xffffff)); // takes the instance paint at full strength
+
+  const cabin = new THREE.BoxGeometry(width * 0.88, bodyH * 0.5, len * cabinFrac);
+  cabin.translate(0, ROAD_Y + wheelR + bodyH * 0.62 + (bodyH * 0.5) / 2, -len * 0.05);
+  parts.push(tintGeometry(cabin, 0x39404a)); // glazing: stays dark whatever the paint
+
+  for (const sx of [1, -1]) {
+    for (const sz of [1, -1]) {
+      const wheel = new THREE.CylinderGeometry(wheelR, wheelR, 0.22, 8, 1);
+      wheel.rotateZ(Math.PI / 2); // axle along X
+      wheel.translate(sx * (width / 2 - 0.06), ROAD_Y + wheelR, sz * (len * 0.31));
+      parts.push(tintGeometry(wheel, 0x1a1c1e));
+    }
+  }
+
+  const merged = mergeGeometries(parts);
+  for (const p of parts) p.dispose();
+  // `mergeGeometries` returns null on an attribute mismatch rather than
+  // throwing, and a null geometry on an InstancedMesh fails much later and much
+  // less legibly. Fail here instead.
+  if (!merged) throw new Error('carGeometry: incompatible part geometries');
+  return merged;
+}
+
+/** A small upright cylinder standing on the ground, for the sidewalk clutter batch. */
+function cylinderAt(rTop, rBottom, h) {
+  const geo = new THREE.CylinderGeometry(rTop, rBottom, h, 8, 1);
+  geo.translate(0, h / 2, 0);
+  return geo;
+}
+
+/** A small upright box standing on the ground, for the sidewalk clutter batch. */
+function boxAt(w, h, d) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  geo.translate(0, h / 2, 0);
+  return geo;
+}
+
 export function tintGeometry(geo, hex) {
   const c = new THREE.Color(hex);
   const n = geo.attributes.position.count;
