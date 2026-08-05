@@ -155,6 +155,60 @@ session-5 snapshot.
 
 ---
 
+## Session 13 closed 2026-08-05 — the duplication cluster is DONE
+
+**Standards 4, 5 and 8 are all closed** (`3507b3f`, `797b5d8`), which was session 12's named
+next step and the user's 2026-08-02 "before the merge" request. **189/189.** Pushed;
+`origin/feat/3d-open-world` in sync, **0 ahead**. `main` untouched. `kodaman_prototype.html`
+**zero diff**. Working tree clean apart from the pre-existing untracked `KODAMAN_HANDOFF.md`.
+2 commits. No agent ran.
+
+Session 12's start-of-resume lesson was applied and came back clean: `ahead 0 / behind 0`
+verified against `origin` BEFORE any work, not only at the end.
+
+### What changed
+
+- **S5** — `CENTRAL_SLOTS` now derives from `SLOT_OFFSET` instead of four typed decimals.
+- **S8** — `offsetFromFacade(b, f, {out, along})` is the single home for the facade-offset
+  arithmetic that six sites re-derived. `axis === 'z'` in `props.js`: **9 -> 3**. The finding's
+  `hvacUnits`-called-twice half was already closed in session 11.
+- **S4** — `buildDistrict({slots, deal, salt, bands})` owns the loop both district generators
+  duplicated; each district keeps a band-keyed table with its rationale comments intact. The
+  two hash salts stay distinct and now carry a warning saying why.
+
+### The equivalence guards, and the fact that they were tested
+
+All three are refactors, so the bar was byte-identical output, not passing tests:
+
+| Guard | Size | Result |
+|---|---|---|
+| `districtABuildings()` + `districtBBuildings()` serialised | 822 lines | identical |
+| `allPropPlacements()` serialised | 16,208 lines | identical |
+
+**Both guards were perturbed before being trusted** — a 0.001 m change to one band width or one
+prop standoff moves 120+ lines of them. This file's history is a guard that did not guard, so
+"the diff is clean" is not evidence on its own.
+
+**No browser check was run, deliberately.** Byte-identical placement output is a stronger claim
+than a screenshot: the geometry provably did not move. A spot-check would have measured nothing
+the equivalence guards did not already pin.
+
+### Do this first next session: **the user reads the diff, then merges**
+
+Nothing in the cluster is outstanding. Per **locked decision 4 the merge stays with the user**;
+QA runs on the merged base afterwards. The rename mapping table (§C4's "proposed replacement"
+column still holds descriptions, not names) remains the Phase 2 blocker and is unchanged.
+
+### Cost log — session 13
+
+| Agent | Tokens |
+|---|---|
+| **none spawned** | **0** |
+
+Inline orchestrator work only. Cross-session observable total unchanged at **~3,031,000**.
+
+---
+
 ## Session 12 closed 2026-08-02, deliberately, by the user
 
 **Nothing is half-finished. Everything is committed AND pushed** — `origin/feat/3d-open-world` in
