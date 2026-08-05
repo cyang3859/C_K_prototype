@@ -304,6 +304,40 @@ export function frontage(b) {
 }
 
 /**
+ * A point measured from a building's facade, in the district's local frame.
+ *
+ * THE ONE PLACE THE `f.axis` SWITCH LIVES. Six sites used to re-derive this
+ * inline — awning, blade sign, bollards, cafe tables, scaffolding, and the
+ * facade plane itself — each repeating the same `if (f.axis === 'z') … else …`
+ * with only a standoff constant changed. They are all the same two questions:
+ * how far out from the wall, and how far along it.
+ *
+ * `f.width` is already the along-facade span, so callers wanting a fraction of
+ * the frontage should use that rather than re-picking between `b.w` and `b.d`.
+ *
+ * @param {object} b   the building
+ * @param {ReturnType<typeof frontage>} f
+ * @param {{out?:number, along?:number}} opts
+ *   `out` — metres outward from the facade PLANE (0 is the wall itself);
+ *   `along` — metres along the facade, signed, 0 is centred.
+ * @returns {{lx:number, lz:number}} local-frame point
+ */
+export function offsetFromFacade(b, f, { out = 0, along = 0 } = {}) {
+  // Half the footprint measured PERPENDICULAR to the facade — the distance
+  // from the building centre out to the wall the props hang off.
+  const half = (f.axis === 'z' ? b.d : b.w) / 2;
+  const p = { lx: b.lx, lz: b.lz };
+  if (f.axis === 'z') {
+    p.lz += f.sign * (half + out);
+    p.lx += along;
+  } else {
+    p.lx += f.sign * (half + out);
+    p.lz += along;
+  }
+  return p;
+}
+
+/**
  * Everything a district contributes to the world-shared pools, in WORLD space.
  *
  * @param {object} spec one entry of `DISTRICTS`
@@ -380,15 +414,9 @@ export function districtPropPlacements(spec, opts) {
       if (b.band === 'annex') continue;
       if (b.h > 46) continue; // storefront kit is for the corridor's own scale
       const f = frontage(b);
-      const half = f.axis === 'z' ? b.d / 2 : b.w / 2;
-      const facade = { lx: b.lx, lz: b.lz };
-      if (f.axis === 'z') facade.lz += f.sign * half;
-      else facade.lx += f.sign * half;
 
       // Awning: projects out over the sidewalk from the facade plane.
-      const aOut = { ...facade };
-      if (f.axis === 'z') aOut.lz += f.sign * (AWNING.PROJECTION / 2);
-      else aOut.lx += f.sign * (AWNING.PROJECTION / 2);
+      const aOut = offsetFromFacade(b, f, { out: AWNING.PROJECTION / 2 });
       const aw = districtLocalToWorld({ ...aOut, yaw: f.yaw }, spec);
       out.awnings.push({
         x: aw.x,
@@ -403,15 +431,11 @@ export function districtPropPlacements(spec, opts) {
       // Blade sign: only on the taller half of the corridor, and only every
       // other one, so a marquee reads as an event rather than as wallpaper.
       if (b.band !== 'lowrise' && k % 2 === 0) {
-        const bOut = { ...facade };
-        const lateral = (f.axis === 'z' ? b.w : b.d) / 2 - BLADE.CORNER_INSET;
-        if (f.axis === 'z') {
-          bOut.lz += f.sign * BLADE.STANDOFF;
-          bOut.lx += k % 4 === 0 ? lateral : -lateral;
-        } else {
-          bOut.lx += f.sign * BLADE.STANDOFF;
-          bOut.lz += k % 4 === 0 ? lateral : -lateral;
-        }
+        const lateral = f.width / 2 - BLADE.CORNER_INSET;
+        const bOut = offsetFromFacade(b, f, {
+          out: BLADE.STANDOFF,
+          along: k % 4 === 0 ? lateral : -lateral,
+        });
         const bw = districtLocalToWorld({ ...bOut, yaw: f.yaw }, spec);
         out.bladeSigns.push({ x: bw.x, y: BLADE.Y, z: bw.z, yaw: bw.yaw });
       }
@@ -552,18 +576,9 @@ export function districtPropPlacements(spec, opts) {
     for (const b of buildings) {
       if (b.band !== 'primary') continue;
       const f = frontage(b);
-      const half = (f.axis === 'z' ? b.d : b.w) / 2;
-      const span = (f.axis === 'z' ? b.w : b.d) * 0.7;
+      const span = f.width * 0.7;
       for (let i = 0; i < 5; i++) {
-        const t = (i / 4 - 0.5) * span;
-        const p = { lx: b.lx, lz: b.lz };
-        if (f.axis === 'z') {
-          p.lz += f.sign * (half + 1.6);
-          p.lx += t;
-        } else {
-          p.lx += f.sign * (half + 1.6);
-          p.lz += t;
-        }
+        const p = offsetFromFacade(b, f, { out: 1.6, along: (i / 4 - 0.5) * span });
         const w = districtLocalToWorld(p, spec);
         out.bollards.push({ x: w.x, z: w.z });
       }
@@ -574,17 +589,8 @@ export function districtPropPlacements(spec, opts) {
     for (const b of buildings) {
       if (b.band !== 'lowrise') continue;
       const f = frontage(b);
-      const half = (f.axis === 'z' ? b.d : b.w) / 2;
       for (let i = 0; i < 3; i++) {
-        const t = (i - 1) * 2.6;
-        const p = { lx: b.lx, lz: b.lz };
-        if (f.axis === 'z') {
-          p.lz += f.sign * (half + 2.4);
-          p.lx += t;
-        } else {
-          p.lx += f.sign * (half + 2.4);
-          p.lz += t;
-        }
+        const p = offsetFromFacade(b, f, { out: 2.4, along: (i - 1) * 2.6 });
         const w = districtLocalToWorld({ ...p, yaw: f.yaw }, spec);
         out.cafeProps.push({ x: w.x, z: w.z, yaw: w.yaw });
       }
@@ -598,19 +604,10 @@ export function districtPropPlacements(spec, opts) {
     for (const b of [midrises[3], midrises[9]]) {
       if (!b) continue;
       const f = frontage(b);
-      const half = (f.axis === 'z' ? b.d : b.w) / 2;
-      const span = (f.axis === 'z' ? b.w : b.d) - 2;
+      const span = f.width - 2;
       const lifts = Math.max(2, Math.floor(b.h / SCAFFOLD_LIFT_M) - 1);
       for (let bay = 0; bay < 4; bay++) {
-        const t = (bay / 3 - 0.5) * span;
-        const p = { lx: b.lx, lz: b.lz };
-        if (f.axis === 'z') {
-          p.lz += f.sign * (half + 0.9);
-          p.lx += t;
-        } else {
-          p.lx += f.sign * (half + 0.9);
-          p.lz += t;
-        }
+        const p = offsetFromFacade(b, f, { out: 0.9, along: (bay / 3 - 0.5) * span });
         const w = districtLocalToWorld({ ...p, yaw: f.yaw }, spec);
         // ONE INSTANCE PER LIFT, not one per bay scaled on Y. The first build
         // stretched a single 2 m bay over the building's whole height, which put

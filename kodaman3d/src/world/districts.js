@@ -100,10 +100,22 @@ export function slotCentres() {
   return out;
 }
 
-/** The four central slots District A's landmark consumes. */
-const CENTRAL_SLOTS = new Set(['-17.38,-17.38', '17.38,-17.38', '-17.38,17.38', '17.38,17.38']);
-
 const key = (s) => `${round2(s.lx)},${round2(s.lz)}`;
+
+/**
+ * The four central slots District A's landmark consumes: the two slots either
+ * side of the origin on each axis, i.e. the slots of the centre cell.
+ *
+ * Derived from `SLOT_OFFSET` rather than typed as decimals, so that retuning
+ * `CELL_PITCH` or `ROW` moves these with the grid. Hard-coded `17.38` strings
+ * would silently stop matching and leave `dealBands` to throw
+ * `32 labels for 36 slots` a few frames later.
+ */
+const CENTRAL_SLOTS = new Set(
+  [-SLOT_OFFSET, SLOT_OFFSET].flatMap((lz) =>
+    [-SLOT_OFFSET, SLOT_OFFSET].map((lx) => key({ lx, lz }))
+  )
+);
 
 /**
  * District A's building population — the tower plateau.
