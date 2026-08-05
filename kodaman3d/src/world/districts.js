@@ -118,6 +118,75 @@ const CENTRAL_SLOTS = new Set(
 );
 
 /**
+ * One band's authored dimensions.
+ *
+ * `w`/`d`/`h` are `[base, span]` metre ranges sampled as `base + r() * span`; a
+ * span of 0 pins the dimension (District B's 46 m band). `family` may be a
+ * function of the slot index for the two bands that alternate or mark out
+ * individual buildings.
+ *
+ * @typedef {object} BandSpec
+ * @property {[number, number]} w
+ * @property {[number, number]} d
+ * @property {[number, number]} h
+ * @property {string} recipe
+ * @property {string | ((i: number) => string)} family
+ * @property {string} [podiumFamily]
+ */
+
+/**
+ * The shared shape of both districts: deal bands over slots, then emit one
+ * `DistrictBuilding` per slot from its band's spec.
+ *
+ * WHY THIS IS A BUILDER AND THE BANDS ARE STILL DATA. Both districts were the
+ * same 60-line `for` loop with the same ten-field literal pushed at six sites —
+ * a data clump the file names as a type but used to construct in six places.
+ * The authored decisions (which is what `districts.js` exists to hold) stay
+ * where they were: in the per-band tables below, comments and all. Only the
+ * loop is shared.
+ *
+ * ⚠️ THE SALTS MUST STAY DISTINCT. District A samples `i * 2654435761 + n` and
+ * District B `i * 40503 + n * 7919`. They are not interchangeable and are not a
+ * detail to tidy: a shared salt would give two districts the same sequence of
+ * dimensions per slot index, and the grids would visibly rhyme.
+ *
+ * @param {object} args
+ * @param {Array<{lx:number, lz:number}>} args.slots
+ * @param {Array<[string, number]>} args.deal band shares, passed to `dealBands`
+ * @param {(i:number, n:number) => number} args.salt
+ * @param {Record<string, BandSpec>} args.bands
+ * @returns {DistrictBuilding[]}
+ */
+function buildDistrict({ slots, deal, salt, bands }) {
+  const dealt = dealBands(slots.length, deal);
+  /** @type {DistrictBuilding[]} */
+  const out = [];
+
+  for (let i = 0; i < slots.length; i++) {
+    const { lx, lz } = slots[i];
+    const r = (n) => hash01(salt(i, n));
+    const band = dealt[i];
+    const spec = bands[band];
+    if (!spec) throw new Error(`districts: no band spec for '${band}'`);
+
+    out.push({
+      band,
+      lx,
+      lz,
+      w: spec.w[0] + r(1) * spec.w[1],
+      d: spec.d[0] + r(2) * spec.d[1],
+      h: spec.h[0] + r(3) * spec.h[1],
+      recipe: spec.recipe,
+      family: typeof spec.family === 'function' ? spec.family(i) : spec.family,
+      podiumFamily: spec.podiumFamily ?? null,
+      seed: i,
+    });
+  }
+
+  return out;
+}
+
+/**
  * District A's building population — the tower plateau.
  *
  * §DA-1/§DIS-2 want a NARROWER height spread than Phase 1's deliberately-mixed
@@ -136,73 +205,47 @@ const CENTRAL_SLOTS = new Set(
  * @returns {DistrictBuilding[]}
  */
 export function districtABuildings() {
-  const slots = slotCentres().filter((s) => !CENTRAL_SLOTS.has(key(s)));
-  const bands = dealBands(slots.length, [
-    ['primary', 21],
-    ['secondary', 9],
-    ['podium', 2],
-  ]);
-  /** @type {DistrictBuilding[]} */
-  const out = [];
-
-  for (let i = 0; i < slots.length; i++) {
-    const { lx, lz } = slots[i];
-    const r = (n) => hash01(i * 2654435761 + n);
-    const band = bands[i];
-
-    if (band === 'podium') {
-      out.push({
-        band,
-        lx,
-        lz,
-        w: 20 + r(1) * 8, // 20–28
-        d: 20 + r(2) * 10, // 20–30
-        h: 15 + r(3) * 5, // 15–20 m
+  return buildDistrict({
+    slots: slotCentres().filter((s) => !CENTRAL_SLOTS.has(key(s))),
+    deal: [
+      ['primary', 21],
+      ['secondary', 9],
+      ['podium', 2],
+    ],
+    salt: (i, n) => i * 2654435761 + n,
+    bands: {
+      primary: {
+        w: [18, 6], // 18–24
+        d: [24, 6], // 24–30 — capped at 30 by the 34.76 m slot, not by §DA-2
+        h: [70, 40], // 70–110 m
         recipe: 'mas1',
-        family: 'fam2StoneCladPodium',
-        podiumFamily: null,
-        seed: i,
-      });
-      continue;
-    }
-
-    if (band === 'secondary') {
-      out.push({
-        band,
-        lx,
-        lz,
-        w: 16 + r(1) * 4, // 16–20
-        d: 22 + r(2) * 6, // 22–28
-        h: 40 + r(3) * 20, // 40–60 m
+        // §FAM-3 is "the landmark plus 1–2 secondary towers marked as newer
+        // generation". The landmark is not batched (it needs its own atlas), so
+        // three primaries carry the family, which is what makes its two draw
+        // calls buy something.
+        family: (i) =>
+          i === 2 || i === 18 || i === 29 ? 'fam3LightSilverGlass' : 'fam1DarkCurtainWall',
+        podiumFamily: null, // MAS-1 stays inside its tower family, per §5
+      },
+      secondary: {
+        w: [16, 4], // 16–20
+        d: [22, 6], // 22–28
+        h: [40, 20], // 40–60 m
         recipe: 'mas2',
         family: 'fam1DarkCurtainWall',
         // The ziggurat's podium is stone, the shafts above it are glass.
         podiumFamily: 'fam2StoneCladPodium',
-        seed: i,
-      });
-      continue;
-    }
-
-    // §FAM-3 is "the landmark plus 1–2 secondary towers marked as newer
-    // generation". The landmark is not batched (it needs its own atlas), so
-    // three primaries carry the family, which is what makes its two draw calls
-    // buy something.
-    const newerGeneration = i === 2 || i === 18 || i === 29;
-    out.push({
-      band,
-      lx,
-      lz,
-      w: 18 + r(1) * 6, // 18–24
-      d: 24 + r(2) * 6, // 24–30 — capped at 30 by the 34.76 m slot, not by §DA-2
-      h: 70 + r(3) * 40, // 70–110 m
-      recipe: 'mas1',
-      family: newerGeneration ? 'fam3LightSilverGlass' : 'fam1DarkCurtainWall',
-      podiumFamily: null, // MAS-1 stays inside its tower family, per §5
-      seed: i,
-    });
-  }
-
-  return out;
+      },
+      podium: {
+        w: [20, 8], // 20–28
+        d: [20, 10], // 20–30
+        h: [15, 5], // 15–20 m
+        recipe: 'mas1',
+        family: 'fam2StoneCladPodium',
+        podiumFamily: null,
+      },
+    },
+  });
 }
 
 /**
@@ -218,69 +261,43 @@ export function districtABuildings() {
  * @returns {DistrictBuilding[]}
  */
 export function districtBBuildings() {
-  const slots = slotCentres();
-  const bands = dealBands(slots.length, [
-    ['lowrise', 20],
-    ['midrise', 14],
-    ['tallMidrise', 2],
-  ]);
-  /** @type {DistrictBuilding[]} */
-  const out = [];
-
-  for (let i = 0; i < slots.length; i++) {
-    const { lx, lz } = slots[i];
-    const r = (n) => hash01(i * 40503 + n * 7919);
-    const band = bands[i];
-
-    if (band === 'tallMidrise') {
-      out.push({
-        band,
-        lx,
-        lz,
-        w: 18 + r(1) * 4,
-        d: 24 + r(2) * 4,
-        h: 46,
-        recipe: 'mas5',
-        family: 'fam7BronzeGlass',
+  return buildDistrict({
+    slots: slotCentres(),
+    deal: [
+      ['lowrise', 20],
+      ['midrise', 14],
+      ['tallMidrise', 2],
+    ],
+    salt: (i, n) => i * 40503 + n * 7919,
+    bands: {
+      lowrise: {
+        w: [16, 4], // 16–20
+        d: [18, 4], // 18–22
+        h: [8, 6], // 8–14 m
+        recipe: 'mas4',
+        // Cream and ochre alternate in slot order, so the two stucco families
+        // interleave along a street instead of clustering.
+        family: (i) => (i % 2 === 0 ? 'fam4CreamStucco' : 'fam5OchreTerracotta'),
         podiumFamily: null,
-        seed: i,
-      });
-      continue;
-    }
-
-    if (band === 'midrise') {
-      out.push({
-        band,
-        lx,
-        lz,
-        w: 16 + r(1) * 6, // 16–22
-        d: 22 + r(2) * 4, // 22–26
-        h: 24 + r(3) * 11, // 24–35 m
+      },
+      midrise: {
+        w: [16, 6], // 16–22
+        d: [22, 4], // 22–26
+        h: [24, 11], // 24–35 m
         recipe: 'mas5',
         family: 'fam6SteelBlueGlass',
         podiumFamily: null,
-        seed: i,
-      });
-      continue;
-    }
-
-    out.push({
-      band,
-      lx,
-      lz,
-      w: 16 + r(1) * 4, // 16–20
-      d: 18 + r(2) * 4, // 18–22
-      h: 8 + r(3) * 6, // 8–14 m
-      recipe: 'mas4',
-      // Cream and ochre alternate in slot order, so the two stucco families
-      // interleave along a street instead of clustering.
-      family: i % 2 === 0 ? 'fam4CreamStucco' : 'fam5OchreTerracotta',
-      podiumFamily: null,
-      seed: i,
-    });
-  }
-
-  return out;
+      },
+      tallMidrise: {
+        w: [18, 4],
+        d: [24, 4],
+        h: [46, 0], // §3.4's Capitol Records height cap, exactly — not a range.
+        recipe: 'mas5',
+        family: 'fam7BronzeGlass',
+        podiumFamily: null,
+      },
+    },
+  });
 }
 
 /**
