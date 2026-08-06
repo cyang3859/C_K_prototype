@@ -206,10 +206,46 @@ Each movement branch reads `TUNING` on its own line, so covering one proves noth
 rest. All four are now checked separately. **Generalisable lesson: a "reads live config" test
 covers one call site, not a policy.**
 
-### Next: `Abilities.js`
+### `Abilities.js` landed (`b077680`) — 300 tests
 
-Punch / laser / freeze against `HealthSystem` and the FSM, still no Rapier. Then Rapier last,
-for thrown-prop momentum.
+Punch, laser and freeze as pure resolution. Step 1 of Phase 3 is now feature-complete: damage,
+FSM and abilities, all without Rapier.
+
+⚠️ **THREE DIFFERENT SCALE CONVERSIONS NOW EXIST. Do not mix them.**
+
+| Quantity | Converts by | Example |
+|---|---|---|
+| World position | `PX_TO_M` (0.2) | 360 px sense radius → 72 m |
+| Body reach | fraction of hero height (2D hero = 100 px) | 62 px punch → 1.15 m |
+| Speed | ratio to hero speed (2D hero = 5.5 px/frame) | 2.3 px/f chase → 3.1 m/s |
+| Knockback | `PX_TO_M` — displacement, not a body dimension | 9 px → 1.8 m |
+
+Each wrong choice is off by roughly 10x while still looking plausible in source: reach through
+`PX_TO_M` gives a 12 m punch, speed through `PX_TO_M` gives a 100 km/h enemy.
+
+### ⚠️ MEASURED: `STAGGER_INTERRUPTS` stun-locks everything, including the boss
+
+The flag was flagged as a feel question. It is not only that — it is a balance problem, and the
+numbers are now in hand. Punch cooldown is 0.300 s; stagger is 0.233 s. Under sustained punching:
+
+| Target | Time to kill | Fraction of time able to act |
+|---|---|---|
+| Standard mook (3 HP) | 0.65 s | **23.1%** |
+| Elite brute (5 HP) | 1.28 s | **22.1%** |
+| **Boss (6 HP)** | **1.6 s** | **21.9%** |
+
+**A boss that cannot act for 78% of a fight it loses in 1.6 seconds is not a boss.** The flag as
+it stands makes melee dominant against every tier. Options are: leave it off for 2D parity
+(hits read as weightless); keep it on and lengthen the punch cooldown or raise boss HP; or add a
+stagger-immunity window so stagger cannot chain, which is the standard fix and the recommendation.
+
+**Pending the user's call.** Nothing depends on it yet — no combat is wired into the scene.
+
+### Next: wire step 1 into the scene, then Rapier
+
+Combat logic is complete and untested against a running game. The useful next move is a visible
+enemy taking a punch in the browser, which is also what makes the stagger decision judgeable by
+feel rather than only by table. Rapier stays last, for thrown-prop momentum.
 
 ---
 
