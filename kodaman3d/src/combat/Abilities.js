@@ -55,8 +55,24 @@ export const ABILITY = Object.freeze({
    * ports.
    */
   PUNCH_REACH_M: reach(48 + 14),
-  /** Half-width of the punch arc. The 2D box is body-height tall; this is its 3D analogue. */
-  PUNCH_HALF_WIDTH_M: reach(30),
+  /**
+   * Half-angle of the punch wedge.
+   *
+   * ⚠️ A WEDGE, NOT A BOX, AND THAT DISTINCTION IS THE WHOLE ABILITY.
+   * The first port used a narrow forward box (±0.55 m lateral). In a side-view
+   * game "in front of me" is a one-dimensional question and a box is exactly
+   * right; in 3D the player approaches from arbitrary angles, and an enemy
+   * standing 0.78 m away — comfortably inside the 1.15 m reach — fell outside
+   * the box and every punch missed. Measured in the browser: six consecutive
+   * punches at 0.78 m, all misses, which reads to a player as "attacks do
+   * nothing".
+   *
+   * 60° is deliberately forgiving, because the 2D hitbox it ports from says so
+   * in its own comment: "Generous hitbox: extends in front AND overlaps the
+   * body vertically with padding, so any part of an enemy in front gets hit
+   * (not pixel-perfect)." Generosity was the design; the box lost it.
+   */
+  PUNCH_HALF_ANGLE_RAD: (60 * Math.PI) / 180,
   PUNCH_COOLDOWN_S: 18 / 60,
   PUNCH_KNOCKBACK_M: 9 * PX_TO_M,
 
@@ -75,9 +91,13 @@ export const ABILITY = Object.freeze({
   /** The 2D call passes knock=0: "no knockback while beam is active". */
   LASER_KNOCKBACK_M: 0,
 
-  /** Freeze: a forward box in 2D, drawn as a cone. No damage, pure control. */
+  /**
+   * Freeze: a forward box in 2D, drawn as a cone — so in 3D it simply is one.
+   * Wider than the punch, because it is the crowd-control option and a cone the
+   * player can see should catch what it visibly covers.
+   */
   FREEZE_REACH_M: reach(110),
-  FREEZE_HALF_WIDTH_M: reach(40),
+  FREEZE_HALF_ANGLE_RAD: (45 * Math.PI) / 180,
   FREEZE_COOLDOWN_S: 80 / 60,
 });
 
@@ -139,7 +159,8 @@ export function punch(s, attacker, targets, { rng } = {}) {
   const hits = [];
   for (const t of targets) {
     if (!t.health.alive) continue;
-    if (!inArc(attacker, t.pos, ABILITY.PUNCH_REACH_M, ABILITY.PUNCH_HALF_WIDTH_M)) continue;
+    if (!inWedge(attacker, t.pos, ABILITY.PUNCH_REACH_M, ABILITY.PUNCH_HALF_ANGLE_RAD, radiusOf(t)))
+      continue;
     const result = applyDamage(t.health, COMBAT.PUNCH_DAMAGE, {
       knock: ABILITY.PUNCH_KNOCKBACK_M,
       rng,
@@ -193,7 +214,8 @@ export function freeze(s, attacker, targets) {
   const hits = [];
   for (const t of targets) {
     if (!t.health.alive) continue;
-    if (!inArc(attacker, t.pos, ABILITY.FREEZE_REACH_M, ABILITY.FREEZE_HALF_WIDTH_M)) continue;
+    if (!inWedge(attacker, t.pos, ABILITY.FREEZE_REACH_M, ABILITY.FREEZE_HALF_ANGLE_RAD, radiusOf(t)))
+      continue;
     applyFreeze(t.health);
     hits.push({ target: t, result: { outcome: 'frozen', applied: 0, hp: t.health.hp } });
   }
@@ -203,13 +225,32 @@ export function freeze(s, attacker, targets) {
 const NOT_FIRED = Object.freeze({ fired: false, hits: Object.freeze([]) });
 
 /**
- * Is `point` inside the attacker's forward box: within `range` ahead and
- * `halfWidth` to either side? A box rather than a wedge because that is the
- * shape the 2D hitbox actually is.
+ * A target's body radius, metres. Targets may declare their own; the default
+ * matches `Enemy.js`'s capsule so callers that pass a bare `{pos, health}` — as
+ * every unit test does — still get contact-accurate reach.
  */
-function inArc(attacker, point, range, halfWidth) {
+const DEFAULT_TARGET_RADIUS_M = 0.36;
+const radiusOf = (t) => (typeof t.radius === 'number' ? t.radius : DEFAULT_TARGET_RADIUS_M);
+
+/**
+ * Is `point` inside the attacker's forward wedge — within `range` and within
+ * `halfAngle` of the facing direction?
+ *
+ * Distance is measured to the point itself rather than along the facing axis,
+ * so a target off to one side is not treated as further away than it is. The
+ * angular test is what makes a melee arc feel fair in 3D: everything the player
+ * can see themselves swinging at is inside it.
+ */
+function inWedge(attacker, point, range, halfAngle, radius = 0) {
   const { along, lateral } = project(attacker, point);
-  return along >= 0 && along <= range && Math.abs(lateral) <= halfWidth;
+  const dist = Math.hypot(along, lateral);
+  // Reach is to the target's SURFACE, not its centre. The 2D hitbox is explicit
+  // that "any part of an enemy in front gets hit"; testing the centre alone
+  // silently shortens every reach by a body radius and produces misses at
+  // distances the player can see are contact.
+  if (dist - radius > range) return false;
+  if (dist === 0) return true;
+  return Math.atan2(Math.abs(lateral), along) <= halfAngle;
 }
 
 /** Is `point` inside the laser's forward angular cone, at any distance? */

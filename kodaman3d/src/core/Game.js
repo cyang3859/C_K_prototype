@@ -129,7 +129,12 @@ export class Game {
       tuning: TUNING,
     });
 
-    this.combat = new CombatSystem({ scene: this.scene, hero: this.hero.state });
+    this.combat = new CombatSystem({
+      scene: this.scene,
+      hero: this.hero.state,
+      collision: this.collision,
+      cameraRig: this.cameraRig,
+    });
 
     this.input = new Input({ element: this.renderer.domElement });
     this.input.attach();

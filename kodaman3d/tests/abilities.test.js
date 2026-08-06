@@ -10,6 +10,7 @@ import {
   tickAbilities,
 } from '../src/combat/Abilities.js';
 import { COMBAT, HP, createHealth, isFrozen } from '../src/combat/HealthSystem.js';
+import { CombatSystem, SPAWNS } from '../src/combat/CombatSystem.js';
 import { HERO_HEIGHT_M } from '../src/core/Scale.js';
 
 /**
@@ -30,6 +31,8 @@ const target = (x, z = 0, hp = HP.STANDARD) => ({ pos: { x, z }, health: createH
 
 /** Just inside punch reach, dead ahead. */
 const CLOSE = ABILITY.PUNCH_REACH_M * 0.5;
+/** Default target body radius, mirroring Enemy.js's capsule. */
+const BODY_R = 0.36;
 
 describe('cooldowns', () => {
   it('starts every ability ready', () => {
@@ -88,9 +91,26 @@ describe('punch', () => {
   });
 
   it('misses one just beyond reach', () => {
-    const t = target(ABILITY.PUNCH_REACH_M * 1.01);
+    // Reach is to the SURFACE, so the miss threshold is reach + body radius.
+    const t = target(ABILITY.PUNCH_REACH_M + BODY_R + 0.05);
     expect(punch(createAbilityState(), hero, [t], { rng: never }).hits).toEqual([]);
     expect(t.health.hp).toBe(HP.STANDARD);
+  });
+
+  it('reaches the target SURFACE, not its centre', () => {
+    // A body of radius 0.36 whose centre sits just past nominal reach is still
+    // touching the fist. Testing the centre alone silently shortened every
+    // reach by a radius and produced misses at visible contact range.
+    const justPastCentreReach = ABILITY.PUNCH_REACH_M + BODY_R * 0.5;
+    const t = target(justPastCentreReach);
+    expect(punch(createAbilityState(), hero, [t], { rng: never }).hits).toHaveLength(1);
+  });
+
+  it('honours a target that declares its own radius', () => {
+    const big = { pos: { x: ABILITY.PUNCH_REACH_M + 1.4, z: 0 }, health: createHealth(9), radius: 1.5 };
+    const small = { pos: { x: ABILITY.PUNCH_REACH_M + 1.4, z: 0 }, health: createHealth(9), radius: 0.1 };
+    expect(punch(createAbilityState(), hero, [big], { rng: never }).hits).toHaveLength(1);
+    expect(punch(createAbilityState(), hero, [small], { rng: never }).hits).toEqual([]);
   });
 
   it('misses one directly behind — this is a facing-direction attack', () => {
@@ -98,9 +118,33 @@ describe('punch', () => {
     expect(punch(createAbilityState(), hero, [t], { rng: never }).hits).toEqual([]);
   });
 
-  it('misses one off to the side beyond the arc half-width', () => {
-    const t = target(CLOSE, ABILITY.PUNCH_HALF_WIDTH_M * 1.5);
+  it('misses one outside the wedge angle, even within reach', () => {
+    // 80° off the facing axis, beyond the 60° half-angle, at half reach.
+    const a = (80 * Math.PI) / 180;
+    const d = ABILITY.PUNCH_REACH_M * 0.5;
+    const t = target(Math.cos(a) * d, Math.sin(a) * d);
     expect(punch(createAbilityState(), hero, [t], { rng: never }).hits).toEqual([]);
+  });
+
+  it('HITS one off to the side but within the wedge — the regression that read as "attacks do nothing"', () => {
+    // The narrow box this replaced missed an enemy 0.78 m away at a modest
+    // angle; six consecutive punches whiffed in the browser at that distance.
+    const a = (40 * Math.PI) / 180;
+    const d = 0.78;
+    const t = target(Math.cos(a) * d, Math.sin(a) * d);
+    expect(punch(createAbilityState(), hero, [t], { rng: never }).hits).toHaveLength(1);
+  });
+
+  it('measures reach to the target, not along the facing axis', () => {
+    // A target at 45° and 0.95 m is inside a 1.15 m reach. Projecting onto the
+    // facing axis first would read it as 0.67 m along and could let something
+    // genuinely out of range count as in range.
+    const a = Math.PI / 4;
+    const inside = target(Math.cos(a) * 0.95, Math.sin(a) * 0.95);
+    const far = ABILITY.PUNCH_REACH_M + BODY_R + 0.4;
+    const outside = target(Math.cos(a) * far, Math.sin(a) * far);
+    expect(punch(createAbilityState(), hero, [inside], { rng: never }).hits).toHaveLength(1);
+    expect(punch(createAbilityState(), hero, [outside], { rng: never }).hits).toEqual([]);
   });
 
   it('CLEAVES — every target in the arc is hit, not just the nearest', () => {
@@ -262,9 +306,16 @@ describe('freeze', () => {
   });
 
   it('misses beyond its reach, which is shorter than the laser and longer than the punch', () => {
-    const t = target(ABILITY.FREEZE_REACH_M * 1.1);
+    const t = target(ABILITY.FREEZE_REACH_M + BODY_R + 0.2);
     expect(freeze(createAbilityState(), hero, [t]).hits).toEqual([]);
     expect(ABILITY.FREEZE_REACH_M).toBeGreaterThan(ABILITY.PUNCH_REACH_M);
+  });
+
+  it('covers a wider arc than the punch and a wider one than the laser', () => {
+    // Ordering the three arcs is the design: a beam is aimed, a cone is swept,
+    // a fist is swung.
+    expect(ABILITY.FREEZE_HALF_ANGLE_RAD).toBeGreaterThan(ABILITY.LASER_HALF_ANGLE_RAD);
+    expect(ABILITY.PUNCH_HALF_ANGLE_RAD).toBeGreaterThan(ABILITY.FREEZE_HALF_ANGLE_RAD);
   });
 
   it('does not freeze corpses', () => {
@@ -320,5 +371,42 @@ describe('the balance the 2D game shipped', () => {
 
   it('buys the laser its power with a cooldown three times the punch\'s', () => {
     expect(ABILITY.LASER_COOLDOWN_S / ABILITY.PUNCH_COOLDOWN_S).toBeCloseTo(60 / 18);
+  });
+});
+
+/**
+ * Spawn placement — the regression that made combat look broken on load.
+ *
+ * The first spawn list put every enemy at z = 26–40 while the hero spawns at
+ * z = 13 facing -Z, i.e. entirely behind the player and off-camera. Nothing
+ * threw; the game simply looked like combat did not work. Browser testing
+ * missed it because every probe repositioned enemies before attacking.
+ */
+describe('starter encounter placement', () => {
+  it('spawns every enemy IN FRONT of the hero — decreasing z from the spawn', () => {
+    expect(CombatSystem.validateSpawns(null)).toEqual([]);
+    for (const s of SPAWNS) expect(s.z).toBeLessThan(13);
+  });
+
+  it('reports a spawn placed behind the hero rather than failing silently', () => {
+    const bad = [{ x: 0, z: 40, type: 'brute' }];
+    const problems = CombatSystem.validateSpawns(null, bad);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/BEHIND the hero/);
+  });
+
+  it('reports a spawn standing inside a solid box', () => {
+    // Collision resolution would eject an entity placed here metres sideways,
+    // which previously read as "the punch has no reach".
+    const collision = { boxes: [{ min: { x: -5, y: 0, z: -5 }, max: { x: 5, y: 20, z: 5 } }] };
+    const problems = CombatSystem.validateSpawns(collision, [{ x: 0, z: 0, type: 'brute' }]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/inside a solid box/);
+  });
+
+  it('keeps enemies close enough to reach on foot in a few seconds', () => {
+    for (const s of SPAWNS) {
+      expect(Math.hypot(s.x, s.z - 13)).toBeLessThan(20);
+    }
   });
 });

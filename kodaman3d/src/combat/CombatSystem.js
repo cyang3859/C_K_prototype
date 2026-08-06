@@ -20,17 +20,52 @@ import { yawForward } from '../core/Scale.js';
  */
 
 /**
- * A starter encounter, placed on the annex sidewalk near the hero's spawn at
- * (0, 13) so the first thing a tester can do is walk a few metres and hit
- * something. Deliberately a handful rather than a horde: this is a wiring
- * check, not a difficulty design.
+ * Metres. How far the starter encounter's enemies stray from their post.
+ *
+ * The default patrol leg is `120 px → 24 m`, ported from the 2D game where a
+ * long lane is correct: that world is a 20,000 px corridor and an enemy walking
+ * 24 m is walking on the spot. Here it meant the starter four wandered out of
+ * reach before the player arrived — walking 8 m toward the nearest one still
+ * left it 8.7 m away, and a punch at that distance is a miss, which reads
+ * exactly like "attacks do nothing".
+ *
+ * A short leg keeps them where they were placed while still visibly moving, so
+ * the first encounter is findable. It is a property of THIS encounter, not of
+ * the archetype — `AI` keeps the ported default for enemies placed in a real
+ * district later.
  */
-const SPAWNS = Object.freeze([
-  { x: -6, z: 26, type: 'brute' },
-  { x: 6, z: 30, type: 'genius' },
-  { x: 0, z: 36, type: 'energy' },
-  { x: -14, z: 40, type: 'robber' },
+const STARTER_PATROL_M = 2.5;
+
+/**
+ * A starter encounter, in front of the hero's spawn.
+ *
+ * ⚠️ IN FRONT MEANS DECREASING Z, AND THIS IS EASY TO GET BACKWARDS.
+ * The hero spawns at (0, 13) with `facing = 0`, and yaw 0 points along **−Z**
+ * (`core/Scale.js`). The camera orbits to `+cos(yaw) * distance`, i.e. it sits
+ * BEHIND the hero at higher z looking the same way. So the visible world in
+ * front of a freshly-loaded game is `z < 13`.
+ *
+ * The first version of this list used z = 26–40, which is directly behind the
+ * player. Every enemy spawned off-camera, punches hit nothing, and the game
+ * looked broken on load. It survived my own browser testing because every probe
+ * repositioned the enemies in front of the hero before attacking — the logic was
+ * verified and the spawn never was. `spawnsAreInFront` in the tests now pins the
+ * direction so this cannot come back silently.
+ *
+ * Deliberately a handful rather than a horde: a wiring check, not a difficulty
+ * design. Kept clear of the building line, and validated at construction — see
+ * `validateSpawns`.
+ */
+export const SPAWNS = Object.freeze([
+  { x: -3.5, z: 6, type: 'brute', ai: { halfRange: STARTER_PATROL_M } },
+  { x: 3.5, z: 4, type: 'genius', ai: { halfRange: STARTER_PATROL_M } },
+  { x: 0, z: 0.5, type: 'energy', ai: { halfRange: STARTER_PATROL_M } },
+  { x: -7, z: -2, type: 'robber', ai: { halfRange: STARTER_PATROL_M } },
 ]);
+
+/** Metres. Hero spawn, mirrored from Game.js so the guard below can be honest. */
+const HERO_SPAWN_Z = 13;
+
 
 export class CombatSystem {
   /**
@@ -38,9 +73,11 @@ export class CombatSystem {
    * @param {THREE.Scene} opts.scene
    * @param {{position: THREE.Vector3, facing: number}} opts.hero the hero's sim state
    */
-  constructor({ scene, hero }) {
+  constructor({ scene, hero, collision = null, cameraRig = null }) {
     this.scene = scene;
+    this.collision = collision;
     this.hero = hero;
+    this.cameraRig = cameraRig;
     this.abilities = createAbilityState();
     /** @type {Enemy[]} */
     this.enemies = [];
@@ -48,7 +85,42 @@ export class CombatSystem {
     this.lastEvent = '';
     this._forward = new THREE.Vector3();
 
+    for (const p of CombatSystem.validateSpawns(collision)) {
+      // Loud, but not fatal: a bad spawn should be obvious in the console
+      // rather than crash a playtest build someone is mid-session in.
+      console.warn(`CombatSystem: ${p}`);
+    }
     for (const s of SPAWNS) this.spawn(s);
+  }
+
+  /**
+   * Spawn points must be in front of the hero and outside every solid box.
+   *
+   * Both failure modes have already happened once each in this project and
+   * neither raised an error: spawning behind the camera looked like "combat is
+   * broken", and standing an entity inside a building footprint got it ejected
+   * metres sideways by collision resolution, which looked like "the punch has
+   * no reach". Cheap to check, so it is checked.
+   *
+   * @returns {string[]} human-readable problems; empty when the list is sound
+   */
+  static validateSpawns(collision, spawns = SPAWNS, heroZ = HERO_SPAWN_Z) {
+    const problems = [];
+    for (const s of spawns) {
+      if (s.z >= heroZ) {
+        problems.push(`${s.type} at z=${s.z} is BEHIND the hero (spawn z=${heroZ}, facing -Z)`);
+      }
+      if (!collision) continue;
+      for (const b of collision.boxes) {
+        const inside =
+          s.x > b.min.x && s.x < b.max.x && s.z > b.min.z && s.z < b.max.z && b.max.y > 0.2;
+        if (inside) {
+          problems.push(`${s.type} at (${s.x}, ${s.z}) is inside a solid box`);
+          break;
+        }
+      }
+    }
+    return problems;
   }
 
   /** @param {{x:number,z:number,type?:string,hp?:number,boss?:boolean}} spec */
@@ -84,6 +156,22 @@ export class CombatSystem {
     yawForward(this.hero.facing, this._forward);
     const attacker = { pos: heroPos, facing: { x: this._forward.x, z: this._forward.z } };
     const targets = this.targets;
+
+    const attacking =
+      input.wasPressed('KeyJ') || input.wasPressed('KeyK') || input.wasPressed('KeyL');
+
+    // ATTACKS AIM WHERE THE CAMERA LOOKS, NOT WHERE THE HERO LAST WALKED.
+    // `facing` is written by the locomotion controller from the MOVEMENT
+    // direction, so it only changes while moving. Standing still and attacking
+    // therefore swung at wherever the last step happened to end — which in
+    // testing read as attacks doing nothing, because the player is looking
+    // straight at an enemy and the hero is not. Snapping to the camera on the
+    // attack frame also makes the hero visibly turn into the blow.
+    if (attacking && this.cameraRig) {
+      this.hero.facing = this.cameraRig.yaw;
+      yawForward(this.hero.facing, this._forward);
+      attacker.facing = { x: this._forward.x, z: this._forward.z };
+    }
 
     if (input.wasPressed('KeyJ')) this._resolve('PUNCH', punch(this.abilities, attacker, targets));
     if (input.wasPressed('KeyK')) this._resolve('LASER', laser(this.abilities, attacker, targets));
