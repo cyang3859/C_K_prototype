@@ -81,6 +81,13 @@ export const SPAWNS = Object.freeze([
 /** Metres. Hero spawn, mirrored from Game.js so the guard below can be honest. */
 const HERO_SPAWN_Z = 13;
 
+/** Key code -> ability, in the order presses are read each step. */
+const ATTACK_KEYS = Object.freeze([
+  ['KeyJ', 'punch'],
+  ['KeyK', 'laser'],
+  ['KeyL', 'freeze'],
+]);
+
 
 export class CombatSystem {
   /**
@@ -127,6 +134,12 @@ export class CombatSystem {
     /** Last resolved attack, for the debug HUD. */
     this.lastEvent = '';
     this._forward = new THREE.Vector3();
+    /**
+     * A press made too early, waiting for its cooldown: `{name, age}` or null.
+     *
+     * ONE SLOT, NOT A QUEUE — see the note in `update`.
+     */
+    this._buffered = null;
     this._dashDir = new THREE.Vector3();
     this._dashOrigin = new THREE.Vector3();
 
@@ -220,39 +233,51 @@ export class CombatSystem {
       pos: { x: p.x, y: p.y + EYE_HEIGHT_M, z: p.z },
       facing: { x: this._forward.x, y: 0, z: this._forward.z },
     };
-    const targets = this.targets;
-
-    const attacking =
-      input.wasPressed('KeyJ') || input.wasPressed('KeyK') || input.wasPressed('KeyL');
-
-    // ATTACKS AIM WHERE THE CAMERA LOOKS, NOT WHERE THE HERO LAST WALKED.
-    // `facing` is written by the locomotion controller from the MOVEMENT
-    // direction, so it only changes while moving. Standing still and attacking
-    // therefore swung at wherever the last step happened to end — which in
-    // testing read as attacks doing nothing, because the player is looking
-    // straight at an enemy and the hero is not. Snapping to the camera on the
-    // attack frame also makes the hero visibly turn into the blow.
-    if (attacking && this.cameraRig) {
-      this.hero.facing = this.cameraRig.yaw;
-      this._aimFrom(this.cameraRig.yaw, this.cameraRig.pitch ?? 0, attacker);
+    // Safety net only — the real gate is at press time, below. Kept so a buffered
+    // press can never outlive its ability by an unbounded amount if something
+    // later re-extends a cooldown after the press was accepted. The bound is
+    // deliberately loose: making it tight enough to be the primary gate is what
+    // broke the first version of this.
+    if (this._buffered) {
+      this._buffered.age += dt;
+      if (this._buffered.age > ABILITY.INPUT_BUFFER_S * 4) this._buffered = null;
     }
 
-    const opts = this.rng ? { rng: this.rng } : undefined;
+    // A press either FIRES or is BUFFERED — it is never simply dropped.
+    //
+    // Each ability is still checked independently rather than collapsing to one
+    // intent per step, so pressing two in the same 16 ms step behaves exactly as
+    // it always has. Only the refusal path changed.
+    for (const [code, name] of ATTACK_KEYS) {
+      if (!input.wasPressed(code)) continue;
+      if (isReady(this.abilities, name)) {
+        this._fire(name, attacker);
+        continue;
+      }
+      // ⚠️ THE WINDOW IS "HOW EARLY WAS THE PRESS", NOT "HOW OLD IS IT NOW".
+      // The first version aged the buffer out 0.2 s after the press, which is
+      // BEFORE the 0.3 s punch cooldown clears — so a buffered punch could never
+      // survive long enough to fire, and the feature did nothing at all. What a
+      // player is owed is forgiveness for pressing slightly too EARLY, so the
+      // test is against the time still left on the cooldown.
+      if (this.abilities[`${name}For`] <= ABILITY.INPUT_BUFFER_S) {
+        // Latest press wins: a single slot is the standard shape, because a
+        // queue lets a player stack inputs and watch them play out on their own
+        // afterwards, which feels like the game is driving rather than them.
+        this._buffered = { name, age: 0 };
+        this.lastEvent = `${name.toUpperCase()} — buffered`;
+      } else {
+        // Pressed far too early. Still visibly a no-op, so "not ready" stays
+        // distinguishable from "missed" exactly as before.
+        this.lastEvent = `${name.toUpperCase()} — on cooldown`;
+      }
+    }
 
-    // The tell plays only when the ability actually FIRED, never on the mere
-    // keypress — so a press refused by its cooldown is visibly a no-op and the
-    // player can tell "not ready" from "missed".
-    if (input.wasPressed('KeyJ')) {
-      // Close the last stride BEFORE resolving, so the punch is judged from
-      // where the hero ends up rather than where they started.
-      this._dashToTarget(attacker, targets);
-      this._resolve('PUNCH', punch(this.abilities, attacker, targets, opts), attacker);
-    }
-    if (input.wasPressed('KeyK')) {
-      this._resolve('LASER', laser(this.abilities, attacker, targets, opts), attacker);
-    }
-    if (input.wasPressed('KeyL')) {
-      this._resolve('FREEZE', freeze(this.abilities, attacker, targets, opts), attacker);
+    // The buffered press fires the instant its cooldown clears.
+    if (this._buffered && isReady(this.abilities, this._buffered.name)) {
+      const name = this._buffered.name;
+      this._buffered = null;
+      this._fire(name, attacker);
     }
 
     this.fx.update(dt);
@@ -310,6 +335,49 @@ export class CombatSystem {
     attacker.facing.x = -Math.sin(yaw) * cp;
     attacker.facing.y = -Math.sin(pitch);
     attacker.facing.z = -Math.cos(yaw) * cp;
+  }
+
+  /**
+   * Fire one ability, from wherever the player is looking RIGHT NOW.
+   *
+   * ⚠️ THE AIM IS TAKEN AT FIRE TIME, NOT AT PRESS TIME, and for a buffered
+   * press those are different moments. Aiming a buffered attack along the
+   * direction the camera happened to face when the key went down would swing at
+   * where the fight *was* — the same class of bug as attacks following the
+   * hero's last walked direction (`1fe7d6a`), just displaced in time instead of
+   * in space. A buffered punch is the player saying "hit it as soon as you can",
+   * not "hit that spot".
+   *
+   * @param {'punch'|'laser'|'freeze'} name
+   * @param {object} attacker mutated in place with the current aim
+   */
+  _fire(name, attacker) {
+    // ATTACKS AIM WHERE THE CAMERA LOOKS, NOT WHERE THE HERO LAST WALKED.
+    // `facing` is written by the locomotion controller from the MOVEMENT
+    // direction, so it only changes while moving. Standing still and attacking
+    // therefore swung at wherever the last step happened to end — which in
+    // testing read as attacks doing nothing, because the player is looking
+    // straight at an enemy and the hero is not. Snapping to the camera on the
+    // attack frame also makes the hero visibly turn into the blow.
+    if (this.cameraRig) {
+      this.hero.facing = this.cameraRig.yaw;
+      this._aimFrom(this.cameraRig.yaw, this.cameraRig.pitch ?? 0, attacker);
+    }
+    // Re-read the live targets: an earlier fire this same step may have killed
+    // one, and a stale list would let the second attack swing at a corpse.
+    const targets = this.targets;
+    const opts = this.rng ? { rng: this.rng } : undefined;
+
+    if (name === 'punch') {
+      // Close the last stride BEFORE resolving, so the punch is judged from
+      // where the hero ends up rather than where they started.
+      this._dashToTarget(attacker, targets);
+      this._resolve('PUNCH', punch(this.abilities, attacker, targets, opts), attacker);
+    } else if (name === 'laser') {
+      this._resolve('LASER', laser(this.abilities, attacker, targets, opts), attacker);
+    } else {
+      this._resolve('FREEZE', freeze(this.abilities, attacker, targets, opts), attacker);
+    }
   }
 
   /**

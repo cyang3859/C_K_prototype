@@ -669,7 +669,24 @@ describe('CombatSystem — dash sweep and hit stop', () => {
     expect(combat.abilities.punchFor).toBeGreaterThan(0);
 
     combat.update(1 / 60, keys('KeyJ'));
-    expect(combat.lastEvent).toContain('cooldown');
+    // Pressed immediately, with the full 0.3 s cooldown left — outside the
+    // 0.2 s buffer window, so still refused outright.
+    expect(combat.lastEvent).toContain('on cooldown');
+    expect(hero.position.z).toBe(after);
+  });
+
+  it('does not move the hero on a BUFFERED press either', () => {
+    // Dashing on a press that fires nothing would slide the hero across the
+    // ground with no swing, and hand out free mobility on a 0.3 s timer.
+    const { combat, hero, enemy } = makeCombat({ enemyAt: { x: 0, z: -gapAway(0.6) } });
+    combat.update(1 / 60, keys('KeyJ'));
+    for (let i = 0; i < 12; i++) combat.update(1 / 60, { wasPressed: () => false });
+    enemy.pos.x = hero.position.x;
+    enemy.pos.z = hero.position.z - gapAway(0.6);
+    const after = hero.position.z;
+
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(combat.lastEvent).toContain('buffered');
     expect(hero.position.z).toBe(after);
   });
 
@@ -895,5 +912,119 @@ describe('attacks aim where the CAMERA actually looks', () => {
     const aim = aimOf(0, 0.25);
     const deg = (Math.acos(Math.min(1, Math.max(-1, aim.dot(forward)))) * 180) / Math.PI;
     expect(deg).toBeLessThan((25 * 0.1)); // well inside even the laser's cone
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Input buffering (`RESEARCH_MANOFSTEEL_REPO.md` §7c)
+//
+// The user-visible problem: a press made during a cooldown was silently
+// discarded, so mashing at a combo's natural rhythm lost inputs and the game
+// read as unresponsive rather than deliberate.
+// ---------------------------------------------------------------------------
+
+describe('CombatSystem — input buffering', () => {
+  const keys = (...pressed) => ({ wasPressed: (c) => pressed.includes(c) });
+  const none = keys();
+
+  function makeCombat({ enemyAt = { x: 0, z: -1.0 } } = {}) {
+    const scene = new THREE.Scene();
+    const hero = { position: new THREE.Vector3(0, 0, 0), facing: 0 };
+    const fired = [];
+    const combat = new CombatSystem({ scene, hero, collision: null, rng: never });
+    for (const e of combat.enemies) e.dispose();
+    combat.enemies.length = 0;
+    const enemy = combat.spawn({ ...enemyAt, type: 'robber' });
+    // Record every ability that actually fires, by watching the tell.
+    combat.heroEntity = { playAttack: (kind) => fired.push(kind) };
+    return { combat, hero, enemy, fired };
+  }
+
+  /** Run `n` steps with no input. */
+  const idle = (combat, n) => {
+    for (let i = 0; i < n; i++) combat.update(1 / 60, none);
+  };
+
+  it('replays a press made during a cooldown, instead of dropping it', () => {
+    const { combat, fired } = makeCombat();
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(fired).toEqual(['punch']);
+
+    // Pressed again with the punch nearly ready — inside the buffer window.
+    idle(combat, 12);
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(fired).toEqual(['punch']); // not yet
+    expect(combat.lastEvent).toContain('buffered');
+
+    idle(combat, 20); // cooldown clears
+    expect(fired).toEqual(['punch', 'punch']);
+  });
+
+  it('drops a press that was far too early, rather than firing it late', () => {
+    // A buffer that never expires turns into a queue, and the player watches
+    // attacks they pressed for seconds ago play out on their own.
+    const { combat, fired } = makeCombat();
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(fired).toEqual(['punch']);
+
+    // A press with the ability nowhere near ready is refused outright, exactly
+    // as it always was — buffering forgives a beat, it does not queue.
+    combat.abilities.punchFor = 5.0;
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(combat.lastEvent).toContain('on cooldown');
+    expect(combat._buffered).toBeNull();
+
+    combat.abilities.punchFor = 0;
+    idle(combat, 5);
+    expect(fired).toEqual(['punch']); // the too-early press never fired
+  });
+
+  it('holds ONE press, not a queue — the latest wins', () => {
+    const { combat, fired } = makeCombat();
+    combat.abilities.punchFor = 0.1;
+    combat.abilities.laserFor = 0.1;
+    combat.update(1 / 60, keys('KeyJ')); // buffered
+    combat.update(1 / 60, keys('KeyK')); // replaces it
+    idle(combat, 20);
+    expect(fired).toEqual(['laser']);
+  });
+
+  it('fires a buffered attack the moment the cooldown clears, not a step later', () => {
+    const { combat, fired } = makeCombat();
+    combat.update(1 / 60, keys('KeyJ'));
+    idle(combat, 12);
+    combat.update(1 / 60, keys('KeyJ')); // buffered
+    // Step to exactly the moment punch is ready again.
+    while (combat.abilities.punchFor > 0) combat.update(1 / 60, none);
+    expect(fired).toEqual(['punch', 'punch']);
+  });
+
+  it('aims a buffered attack where the camera looks WHEN IT FIRES, not when it was pressed', () => {
+    // A buffered punch means "hit it as soon as you can", not "hit that spot".
+    const scene = new THREE.Scene();
+    const hero = { position: new THREE.Vector3(0, 0, 0), facing: 0 };
+    const rig = { yaw: 0, pitch: 0 };
+    const combat = new CombatSystem({ scene, hero, collision: null, cameraRig: rig, rng: never });
+    for (const e of combat.enemies) e.dispose();
+    combat.enemies.length = 0;
+    // Enemy to the hero's LEFT (−X at yaw +π/2), not straight ahead.
+    combat.spawn({ x: -1.0, z: 0, type: 'robber' });
+
+    combat.update(1 / 60, keys('KeyJ')); // fires forward, at nothing
+    expect(combat.lastEvent).toContain('miss');
+
+    for (let i = 0; i < 12; i++) combat.update(1 / 60, keys());
+    combat.update(1 / 60, keys('KeyJ')); // buffered while facing forward
+    rig.yaw = Math.PI / 2; // player swings the camera onto the enemy
+    while (combat.abilities.punchFor > 0) combat.update(1 / 60, none);
+    // If the aim had been frozen at press time this would still be a miss.
+    expect(combat.lastEvent).toContain('damaged');
+  });
+
+  it('does not buffer a press made when the ability is ready — it just fires', () => {
+    const { combat, fired } = makeCombat();
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(fired).toEqual(['punch']);
+    expect(combat._buffered).toBeNull();
   });
 });

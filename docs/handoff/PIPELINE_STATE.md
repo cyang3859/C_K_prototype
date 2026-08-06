@@ -157,6 +157,32 @@ session-5 snapshot.
 
 ## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
 
+### 2026-08-06 — input buffering (§7c), on the user's pick
+
+A press made during a cooldown was **silently discarded**, so a player mashing at a combo's
+natural rhythm lost inputs and the game read as unresponsive. A too-early press is now remembered
+and replayed the instant the ability comes up.
+
+**⚠️ THE WINDOW IS "HOW EARLY WAS THE PRESS", NOT "HOW OLD IS IT NOW", and the first version got
+that wrong in a way that made the feature inert.** Aged from the press, a 0.2 s window expires
+**before** the 0.3 s punch cooldown clears — so no buffered punch could ever survive to fire. The
+gate is now against the cooldown *remaining at press time*: a press qualifies when the ability is
+within `INPUT_BUFFER_S` (0.2 s) of ready. Pressing during the first 0.1 s of a punch cooldown is
+still refused outright, so buffering forgives a beat rather than queueing.
+
+**One slot, not a queue** — the latest press wins. A queue lets a player stack inputs and watch
+them play out afterwards, which inverts who is driving.
+
+**The aim is taken at FIRE time, not press time.** A buffered punch means "hit it as soon as you
+can", not "hit that spot" — aiming it where the camera faced when the key went down is the same
+class of bug as attacks following the hero's last walked direction (`1fe7d6a`), displaced in time
+instead of space. `_fire()` is the new seam that guarantees it.
+
+**Measured in a browser, mashing at ~0.125 s intervals against a 0.3 s cooldown:** 8 presses →
+4 attacks, firing at 12.483 / 12.800 / 13.117 / 13.433 s — a metronomic **0.317 s apart, the
+cooldown rate**. The attack rate is now bounded by the cooldown rather than by whether a press
+happened to land in a ready window. **395 tests**; 6 mutations applied to the buffer, all caught.
+
 ### ⚠️ 2026-08-06 — THE AIM WAS INVERTED VERTICALLY, AND IT HAD SHIPPED
 
 **User playtest: "attacks still struggle when navigating horizontally on the screen."** The

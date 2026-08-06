@@ -154,6 +154,30 @@ export const ABILITY = Object.freeze({
    * into the blow.
    */
   PUNCH_DASH_STOP_FRAC: 0.9,
+
+  /**
+   * Seconds a too-early attack press is remembered and replayed when the
+   * ability comes up (`RESEARCH_MANOFSTEEL_REPO.md` §7c, `HasPendingAttack`).
+   *
+   * ⚠️ WHAT THIS FIXES IS "I PRESSED IT AND NOTHING HAPPENED". Without it a
+   * press made during a cooldown is silently discarded, so a player mashing at
+   * a combo's natural rhythm loses inputs and the game reads as unresponsive
+   * rather than as deliberate. Buffering turns the same press into the next
+   * swing.
+   *
+   * ⚠️ THIS IS MEASURED AGAINST THE COOLDOWN REMAINING AT PRESS TIME, not
+   * against how long ago the press happened. Those differ, and the difference
+   * broke the first version: aged from the press, a 0.2 s window expires before
+   * the 0.3 s punch cooldown clears, so no buffered punch could ever fire and
+   * the feature was inert. A press qualifies when the ability is within 0.2 s
+   * of being ready.
+   *
+   * 12 frames-at-60, deliberately short: it forgives a press made slightly too
+   * early, and does NOT let a player queue attacks in advance and watch them
+   * play out, which inverts who is driving. Pressing during the first 0.1 s of
+   * the punch cooldown is still refused outright.
+   */
+  INPUT_BUFFER_S: 12 / 60,
 });
 
 /**
