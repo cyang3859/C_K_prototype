@@ -241,7 +241,35 @@ stagger-immunity window so stagger cannot chain, which is the standard fix and t
 
 **Pending the user's call.** Nothing depends on it yet — no combat is wired into the scene.
 
-### Next: wire step 1 into the scene, then Rapier
+### ✅ STEP 1 IS WIRED AND PLAYABLE (`e5c0387`) — 306 tests
+
+`Enemy.js` + `CombatSystem.js` put four enemies on the annex sidewalk near spawn. J/K/L work.
+`Game.js` stays a coordinator; combat runs after locomotion, before the camera.
+
+**Verified in the browser through real dispatched key events**, not by calling the system
+directly, so the wiring is what was tested: punch 3→2 HP with stagger and immunity window; laser
+one-shot a 3 HP target, correctly choosing the nearest in cone; freeze applied with no damage;
+4 tracked → 2 with meshes disposed. Visual states measured at the enemy's projected screen
+position — normal **77.7** luma, hit-flash **223.3**, frozen **182.1**, versus **113.6** hidden.
+Cost: **4 draw calls / ~384 tris per enemy**.
+
+⚠️ **`STAGGER_IMMUNITY_S` (0.5 s) resolved the stun-lock** — every tier now acts for 61–69% of a
+fight, up from ~22%. Immunity gates the interrupt, never the damage, so time-to-kill is unchanged.
+
+**Two false alarms, recorded because both looked like bugs and neither was.** A punch "missed"
+because the hero had been placed inside a building footprint and collision ejected it 8 m
+sideways. A luminance probe then read exactly 0 across four renders — the sampled enemy was the
+centre one, directly behind the hero from the camera. **A screenshot settled in seconds what
+numbers had made look broken.** Measurement is the default here, but when a measurement says
+"nothing at all", look at the thing before trusting it.
+
+### Next: Rapier (step 2), or content
+
+Step 1 is complete. Rapier remains last, for thrown-prop momentum and criterion 5 — the
+`RAPIER.init()` gate and the lazy-import bundle boundary are the only genuinely novel risks left
+in Phase 3, and they are now isolated from gameplay logic that already works.
+
+### Superseded — this was the old next step
 
 Combat logic is complete and untested against a running game. The useful next move is a visible
 enemy taking a punch in the browser, which is also what makes the stagger decision judgeable by
