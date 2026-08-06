@@ -164,19 +164,40 @@ export class Input {
    * BEFORE the locomotion controller reads them (brief §5's step order).
    */
   beginStep() {
-    // Space is a full alias for W everywhere — same held and same edge semantics.
-    const w = this._key('KeyW');
     const space = this._key('Space');
 
-    this.forward = w.down || space.down;
+    // ---- HORIZONTAL: WASD, and ONLY WASD --------------------------------
+    // Camera-relative in every state, ground and air alike.
+    this.forward = this.isDown('KeyW');
     this.back = this.isDown('KeyS');
     this.left = this.isDown('KeyA');
     this.right = this.isDown('KeyD');
 
-    this.jumpDown = this.forward;
-    this.jumpPressed = w.pressed || space.pressed;
+    // ---- VERTICAL: never a movement key ---------------------------------
+    // ⚠️ W AND S USED TO BE DOUBLE-BOUND HERE, and it broke three things at
+    // once. `jumpDown` was `forward` and `descend` was `back`, so:
+    //   1. holding W on the ground took off instead of running;
+    //   2. in flight W climbed rather than flying forward, because full climb
+    //      thrust drowned out the horizontal component it was also driving;
+    //   3. holding S to descend also drove BACKWARD thrust, so dashing while
+    //      descending reversed the hero.
+    // `RESEARCH_CONTROLS.md` surveyed shipped titles: Anthem, Just Cause,
+    // Saints Row IV, Arkham Knight and Minecraft all keep WASD as pure
+    // horizontal thrust and put climb/descend on their own keys, camera
+    // decoupled from thrust. Nothing in that survey double-binds a movement
+    // key to a vertical axis.
+    this.jumpDown = space.down;
+    this.jumpPressed = space.pressed;
 
-    this.descend = this.back;
+    // ⚠️ DESCEND IS DELIBERATELY BOUND TWICE, and Ctrl is NOT the safe one.
+    // Ctrl is the convention (Saints Row IV) and is fine on macOS, but this
+    // game ships in a browser and `Ctrl+W` is "close tab" on Windows and
+    // Linux — a shortcut a page CANNOT preventDefault away. A player holding
+    // descend and forward together would lose the tab mid-flight. X is bound
+    // as the always-safe alternative and is what the on-screen hint teaches.
+    this.descend =
+      this.isDown('KeyX') || this.isDown('ControlLeft') || this.isDown('ControlRight');
+
     this.dash = this.isDown('ShiftLeft') || this.isDown('ShiftRight');
 
     // J / K / L are ability stubs, but they also set the precision-aiming flag,

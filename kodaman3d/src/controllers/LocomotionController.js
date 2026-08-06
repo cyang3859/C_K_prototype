@@ -256,10 +256,15 @@ export class LocomotionController {
         break;
 
       case LocomotionState.LANDING:
-        // Landing aborts on W/Space HELD — level-triggered, not an edge. The 2D
-        // original reads `if (e.landing && input.jumpHeld) e.landing = false`,
-        // so a player who is already holding W when they hit G never commits to
-        // the descent at all. Preserved deliberately.
+        // Landing aborts on the CLIMB key HELD — level-triggered, not an edge.
+        // The 2D original reads `if (e.landing && input.jumpHeld) e.landing =
+        // false`, i.e. "if you are asking to go up, do not go down".
+        //
+        // ⚠️ This got MORE faithful when the controls were split, not less.
+        // `jumpDown` used to be `forward` (W or Space), so merely running
+        // forward aborted a landing you had just asked for. Now `jumpDown` is
+        // Space alone — the climb key — which is exactly what the 2D rule
+        // meant. A player holding W into a landing now lands, as they should.
         if (input.jumpDown) {
           this._setState(LocomotionState.FLYING);
         }

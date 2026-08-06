@@ -836,7 +836,7 @@ describe('input state after a window blur', () => {
     const input = new Input({ element: null, target: null });
     const ev = (code) => ({ code, repeat: false, preventDefault() {} });
 
-    input._onKeyDown(ev('KeyW'));
+    input._onKeyDown(ev('Space')); // the climb key — W no longer climbs
     input._onKeyDown(ev('ShiftLeft'));
     input.look.dx = 250;
     input.wheel = 3;
@@ -869,12 +869,12 @@ describe('input state after a window blur', () => {
 
   it('does not re-fire the press edge on browser key auto-repeat', () => {
     const input = new Input({ element: null, target: null });
-    input._onKeyDown({ code: 'KeyW', repeat: false, preventDefault() {} });
+    input._onKeyDown({ code: 'Space', repeat: false, preventDefault() {} });
     input.beginStep();
     expect(input.jumpPressed).toBe(true);
 
     input.endStep();
-    input._onKeyDown({ code: 'KeyW', repeat: true, preventDefault() {} });
+    input._onKeyDown({ code: 'Space', repeat: true, preventDefault() {} });
     input.beginStep();
     // Still held, but the takeoff edge must not fire again.
     expect(input.jumpDown).toBe(true);
@@ -921,5 +921,71 @@ describe('controller + collision integration', () => {
 
     expect(hero.onGround).toBe(true);
     expect(hero.position.y).toBe(90); // the rooftop, not the ground plane
+  });
+});
+
+
+/**
+ * The W/S double-binding regression.
+ *
+ * `jumpDown` used to be `forward` and `descend` used to be `back`, which broke
+ * three separate things at once and was reported from playtesting: holding W on
+ * the ground took off, W in flight climbed instead of flying forward, and
+ * dashing while descending reversed the hero. These pin the split so no future
+ * "simplification" quietly re-aliases a movement key onto a vertical axis.
+ */
+describe('movement keys are never bound to the vertical axis', () => {
+  const press = (input, ...codes) => {
+    for (const code of codes) input._onKeyDown({ code, repeat: false, preventDefault() {} });
+    input.beginStep();
+    return input;
+  };
+  const fresh = () => new Input({ element: null, target: null });
+
+  it('W moves forward and does NOT climb or take off', () => {
+    const input = press(fresh(), 'KeyW');
+    expect(input.forward).toBe(true);
+    expect(input.jumpDown).toBe(false);
+    expect(input.jumpPressed).toBe(false);
+  });
+
+  it('S moves backward and does NOT descend', () => {
+    const input = press(fresh(), 'KeyS');
+    expect(input.back).toBe(true);
+    expect(input.descend).toBe(false);
+  });
+
+  it('Space climbs without driving any horizontal movement', () => {
+    const input = press(fresh(), 'Space');
+    expect(input.jumpDown).toBe(true);
+    expect(input.jumpPressed).toBe(true);
+    expect(input.forward).toBe(false);
+  });
+
+  it('X descends without driving any horizontal movement', () => {
+    const input = press(fresh(), 'KeyX');
+    expect(input.descend).toBe(true);
+    expect(input.back).toBe(false);
+  });
+
+  it('Ctrl also descends, for players who expect the Saints Row IV convention', () => {
+    expect(press(fresh(), 'ControlLeft').descend).toBe(true);
+    expect(press(fresh(), 'ControlRight').descend).toBe(true);
+  });
+
+  it('lets a player dive FORWARD while dashing — the reported reversal bug', () => {
+    // W + X + Shift: forward thrust, descending, dashing. The old mapping made
+    // this drive BACKWARD, because X's job was done by S.
+    const input = press(fresh(), 'KeyW', 'KeyX', 'ShiftLeft');
+    expect(input.forward).toBe(true);
+    expect(input.back).toBe(false);
+    expect(input.descend).toBe(true);
+    expect(input.dash).toBe(true);
+  });
+
+  it('lets a player climb while flying forward — two keys, not one overloaded one', () => {
+    const input = press(fresh(), 'KeyW', 'Space');
+    expect(input.forward).toBe(true);
+    expect(input.jumpDown).toBe(true);
   });
 });
