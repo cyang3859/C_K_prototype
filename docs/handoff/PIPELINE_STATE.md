@@ -1,6 +1,6 @@
 # Pipeline State — Resume Checkpoint
 
-**Last updated:** 2026-08-02 (session 12 — session 11's mid-refactor break is repaired, Standards 10 is done, and the refactor guard's blind spot is closed. Previously session 11 — the code review ran and 16 of its 18 findings are fixed; see the resume block. Previously session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
+**Last updated:** 2026-08-06 (session 15 — the feel cluster is built: velocity bank, hit stop, punch dash and alternating arms, 380 tests, browser-verified in `BROWSER_SPOT_CHECK_7.md`. Previously session 12 — session 11's mid-refactor break is repaired, Standards 10 is done, and the refactor guard's blind spot is closed. Previously session 11 — the code review ran and 16 of its 18 findings are fixed; see the resume block. Previously session 8 — closed by the user. Browser testing moved to Playwright MCP, see `CLAUDE.md`; spot-check 5 run and recorded; no code touched)
 **Branch:** `feat/3d-open-world` (based on `origin/dev` @ `5f62309`)
 **Purpose:** Read this file FIRST. It is the single source of truth for where the 3D
 migration pipeline stopped and what to do next. Written to survive a cleared chat history.
@@ -152,6 +152,91 @@ above; for the code read `KNOWLEDGE_BASE.md`. **Re-measured 2026-08-01, session 
 corpus is ~14,300 lines across 34 documents, and `kodaman3d/src` is 8,867 lines across 24 files** —
 the "4,132 lines across 7 documents / 6,691 lines of code" figures this line used to carry were a
 session-5 snapshot.
+
+---
+
+## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
+
+**380 tests** (was 331), clean production build, console clean apart from the two known lines.
+Browser-verified end to end — see **`BROWSER_SPOT_CHECK_7.md`**, which has every measurable result
+filled in and four genuinely-human questions left open.
+
+Session 14 named five next steps in recommended order. **Items 1–4 are done; item 5 (Rapier) is
+untouched and remains the only novel risk left in Phase 3.**
+
+| # | Feature | Where |
+|---|---|---|
+| 1 | **Velocity-derived bank** | `LocomotionController._updateBank`, `hero.roll`, `Hero.syncTransform` |
+| 2 | **Alternating punch arm** | `Hero.playAttack` / `_attackArmPose` |
+| 3 | **Hit stop** | `Time.hold`, called from `CombatSystem._resolve` |
+| 4 | **Attack dash-to-target** | `Abilities.punchDashTarget` (rule) + `CombatSystem._dashToTarget` (sweep) |
+
+### The bank: what ported, and the half that deliberately did NOT
+
+Lean is the smoothed, normalised angular velocity **of the velocity vector**. The maths ported;
+`FInterpTo` did not — `BANK_LAMBDA` keeps ManOfSteel's constant (5) and feeds it to this project's
+`1 - exp(-lambda*dt)`.
+
+⚠️ **Their pitch term (smoothing 15, three times more eager) was deliberately not ported.** That
+axis is already occupied by the browser-tuned two-term speed/vertical lean model a human signed
+off on. Bank is the axis this project had nothing on. **Roll sits on the GROUP, not `bodyPivot`**,
+with the group's Euler order set to `'YZX'`: the composition must be Ry·Rz·Rx so the bank is about
+the **flight direction**. On `bodyPivot` it would apply in the already-pitched frame, and at
+`MAX_FORWARD_PITCH` the body is horizontal — so a "roll" there rotates about a nearly vertical axis
+and reads as the hero slewing sideways.
+
+### ⚠️ Three defects found by testing that the first implementation had
+
+1. **The dash overshot.** Reach is judged in 3D but the dash moves horizontally, and the hero's
+   eyes sit ~0.77 m above an enemy's centre of mass. Moving horizontally by the 3D shortfall does
+   not close the 3D distance by that amount. `punchDashTarget` now returns `gap` (3D, qualifies the
+   target) **and** `travel` (the horizontal solve) — different numbers, both needed.
+2. **Stopping exactly on the reach boundary made the hit a coin flip.** Measured: a dash solved to
+   land precisely on the edge resolved as a **MISS** — the attack closed the gap perfectly and then
+   swung at nothing. `PUNCH_DASH_STOP_FRAC` (0.9) stops just inside.
+3. **`CombatSystem` had no rng seam**, so its integration tests were one unlucky dodge from red.
+   Every pure ability already took an `rng`; the wiring layer was the one place a test could not
+   turn dodges off.
+
+### Mutation testing: 24 mutations, and 4 of them found real holes
+
+Every new suite passed on the first run, so each was mutated to prove it could fail. **Four
+mutations survived**, and fixing them was the valuable part:
+
+| Survivor | Why the test could not catch it |
+|---|---|
+| Skip the dash's collision sweep | **The test was vacuous** — its target sat 1.02 m out, outside `PUNCH_DASH_M`, so no dash ever happened and the assertion passed with the sweep deleted |
+| Dash while on cooldown | The connecting punch knocks the enemy back 1.8 m, putting it outside the window before the second press, so no dash was possible either way |
+| Hit stop without checking the outcome | A **miss** returns early and never reaches that line; only a **dodge** distinguishes them, and no test rolled one |
+| Dash at a target already in reach | Only distinguishable with **zero vertical offset** at a gap just inside reach; every existing case was covered by the stop-fraction clamp |
+| `FInterpTo` instead of the exponential | **At `BANK_LAMBDA` 5, 60 Hz vs 144 Hz differ by ~0.5%** — the forms are numerically indistinguishable there. The test now measures the **transient** at 1/60 vs 1/10, not the settled value, since every smoothing form converges to the same equilibrium |
+
+**Generalisable, and it is the session's real lesson: a mutation that survives is usually telling
+you the test never exercised the code path, not that the mutation is harmless.** Three of the five
+above were tests that looked thorough and ran against a fixture where the feature could not fire.
+
+### ⚠️ I destroyed uncommitted work with `git checkout`, and it was recoverable only because it was recent
+
+Undoing each mutation with `git checkout <file>` **also discarded the uncommitted feature edits in
+those files** — the bank implementation vanished mid-session, and the next five mutation runs
+reported "19 failed" against a file that no longer had the feature at all. Reapplied from context
+and re-run with **file backups in the scratchpad** instead.
+
+**Rule: never `git checkout` a file that holds uncommitted work to undo a temporary edit. Copy it
+aside and copy it back.** The tell was there and I missed it for one run: the failure count jumped
+from 3 to a flat 19 and stayed there regardless of which mutation was applied.
+
+### Housekeeping done
+
+`Input.js`'s stub register **printed "punch (KeyJ) — no effect in Phase 1" on every attack of every
+playtest**, next to a HUD reporting the damage it had just done. J/K/L are removed from
+`STUB_CODES`; Z (block) and C (dodge roll) genuinely are unimplemented and stay.
+
+### Next session
+
+**Rapier — Phase 3 step 2** is now the top item: the `RAPIER.init()` gate and the lazy-import
+bundle boundary, still isolated from gameplay logic that works. The **pitch-coupled flight**
+question from session 14 remains open and unasked-for-decision.
 
 ---
 

@@ -195,6 +195,47 @@ export const TUNING = {
   PITCH_SPEED_DIVISOR: 5.0,
 
   /**
+   * rad — flight bank (roll) cap. Reached when the velocity vector is turning at
+   * `BANK_FULL_RATE` or faster. ≈40°, which is a hard, readable bank without
+   * putting the hero on their side and hiding the cape behind the torso.
+   */
+  MAX_BANK_ROLL: 0.7,
+  /**
+   * rad/s — the yaw rate OF THE VELOCITY VECTOR that produces a full bank.
+   *
+   * π rad/s is 180°/s, which is `ManOfSteel`'s own normalisation range
+   * (`Flight.cpp:342`, `MapRangeClamped(YawVelocityDifference, -180, 180, -1, 1)`)
+   * expressed in radians. It is a rate the player reaches by holding a turn, not
+   * a rate only a dash can hit, so ordinary flying banks.
+   */
+  BANK_FULL_RATE: Math.PI,
+  /**
+   * 1/s — exponential rate the bank eases toward its target.
+   *
+   * 5 is `ManOfSteel`'s yaw smoothing constant (`FInterpTo(..., 5)`) kept as a
+   * number, NOT as its smoothing function: `FInterpTo` is a dt-scaled lerp and
+   * only approximately framerate-independent. The controller applies it as
+   * `1 - exp(-lambda*dt)`, the same exponential form the camera rig and hover
+   * damping use, so the bank settles identically at 60 and 144 Hz. Half-life is
+   * ln2/5 ≈ 0.14 s.
+   *
+   * ⚠️ Its PITCH counterpart (15, three times more eager) is deliberately NOT
+   * ported. That axis is already occupied by the browser-tuned two-term speed/
+   * vertical lean model in `_updateOrientation`; adding a second pitch source
+   * would fight a pose a human has already signed off on. Bank is the axis this
+   * project had nothing on.
+   */
+  BANK_LAMBDA: 5.0,
+  /**
+   * m/s — horizontal speed below which bank is forced to zero.
+   *
+   * The velocity vector's heading is meaningless when the hero is barely moving:
+   * a hover with 0.01 m/s of drift can swing its heading through 180° in a
+   * single step and would snap the body to a full bank while visibly stationary.
+   */
+  BANK_MIN_SPEED: 1.5,
+
+  /**
    * rad — the smallest angle the cape is allowed to make with the torso, in the
    * BODY frame, once the body is fully pitched to horizontal. Faded in by body
    * pitch, so an upright hero's cape still hangs flat against the back where it

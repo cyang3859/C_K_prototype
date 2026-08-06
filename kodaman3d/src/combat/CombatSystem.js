@@ -1,9 +1,18 @@
 import * as THREE from 'three';
 
-import { createAbilityState, freeze, laser, punch, tickAbilities } from './Abilities.js';
+import {
+  ABILITY,
+  createAbilityState,
+  freeze,
+  isReady,
+  laser,
+  punch,
+  punchDashTarget,
+  tickAbilities,
+} from './Abilities.js';
 import { AttackFX } from './AttackFX.js';
 import { Enemy } from '../entities/Enemy.js';
-import { yawForward } from '../core/Scale.js';
+import { HERO_HEIGHT_M, HERO_RADIUS_M, yawForward } from '../core/Scale.js';
 
 /**
  * CombatSystem.js — owns the live enemies and routes the hero's attacks at them.
@@ -79,8 +88,33 @@ export class CombatSystem {
    * @param {THREE.Scene} opts.scene
    * @param {{position: THREE.Vector3, facing: number}} opts.hero the hero's sim state
    */
-  constructor({ scene, hero, collision = null, cameraRig = null, heroEntity = null }) {
+  constructor({
+    scene,
+    hero,
+    collision = null,
+    cameraRig = null,
+    heroEntity = null,
+    hitStop = null,
+    rng = null,
+  }) {
     this.scene = scene;
+    /**
+     * `(seconds) => void`, freezing the simulation on a connecting blow. A
+     * callback rather than a `Time` reference because combat has no business
+     * knowing what the clock is — it reports that something landed hard, and the
+     * loop decides what that means. Headless rigs pass none.
+     */
+    this.hitStop = hitStop;
+    /**
+     * Injected randomness for the dodge roll, or null for `Math.random`.
+     *
+     * The seam exists for the reason `health.test.js` states: "this run happened
+     * not to roll a dodge" is a flake, not a pass. Every pure ability already
+     * takes an `rng`; without this the wiring layer was the one place a test
+     * could not turn dodges off, and the integration tests below were one
+     * unlucky roll away from red.
+     */
+    this.rng = rng;
     /** The hero's VISUAL, for attack animations. Optional: headless rigs pass none. */
     this.heroEntity = heroEntity;
     this.fx = new AttackFX({ scene });
@@ -93,6 +127,8 @@ export class CombatSystem {
     /** Last resolved attack, for the debug HUD. */
     this.lastEvent = '';
     this._forward = new THREE.Vector3();
+    this._dashDir = new THREE.Vector3();
+    this._dashOrigin = new THREE.Vector3();
 
     for (const p of CombatSystem.validateSpawns(collision)) {
       // Loud, but not fatal: a bad spawn should be obvious in the console
@@ -201,17 +237,22 @@ export class CombatSystem {
       this._aimFrom(this.cameraRig.yaw, this.cameraRig.pitch ?? 0, attacker);
     }
 
+    const opts = this.rng ? { rng: this.rng } : undefined;
+
     // The tell plays only when the ability actually FIRED, never on the mere
     // keypress — so a press refused by its cooldown is visibly a no-op and the
     // player can tell "not ready" from "missed".
     if (input.wasPressed('KeyJ')) {
-      this._resolve('PUNCH', punch(this.abilities, attacker, targets), attacker);
+      // Close the last stride BEFORE resolving, so the punch is judged from
+      // where the hero ends up rather than where they started.
+      this._dashToTarget(attacker, targets);
+      this._resolve('PUNCH', punch(this.abilities, attacker, targets, opts), attacker);
     }
     if (input.wasPressed('KeyK')) {
-      this._resolve('LASER', laser(this.abilities, attacker, targets), attacker);
+      this._resolve('LASER', laser(this.abilities, attacker, targets, opts), attacker);
     }
     if (input.wasPressed('KeyL')) {
-      this._resolve('FREEZE', freeze(this.abilities, attacker, targets), attacker);
+      this._resolve('FREEZE', freeze(this.abilities, attacker, targets, opts), attacker);
     }
 
     this.fx.update(dt);
@@ -246,6 +287,55 @@ export class CombatSystem {
     attacker.facing.z = -Math.cos(yaw) * cp;
   }
 
+  /**
+   * Carry the hero the last metre into a punch's target (§7a).
+   *
+   * ⚠️ THE MOVE IS SWEPT, NOT TELEPORTED. `spherecast` at the hero's own radius
+   * stops the dash at the first thing in the way, so closing on an enemy stood
+   * against a facade puts the hero against the facade rather than inside it.
+   * Teleporting the full gap and letting the next step's `resolve` push out
+   * would work most of the time and eject the hero metres sideways the rest —
+   * which has already happened once in this project and read as "the punch has
+   * no reach".
+   *
+   * ⚠️ ONLY WHEN THE PUNCH WILL ACTUALLY FIRE. Dashing on a press refused by the
+   * cooldown would slide the hero across the ground with no swing, which is both
+   * baffling to look at and free mobility on a 0.3 s timer.
+   *
+   * Mutates `attacker.pos` to match, since the caller resolves against it.
+   */
+  _dashToTarget(attacker, targets) {
+    if (!isReady(this.abilities, 'punch')) return;
+    const pick = punchDashTarget(attacker, targets);
+    if (!pick) return;
+
+    const p = this.hero.position;
+    const d = this._dashDir.set(
+      pick.target.pos.x - p.x,
+      0,
+      pick.target.pos.z - p.z,
+    );
+    // Horizontal only. The vertical half of the gap is the aim working as
+    // intended — a hero hovering above an enemy chose that altitude, and
+    // yanking them down to punch it would fight the flight controls.
+    if (d.lengthSq() < 1e-8) return;
+    d.normalize();
+
+    // Sweep from the capsule's CENTRE, not the feet: a cast at ground level
+    // catches every kerb and step the capsule walks over quite happily.
+    const origin = this._dashOrigin.set(p.x, p.y + HERO_HEIGHT_M / 2, p.z);
+    const clear = this.collision
+      ? this.collision.spherecast(origin, d, pick.travel, HERO_RADIUS_M)
+      : pick.travel;
+    const travel = Math.min(pick.travel, clear);
+    if (travel <= 0) return;
+
+    p.x += d.x * travel;
+    p.z += d.z * travel;
+    attacker.pos.x = p.x;
+    attacker.pos.z = p.z;
+  }
+
   /** Turn an ability result into animation, flashes and a HUD line. */
   _resolve(name, result, attacker) {
     if (!result.fired) {
@@ -268,9 +358,21 @@ export class CombatSystem {
       return;
     }
     const parts = [];
+    let connected = false;
+    let killed = false;
     for (const { target, result: r } of result.hits) {
-      if (r.outcome === 'damaged' || r.outcome === 'killed') target.enemy.flash();
+      if (r.outcome === 'damaged' || r.outcome === 'killed') {
+        target.enemy.flash();
+        connected = true;
+        killed ||= r.outcome === 'killed';
+      }
       parts.push(r.outcome);
+    }
+    // Hit stop, on a CONNECTING blow only. Freeze excluded: it deals no damage,
+    // so it never reaches here with a `damaged` outcome — and a frozen frame is
+    // the language of impact, which is not what freeze is saying.
+    if (connected && kind !== 'freeze') {
+      this.hitStop?.(killed ? ABILITY.KILL_STOP_S : ABILITY.HIT_STOP_S);
     }
     this.lastEvent = `${name} — ${parts.join(', ')}`;
   }

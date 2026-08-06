@@ -112,6 +112,48 @@ export const ABILITY = Object.freeze({
   FREEZE_HALF_ANGLE_RAD: (45 * Math.PI) / 180,
   FREEZE_COOLDOWN_S: 80 / 60,
   FREEZE_FX_S: 18 / 60,
+
+  /**
+   * Hit stop — seconds the whole simulation freezes when a blow CONNECTS
+   * (`RESEARCH_MANOFSTEEL_REPO.md` §7b). The cheapest weight in the game: one
+   * timer, no art. Without it every hit resolves in a single 16 ms step and the
+   * only evidence is a number changing.
+   *
+   * ⚠️ NOT ON A MISS AND NOT ON A COOLDOWN REFUSAL. Freezing the game when
+   * nothing was struck reads as a frame drop, and the tells already distinguish
+   * those two cases. Freeze is excluded for the same reason it deals no damage.
+   *
+   * 4 frames-at-60 for a hit; 8 for a kill, so a finishing blow lands harder
+   * than the two that set it up. Both are under the 10-frame punch tell, so the
+   * hold ends while the swing is still playing rather than freezing the recovery.
+   */
+  HIT_STOP_S: 4 / 60,
+  KILL_STOP_S: 8 / 60,
+
+  /**
+   * Metres BEYOND the punch reach from which a punch will carry the hero to its
+   * target (`RESEARCH_MANOFSTEEL_REPO.md` §7a).
+   *
+   * This is the real answer to the melee whiffing found in playtest, and it is
+   * deliberately not the obvious one. The obvious fix is a bigger hitbox, which
+   * buys hits that visibly connect with nothing; letting the attack close the
+   * last stride instead keeps the reach honest and makes the swing look
+   * committed. A patrolling enemy moves ~3 m/s, so a metre of slack is about a
+   * third of a second of the player's aim being stale — which is exactly the
+   * error being forgiven.
+   */
+  PUNCH_DASH_M: 1.0,
+  /**
+   * Fraction of full reach the dash actually stops at.
+   *
+   * ⚠️ NOT 1.0, AND THE REASON IS NOT TIMIDITY. Stopping exactly on the boundary
+   * makes `dist - radius > range` a floating-point coin flip: measured, a dash
+   * solved to land precisely on the edge resolved as a MISS, so the attack
+   * closed the gap perfectly and then swung at nothing. It also reads better —
+   * ending at arm's length rather than at full extension looks like stepping
+   * into the blow.
+   */
+  PUNCH_DASH_STOP_FRAC: 0.9,
 });
 
 /**
@@ -183,6 +225,71 @@ export function punch(s, attacker, targets, { rng } = {}) {
     hits.push({ target: t, result });
   }
   return { fired: true, hits };
+}
+
+/**
+ * The target a punch should CARRY THE HERO TO, or null to punch where you stand.
+ *
+ * Pure, and separate from `punch` on purpose: moving the hero is the scene's
+ * business (it has to be swept against the world's colliders first), while
+ * *which* target is worth closing on is a rule, and rules are testable without a
+ * canvas. `CombatSystem` calls this, does the sweeping, and only then resolves
+ * the punch from wherever the hero actually ended up.
+ *
+ * QUALIFYING IS DELIBERATELY NARROW — this forgives a near miss, it does not
+ * grant a lunge:
+ *  - already inside reach → null. Nothing to close, and a dash would shove the
+ *    hero through a target they were correctly standing next to.
+ *  - outside reach + `PUNCH_DASH_M` → null. The attack does not travel.
+ *  - outside the punch WEDGE → null. Aim still has to be pointed at them; this
+ *    forgives distance, never direction.
+ *
+ * ⚠️ `gap` AND `travel` ARE DIFFERENT NUMBERS AND BOTH ARE NEEDED. Reach is
+ * judged in 3D, but the dash is horizontal (`CombatSystem._dashToTarget`
+ * explains why), and the hero's eyes sit ~0.77 m above an enemy's centre of
+ * mass even on flat ground. So moving horizontally by the 3D shortfall does not
+ * close the 3D distance by that amount — it overshoots. `travel` solves for the
+ * horizontal distance that actually puts the target on the edge of reach.
+ *
+ * @returns {{target: Target, gap: number, travel: number}|null} `gap` is the 3D
+ *   surface-to-reach shortfall, which is what qualifies a target; `travel` is
+ *   how far to move horizontally to close it.
+ */
+export function punchDashTarget(attacker, targets) {
+  let best = null;
+  let bestGap = Infinity;
+  let bestTravel = 0;
+  for (const t of targets) {
+    if (!t.health.alive) continue;
+    const { along, lateral } = project(attacker, t.pos);
+    const dist = Math.hypot(along, lateral);
+    if (dist === 0) continue;
+    if (Math.atan2(Math.abs(lateral), along) > ABILITY.PUNCH_HALF_ANGLE_RAD) continue;
+    // Surface distance, matching `inWedge`'s convention exactly — a dash judged
+    // to the centre would stop a body radius short and whiff anyway.
+    const gap = dist - radiusOf(t) - ABILITY.PUNCH_REACH_M;
+    if (gap <= 0 || gap > ABILITY.PUNCH_DASH_M) continue;
+
+    // Solve for the horizontal move. `want` is the 3D distance that just touches
+    // reach; `dy` is the part of the offset no horizontal move can change.
+    const want = (ABILITY.PUNCH_REACH_M + radiusOf(t)) * ABILITY.PUNCH_DASH_STOP_FRAC;
+    const dy = (t.pos.y ?? 0) - (attacker.pos.y ?? 0);
+    const remaining = want * want - dy * dy;
+    // Purely vertical shortfall: the target is within the dash window but so far
+    // above or below that no horizontal move brings it into reach. Walking under
+    // it and swinging at nothing is worse than not dashing.
+    if (remaining <= 0) continue;
+    const horizontal = Math.sqrt(Math.max(dist * dist - dy * dy, 0));
+    const travel = horizontal - Math.sqrt(remaining);
+    if (travel <= 0) continue;
+
+    if (gap < bestGap) {
+      bestGap = gap;
+      bestTravel = travel;
+      best = t;
+    }
+  }
+  return best ? { target: best, gap: bestGap, travel: bestTravel } : null;
 }
 
 /**

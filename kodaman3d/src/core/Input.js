@@ -46,10 +46,17 @@ const PREVENT_DEFAULT_CODES = new Set([
 ]);
 
 /** Ability stubs: wired, logged once per press, no gameplay effect in Phase 1. */
+/**
+ * Keys that are bound in the control scheme but not yet implemented.
+ *
+ * ⚠️ J/K/L WERE REMOVED FROM THIS LIST IN PHASE 3 and that is the point of the
+ * list: punch, laser and freeze are real abilities now, so the console line
+ * saying they have "no effect in Phase 1" was actively false — it printed on
+ * every attack of every playtest, next to a HUD reporting the damage it had
+ * just done. A stub register only earns its keep if leaving something in it is
+ * a lie once the feature lands.
+ */
 const STUB_CODES = {
-  KeyJ: 'punch',
-  KeyK: 'laser',
-  KeyL: 'freeze',
   KeyZ: 'block',
   KeyC: 'dodge roll',
 };
@@ -276,8 +283,8 @@ export class Input {
 
       const stub = STUB_CODES[e.code];
       if (stub) {
-        // Phase 1: log and nothing else. No combat, no effect. See brief §13.
-        console.log(`[stub] ${stub} (${e.code}) — no effect in Phase 1`);
+        // Bound but not built: log and nothing else. See brief §13.
+        console.log(`[stub] ${stub} (${e.code}) — bound, not yet implemented`);
         if (this.onStub) this.onStub(stub);
       }
     }

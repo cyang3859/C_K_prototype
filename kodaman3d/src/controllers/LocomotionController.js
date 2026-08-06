@@ -63,6 +63,12 @@ export function createHeroState({ position = new THREE.Vector3(0, 0, 0) } = {}) 
     facing: 0,
     /** Visual body pitch in radians, flight lean only. Never affects movement. */
     pitch: 0,
+    /**
+     * Visual bank in radians, flight only. POSITIVE = banking LEFT (see the axis
+     * note in `_updateBank`). Never affects movement — like `pitch`, this is a
+     * pose the renderer reads and the simulation ignores.
+     */
+    roll: 0,
     /** Set by the collision resolve each step. */
     onGround: true,
     /** True in takeoff/flying/landing. The gravity interlock keys off this. */
@@ -178,6 +184,12 @@ export class LocomotionController {
     this._dir = new THREE.Vector3();
     this._target = new THREE.Vector3();
     this._delta = new THREE.Vector3();
+
+    /**
+     * Heading of the velocity vector on the previous step, or null when there
+     * was no meaningful one. Drives the bank — see `_updateBank`.
+     */
+    this._prevVelYaw = null;
 
     /** Last contact report, exposed for the debug HUD. */
     this.lastContact = { onGround: true, groundY: 0, pushed: false, surfaceBoxIndex: -1 };
@@ -548,6 +560,64 @@ export class LocomotionController {
       // form the camera rig uses everywhere.
       hero.pitch += (0 - hero.pitch) * (1 - Math.exp(-t.CAMERA_LAMBDA * dt));
     }
+
+    this._updateBank(dt);
+  }
+
+  /**
+   * Bank the body into a turn, from the angular velocity OF THE VELOCITY VECTOR.
+   *
+   * Ported from `ProdiG66/ManOfSteel` `Flight.cpp:338-349` — see
+   * `RESEARCH_MANOFSTEEL_REPO.md` §2. The insight worth restating: **lean is
+   * computed, not animated.** It needs no skeleton, no blend space and no
+   * animation pipeline, which is precisely why it is available to a capsule now
+   * rather than after the Phase 5 rig lands.
+   *
+   * The measured quantity is how fast the DIRECTION OF TRAVEL is rotating, not
+   * how fast the input or the camera is. Those differ whenever the hero is still
+   * carrying momentum from the old heading, and the velocity is the one the
+   * player sees the body follow.
+   *
+   * ⚠️ THE MATHS PORTS; THE SMOOTHING FUNCTION DOES NOT. `FInterpTo` is
+   * `delta * clamp(dt*speed, 0, 1)`, a dt-scaled lerp that is only approximately
+   * framerate-independent — `tuning.js` documents at length why this project
+   * does not use that form. `BANK_LAMBDA` keeps their constant and feeds it to
+   * `1 - exp(-lambda*dt)` instead.
+   *
+   * ⚠️ SIGN, NAMED EXPLICITLY — this file's history says a sign comment that
+   * does not name its axis is worth nothing. Yaw 0 faces −Z and INCREASING yaw
+   * turns LEFT (`Scale.js`: forward is `(-sin y, 0, -cos y)`, so yaw π/2 points
+   * along −X, the hero's left). `Hero.syncTransform` applies roll as a rotation
+   * about the body's forward axis, where a POSITIVE angle tips the head toward
+   * the hero's left. Banking into a left turn is therefore `+roll` for `+yawRate`,
+   * with no negation anywhere.
+   *
+   * @param {number} dt
+   */
+  _updateBank(dt) {
+    const t = this.tuning;
+    const hero = this.hero;
+
+    let target = 0;
+    const speed = Math.hypot(hero.velocity.x, hero.velocity.z);
+
+    if (hero.flightActive && speed >= t.BANK_MIN_SPEED) {
+      const heading = yawFromDirection(hero.velocity.x, hero.velocity.z);
+      if (this._prevVelYaw !== null) {
+        const rate = shortestAngleDelta(this._prevVelYaw, heading) / dt;
+        target = clampNumber(rate / t.BANK_FULL_RATE, -1, 1) * t.MAX_BANK_ROLL;
+      }
+      this._prevVelYaw = heading;
+    } else {
+      // Below the speed floor the heading is noise, so forget it rather than
+      // holding a stale one: resuming from a remembered heading after a hover
+      // would compute one enormous rate on the first moving step and snap to a
+      // full bank. Not hypothetical — it is the same shape as the "one enormous
+      // delta" the clock's `resetBaseline` exists to prevent.
+      this._prevVelYaw = null;
+    }
+
+    hero.roll += (target - hero.roll) * (1 - Math.exp(-t.BANK_LAMBDA * dt));
   }
 }
 

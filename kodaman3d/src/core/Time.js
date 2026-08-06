@@ -64,6 +64,8 @@ export class Time {
     this.stepsLastFrame = 0;
     /** True when the most recent frame hit `maxSteps` and dropped its backlog. */
     this.droppedBacklog = false;
+    /** Seconds of hit stop still owed. See `hold`. */
+    this.holdRemaining = 0;
 
     // --- fps tracking (smoothed, so the readout is legible rather than jittery) ---
     this.fps = 0;
@@ -93,6 +95,23 @@ export class Time {
     // Guard 1: clamp tab-out / debugger-pause spikes. Also defends against a
     // negative delta, which some browsers can produce across a timer source change.
     this.frameDt = Math.min(Math.max(raw, 0), this.maxFrameDt);
+
+    // HIT STOP. Burn the frame against the hold and simulate NOTHING — the
+    // renderer still runs, so the held frame is drawn repeatedly.
+    //
+    // ⚠️ THE HELD TIME IS DISCARDED, NOT BANKED. Adding it to the accumulator
+    // would make the game sprint through a catch-up burst the instant the hold
+    // released, which is the opposite of the effect: the impact would be
+    // followed by everything it froze happening at once. Dropping it means a
+    // hit stop genuinely removes that time from the simulation, exactly like
+    // `maxSteps` dropping its backlog above.
+    if (this.holdRemaining > 0) {
+      this.holdRemaining -= this.frameDt;
+      this.stepsLastFrame = 0;
+      this._trackFps(this.frameDt);
+      return 0;
+    }
+
     this.accumulator += this.frameDt;
 
     let steps = 0;
@@ -127,6 +146,27 @@ export class Time {
   }
 
   /**
+   * Freeze the simulation for `seconds` of wall-clock time — hit stop.
+   *
+   * WHY IT LIVES HERE RATHER THAN AS A GLOBAL TIME SCALE. Everything in this
+   * project is tuned against a FIXED 60 Hz step (see this file's header), so
+   * scaling `dt` to slow the world down would quietly change every curve that
+   * assumes it. Skipping steps entirely does not: the simulation is untouched
+   * and simply does not advance, which is what hit stop is anyway. A frozen
+   * frame is a rendered frame, so the impact pose is what the player stares at.
+   *
+   * LONGEST HOLD WINS rather than accumulating. Two hits landing in the same
+   * step (a laser catching two enemies) should read as one impact, not as a
+   * double-length freeze that feels like a stutter.
+   *
+   * @param {number} seconds
+   */
+  hold(seconds) {
+    if (!(seconds > 0)) return;
+    this.holdRemaining = Math.max(this.holdRemaining, seconds);
+  }
+
+  /**
    * Reset the clock baseline without touching tuning.
    *
    * Called on window focus (see Input.js's blur handling and acceptance
@@ -141,6 +181,9 @@ export class Time {
     this.accumulator = 0;
     this.frameDt = 0;
     this.stepsLastFrame = 0;
+    // A hold outlives neither a tab-out nor a focus change: coming back to a
+    // frozen game with no idea why would read as a hang.
+    this.holdRemaining = 0;
   }
 
   /** @param {number} dt seconds */

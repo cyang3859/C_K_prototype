@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -7,11 +8,14 @@ import {
   isReady,
   laser,
   punch,
+  punchDashTarget,
   tickAbilities,
 } from '../src/combat/Abilities.js';
 import { COMBAT, HP, createHealth, isFrozen } from '../src/combat/HealthSystem.js';
 import { CombatSystem, SPAWNS } from '../src/combat/CombatSystem.js';
+import { CollisionWorld } from '../src/world/Collision.js';
 import { HERO_HEIGHT_M } from '../src/core/Scale.js';
+import { Hero } from '../src/entities/Hero.js';
 
 /**
  * abilities.test.js — Phase 3 step 1, ability resolution.
@@ -484,5 +488,334 @@ describe('aim follows pitch, so looking down hits what is below', () => {
       health: createHealth(99),
     };
     expect(laser(createAbilityState(), diving, [t], { rng: never }).hits).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Attack dash-to-target (`RESEARCH_MANOFSTEEL_REPO.md` §7a)
+//
+// The rule half only. Actually MOVING the hero is CombatSystem's job, because
+// it has to be swept against the world's colliders first — see the sweep test
+// further down.
+// ---------------------------------------------------------------------------
+
+describe('punchDashTarget — closing the last stride', () => {
+  /** Distance at which a target's SURFACE sits `gap` metres outside reach. */
+  const atGap = (gap) => ABILITY.PUNCH_REACH_M + BODY_R + gap;
+
+  it('returns nothing when there is nothing to punch', () => {
+    expect(punchDashTarget(hero, [])).toBeNull();
+  });
+
+  it('does not dash to a target already in reach — there is nothing to close', () => {
+    expect(punchDashTarget(hero, [target(CLOSE)])).toBeNull();
+  });
+
+  it('does not dash to a target only JUST inside reach, either', () => {
+    // The interesting case, and the one a deep-inside target does not cover.
+    // With no vertical offset the hero is 0.05 m inside reach but still further
+    // out than the dash's stopping distance, so a rule that only checked "am I
+    // past where I want to stand" would shuffle forward at a target it can
+    // already hit. The `gap <= 0` test is what refuses it.
+    expect(punchDashTarget(hero, [target(atGap(-0.05))])).toBeNull();
+  });
+
+  it('dashes to a target just outside reach, reporting the exact shortfall', () => {
+    const pick = punchDashTarget(hero, [target(atGap(0.5))]);
+    expect(pick).not.toBeNull();
+    expect(pick.gap).toBeCloseTo(0.5, 6);
+  });
+
+  it('refuses a target beyond reach + PUNCH_DASH_M — the attack does not travel', () => {
+    expect(punchDashTarget(hero, [target(atGap(ABILITY.PUNCH_DASH_M + 0.01))])).toBeNull();
+  });
+
+  it('takes the target at the very edge of the window', () => {
+    const pick = punchDashTarget(hero, [target(atGap(ABILITY.PUNCH_DASH_M - 1e-9))]);
+    expect(pick).not.toBeNull();
+  });
+
+  it('forgives DISTANCE, never DIRECTION — a target behind you is not a target', () => {
+    expect(punchDashTarget(hero, [target(-atGap(0.5))])).toBeNull();
+  });
+
+  it('respects the punch wedge exactly, so the dash cannot reach what a punch could not', () => {
+    // Just outside the 60° half-angle, at a distance well inside the window.
+    const d = atGap(0.4);
+    const outside = ABILITY.PUNCH_HALF_ANGLE_RAD + 0.05;
+    const t = target(Math.cos(outside) * d, Math.sin(outside) * d);
+    expect(punchDashTarget(hero, [t])).toBeNull();
+
+    const inside = ABILITY.PUNCH_HALF_ANGLE_RAD - 0.05;
+    const t2 = target(Math.cos(inside) * d, Math.sin(inside) * d);
+    expect(punchDashTarget(hero, [t2])).not.toBeNull();
+  });
+
+  it('ignores the dead', () => {
+    const t = target(atGap(0.5));
+    t.health.hp = 0;
+    t.health.alive = false;
+    expect(punchDashTarget(hero, [t])).toBeNull();
+  });
+
+  it('picks the NEAREST qualifying target when several are in the window', () => {
+    const near = target(atGap(0.2));
+    const far = target(atGap(0.8), 0.3);
+    expect(punchDashTarget(hero, [far, near]).target).toBe(near);
+  });
+
+  it('measures to the target SURFACE, like every other reach in this file', () => {
+    // A fat target at the same centre distance is CLOSER in surface terms, so a
+    // gap judged to the centre would be wrong by exactly the radius difference.
+    const fat = { ...target(atGap(0.5)), radius: BODY_R + 0.3 };
+    expect(punchDashTarget(hero, [fat]).gap).toBeCloseTo(0.2, 6);
+  });
+
+  it('counts ALTITUDE, so a hovering hero does not dash at the ground', () => {
+    // Directly below and far outside reach vertically: combat has been 2D once
+    // in this project already (`0ded25e`) and this is the same trap.
+    const below = { pos: { x: 0.2, y: -8, z: 0 }, health: createHealth(HP.STANDARD) };
+    const attacker = { pos: { x: 0, y: 0, z: 0 }, facing: { x: 1, y: 0, z: 0 } };
+    expect(punchDashTarget(attacker, [below])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The scene-side half: the dash is SWEPT, and a connecting blow freezes time.
+//
+// These build a real CombatSystem against a real CollisionWorld, because both
+// behaviours are precisely the parts that `punchDashTarget` and `Time.hold`
+// cannot state on their own.
+// ---------------------------------------------------------------------------
+
+describe('CombatSystem — dash sweep and hit stop', () => {
+  /** A pressed-this-step input stub, in the shape `update` reads. */
+  const keys = (...pressed) => ({ wasPressed: (c) => pressed.includes(c) });
+
+  function makeCombat({ collision = null, enemyAt = { x: 0, z: -3 } } = {}) {
+    const scene = new THREE.Scene();
+    const hero = { position: new THREE.Vector3(0, 0, 0), facing: 0 };
+    const held = [];
+    const combat = new CombatSystem({
+      scene,
+      hero,
+      collision,
+      hitStop: (s) => held.push(s),
+      // Dodges off: these tests are about geometry and wiring, and a dodge would
+      // turn a real defect into an intermittent one.
+      rng: never,
+    });
+    // Replace the starter encounter with one enemy in a known place: the spawn
+    // list is a property of the game's opening, not of these rules.
+    for (const e of combat.enemies) e.dispose();
+    combat.enemies.length = 0;
+    const enemy = combat.spawn({ ...enemyAt, type: 'robber' });
+    return { combat, hero, enemy, held, scene };
+  }
+
+  /** Distance from the hero at which the enemy's surface is `gap` outside reach. */
+  const gapAway = (gap) => ABILITY.PUNCH_REACH_M + 0.36 + gap;
+
+  it('carries the hero into a target that was just out of reach', () => {
+    const start = -gapAway(0.6);
+    const { combat, hero } = makeCombat({ enemyAt: { x: 0, z: start } });
+    combat.update(1 / 60, keys('KeyJ'));
+    // It moved forward (−Z), it did not overshoot past the target, it stayed
+    // inside the dash window, and — the point of all of it — the punch landed.
+    expect(hero.position.z).toBeLessThan(0);
+    expect(hero.position.z).toBeGreaterThan(start);
+    expect(Math.abs(hero.position.z)).toBeLessThanOrEqual(ABILITY.PUNCH_DASH_M);
+    expect(combat.lastEvent).toContain('damaged');
+  });
+
+  it('stops just INSIDE reach, not on its boundary', () => {
+    // The dash is HORIZONTAL while reach is 3D, and the hero's eyes sit ~0.77 m
+    // above an enemy's centre of mass. Moving horizontally by the 3D shortfall
+    // therefore overshoots; this pins the corrected solve.
+    const enemyZ = -gapAway(0.7);
+    const { combat, hero } = makeCombat({ enemyAt: { x: 0, z: enemyZ } });
+    combat.update(1 / 60, keys('KeyJ'));
+
+    // ⚠️ MEASURED AGAINST WHERE THE ENEMY WAS, NOT WHERE IT NOW IS. The punch
+    // connects and knocks it back 1.8 m in the same step, so reading `enemy.pos`
+    // afterwards measures the knockback and calls it the dash.
+    const eye = { y: hero.position.y + 1.62, z: hero.position.z };
+    const d = Math.hypot(eye.y - 0.85, eye.z - enemyZ);
+    const stop = (ABILITY.PUNCH_REACH_M + 0.36) * ABILITY.PUNCH_DASH_STOP_FRAC;
+    expect(d).toBeCloseTo(stop, 3);
+    // Comfortably inside reach, which is what stops the hit being a coin flip.
+    expect(d - 0.36).toBeLessThan(ABILITY.PUNCH_REACH_M);
+  });
+
+  it('does not move the hero when the target is already in reach', () => {
+    const { combat, hero } = makeCombat({ enemyAt: { x: 0, z: -1.0 } });
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(hero.position.z).toBe(0);
+  });
+
+  it('does not move the hero on a punch refused by its cooldown', () => {
+    const { combat, hero, enemy } = makeCombat({ enemyAt: { x: 0, z: -gapAway(0.6) } });
+    combat.update(1 / 60, keys('KeyJ'));
+    const after = hero.position.z;
+
+    // ⚠️ RE-ARM THE SITUATION FIRST. The connecting punch knocks the enemy back
+    // 1.8 m, which puts it outside the dash window on its own — so pressing J
+    // again without this would find nothing to dash to, and the test would pass
+    // with the cooldown guard deleted. Measured: it did.
+    enemy.pos.x = hero.position.x;
+    enemy.pos.z = hero.position.z - gapAway(0.6);
+    expect(combat.abilities.punchFor).toBeGreaterThan(0);
+
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(combat.lastEvent).toContain('cooldown');
+    expect(hero.position.z).toBe(after);
+  });
+
+  it('SWEEPS the dash — a wall between hero and target stops it short', () => {
+    // The failure this prevents is teleporting into geometry and being ejected
+    // metres sideways by the next collision resolve, which has already happened
+    // once in this project and read as "the punch has no reach".
+    //
+    // ⚠️ THE TARGET MUST BE INSIDE THE DASH WINDOW or this test proves nothing.
+    // It first used a 0.9 m gap, which is 1.02 m of 3D shortfall once the
+    // eye-to-centre offset is counted — outside PUNCH_DASH_M, so no dash ever
+    // happened and the assertion passed with the sweep deleted. Measured.
+    const collision = new CollisionWorld({ halfExtent: 150 });
+    collision.addBuilding(
+      new THREE.Box3(new THREE.Vector3(-5, 0, -0.9), new THREE.Vector3(5, 20, -0.7)),
+    );
+    const { combat, hero } = makeCombat({
+      collision,
+      enemyAt: { x: 0, z: -gapAway(0.7) },
+    });
+    const unobstructed = punchDashTarget(
+      { pos: { x: 0, y: 1.62, z: 0 }, facing: { x: 0, y: 0, z: -1 } },
+      [{ pos: { x: 0, y: 0.85, z: -gapAway(0.7) }, health: createHealth(HP.STANDARD) }],
+    ).travel;
+    expect(unobstructed).toBeGreaterThan(1.0); // it WOULD cross the wall
+
+    combat.update(1 / 60, keys('KeyJ'));
+    // Stopped at the wall's near face less the hero's own radius, not through it.
+    expect(hero.position.z).toBeGreaterThan(-0.7 + 0.35 - 1e-6);
+  });
+
+  it('does not drag a hovering hero down to punch — the dash is horizontal', () => {
+    const { combat, hero } = makeCombat({ enemyAt: { x: 0, z: -gapAway(0.5) } });
+    hero.position.y = 40;
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(hero.position.y).toBe(40);
+  });
+
+  it('freezes time on a connecting punch', () => {
+    const { combat, held } = makeCombat({ enemyAt: { x: 0, z: -1.0 } });
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(held).toEqual([ABILITY.HIT_STOP_S]);
+  });
+
+  it('freezes LONGER on a kill, so a finisher lands harder than a setup', () => {
+    // A fresh encounter rather than a second punch on the same enemy: post-hit
+    // invulnerability frames refuse that one, and the test would then be
+    // measuring the i-frame window while claiming to measure a kill.
+    const { combat, enemy, held } = makeCombat({ enemyAt: { x: 0, z: -1.0 } });
+    enemy.health.hp = 1;
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(combat.lastEvent).toContain('killed');
+    expect(held).toEqual([ABILITY.KILL_STOP_S]);
+  });
+
+  it('does NOT freeze time on a miss — that reads as a frame drop, not a hit', () => {
+    const { combat, held } = makeCombat({ enemyAt: { x: 0, z: -40 } });
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(combat.lastEvent).toContain('miss');
+    expect(held).toEqual([]);
+  });
+
+  it('does NOT freeze time on a DODGE — the swing was in range and still hit nothing', () => {
+    // The subtle case, and the reason the code tests `connected` rather than
+    // just "did anything come back". A miss returns an empty hit list and never
+    // reaches the hit-stop line at all; a dodge returns a hit whose outcome is
+    // `dodged`, so only an outcome check can tell them apart.
+    const scene = new THREE.Scene();
+    const hero = { position: new THREE.Vector3(0, 0, 0), facing: 0 };
+    const held = [];
+    const combat = new CombatSystem({
+      scene,
+      hero,
+      collision: null,
+      hitStop: (s) => held.push(s),
+      rng: always, // every dodge roll succeeds
+    });
+    for (const e of combat.enemies) e.dispose();
+    combat.enemies.length = 0;
+    combat.spawn({ x: 0, z: -1.0, type: 'robber' });
+
+    combat.update(1 / 60, keys('KeyJ'));
+    expect(combat.lastEvent).toContain('dodged');
+    expect(held).toEqual([]);
+  });
+
+  it('does NOT freeze time on freeze — it deals no damage and says nothing about impact', () => {
+    const { combat, held } = makeCombat({ enemyAt: { x: 0, z: -1.0 } });
+    combat.update(1 / 60, keys('KeyL'));
+    expect(combat.lastEvent).toContain('frozen');
+    expect(held).toEqual([]);
+  });
+
+  it('works with no hitStop wired at all — headless rigs pass none', () => {
+    const scene = new THREE.Scene();
+    const hero = { position: new THREE.Vector3(0, 0, 0), facing: 0 };
+    const combat = new CombatSystem({ scene, hero, collision: null });
+    expect(() => combat.update(1 / 60, keys('KeyJ'))).not.toThrow();
+  });
+});
+
+describe('Hero punch animation — alternating arms', () => {
+  function makeHero() {
+    return new Hero({ scene: new THREE.Scene(), position: new THREE.Vector3(0, 0, 0) });
+  }
+
+  /**
+   * The arm that swings FORWARD hardest in the current tell.
+   *
+   * ADVANCES THE TELL FIRST, which is not incidental: the thrust curve starts at
+   * zero, so at t = 0 both arms read exactly 0 and "which is driving" has no
+   * answer yet. Sampled at the peak instead.
+   */
+  const drivingArm = (hero) => {
+    hero.update(ABILITY.PUNCH_FX_S * 0.3);
+    const [l, r] = hero._attackArmPose();
+    return l > r ? 'left' : 'right';
+  };
+
+  it('swings the other arm on each successive punch', () => {
+    const hero = makeHero();
+    hero.playAttack('punch');
+    const first = drivingArm(hero);
+    hero.playAttack('punch');
+    expect(drivingArm(hero)).not.toBe(first);
+    hero.playAttack('punch');
+    expect(drivingArm(hero)).toBe(first);
+  });
+
+  it('counter-swings the idle arm, whichever side is driving', () => {
+    const hero = makeHero();
+    for (let i = 0; i < 2; i++) {
+      hero.playAttack('punch');
+      hero.update(ABILITY.PUNCH_FX_S * 0.3); // at the peak of the thrust
+      const [l, r] = hero._attackArmPose();
+      expect(Math.min(l, r)).toBeLessThan(0); // one arm is behind the body
+      expect(Math.max(l, r)).toBeGreaterThan(1); // the other is thrust forward
+    }
+  });
+
+  it('does not let a laser between two punches consume a side', () => {
+    // Otherwise a punch-laser-punch sequence repeats the same arm, which is the
+    // thing the alternation exists to remove.
+    const hero = makeHero();
+    hero.playAttack('punch');
+    const first = drivingArm(hero);
+    hero.playAttack('laser');
+    hero.playAttack('punch');
+    expect(drivingArm(hero)).not.toBe(first);
   });
 });

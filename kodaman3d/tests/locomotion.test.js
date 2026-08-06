@@ -989,3 +989,178 @@ describe('movement keys are never bound to the vertical axis', () => {
     expect(input.jumpDown).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Velocity-derived bank (`RESEARCH_MANOFSTEEL_REPO.md` §2)
+//
+// WHY THE SIGN TESTS GO THROUGH THE REAL MATRICES, like the cape and pitch
+// tests above. A bank is a third rotation axis composed with two existing ones,
+// and asserting `roll > 0` would only restate whatever model wrote the code. The
+// question a player actually asks is "does the hero lean INTO the turn", so the
+// test asks that: it takes the hero's up axis in world space and checks it tips
+// toward the hero's own left when turning left.
+// ---------------------------------------------------------------------------
+
+describe('flight bank — lean is computed from the velocity vector', () => {
+  /**
+   * Fly a constant-speed turn at a constant angular rate.
+   *
+   * The velocity is written directly each step rather than steered with input:
+   * the thing under test is the mapping from a heading RATE to a bank, and
+   * driving it with WASD would measure the acceleration curve as well.
+   *
+   * @param {number} rate rad/s the heading rotates; positive = turning LEFT.
+   */
+  function flyTurn(hero, controller, { rate, seconds = 1, speed = 20, dt = DT }) {
+    let heading = 0;
+    // PRIME THE HEADING with one step of straight flight first. The bank needs a
+    // previous heading to difference against, so the very first step of any turn
+    // banks by nothing — and that dead step is a fixed COUNT, not a fixed
+    // DURATION, so it eats 1.7% of a 0.5 s window at 1/60 and 20% of the same
+    // window at 1/10. Left in, it shows up as a framerate dependence that is
+    // purely an artefact of starting the measurement from a standstill.
+    hero.velocity.set(0, 0, -speed);
+    controller.update(dt, mkInput(), 0);
+    for (let i = 0; i < Math.round(seconds / dt); i++) {
+      heading += rate * dt;
+      hero.velocity.set(-Math.sin(heading) * speed, 0, -Math.cos(heading) * speed);
+      controller.update(dt, mkInput(), 0);
+    }
+  }
+
+  it('stays level in a straight line, however fast', () => {
+    const { hero, controller } = makeRig();
+    forceFlying(hero);
+    flyTurn(hero, controller, { rate: 0, seconds: 2, speed: 30 });
+    expect(Math.abs(hero.roll)).toBeLessThan(1e-6);
+  });
+
+  it('banks LEFT into a left turn and RIGHT into a right turn, symmetrically', () => {
+    const left = makeRig();
+    forceFlying(left.hero);
+    flyTurn(left.hero, left.controller, { rate: 1.0 });
+
+    const right = makeRig();
+    forceFlying(right.hero);
+    flyTurn(right.hero, right.controller, { rate: -1.0 });
+
+    expect(left.hero.roll).toBeGreaterThan(0.1);
+    expect(right.hero.roll).toBeLessThan(-0.1);
+    expect(left.hero.roll).toBeCloseTo(-right.hero.roll, 6);
+  });
+
+  it('banks harder for a harder turn', () => {
+    const gentle = makeRig();
+    forceFlying(gentle.hero);
+    flyTurn(gentle.hero, gentle.controller, { rate: 0.4 });
+
+    const hard = makeRig();
+    forceFlying(hard.hero);
+    flyTurn(hard.hero, hard.controller, { rate: 2.0 });
+
+    expect(hard.hero.roll).toBeGreaterThan(gentle.hero.roll * 1.5);
+  });
+
+  it('never exceeds MAX_BANK_ROLL, however violent the turn', () => {
+    const { hero, controller } = makeRig();
+    forceFlying(hero);
+    // 20 rad/s is ~6x the rate that already saturates the bank.
+    flyTurn(hero, controller, { rate: 20, seconds: 3 });
+    expect(Math.abs(hero.roll)).toBeLessThanOrEqual(TUNING.MAX_BANK_ROLL + 1e-9);
+  });
+
+  it('returns to level when the turn stops', () => {
+    const { hero, controller } = makeRig();
+    forceFlying(hero);
+    flyTurn(hero, controller, { rate: 1.5 });
+    expect(Math.abs(hero.roll)).toBeGreaterThan(0.1);
+
+    flyTurn(hero, controller, { rate: 0, seconds: 2 });
+    expect(Math.abs(hero.roll)).toBeLessThan(0.01);
+  });
+
+  it('does not bank below BANK_MIN_SPEED — a drifting hover is not a turn', () => {
+    const { hero, controller } = makeRig();
+    forceFlying(hero);
+    // A hover with a hair of drift whose heading swings wildly: the raw rate
+    // here is enormous, and it must produce no bank at all.
+    for (let i = 0; i < 60; i++) {
+      const heading = i * 1.7; // radians, deliberately incoherent step to step
+      hero.velocity.set(-Math.sin(heading) * 0.05, 0, -Math.cos(heading) * 0.05);
+      controller.update(DT, mkInput(), 0);
+    }
+    expect(Math.abs(hero.roll)).toBeLessThan(1e-6);
+  });
+
+  it('does not carry a stale heading across a hover — no snap on resuming', () => {
+    const { hero, controller } = makeRig();
+    forceFlying(hero);
+    // Fly north, stop dead, then fly SOUTH. Without forgetting the heading on
+    // the hover, the first moving step computes a 180° turn in one step and
+    // snaps to a full bank while the player has merely set off again.
+    flyTurn(hero, controller, { rate: 0, seconds: 0.5, speed: 20 });
+    for (let i = 0; i < 30; i++) {
+      hero.velocity.set(0, 0, 0);
+      controller.update(DT, mkInput(), 0);
+    }
+    hero.velocity.set(0, 0, 20); // reversed heading
+    controller.update(DT, mkInput(), 0);
+    expect(Math.abs(hero.roll)).toBeLessThan(1e-6);
+  });
+
+  it('stays level on the ground, whatever the hero is doing', () => {
+    const { hero, controller } = makeRig();
+    // Grounded, running a turn: bank is a FLIGHT pose. A banking runner is a
+    // falling runner.
+    flyTurn(hero, controller, { rate: 2.0, speed: 7 });
+    expect(Math.abs(hero.roll)).toBeLessThan(1e-6);
+  });
+
+  it('reaches the same bank at the same WALL-CLOCK time, whatever the step size', () => {
+    // MEASURED PART-WAY THROUGH THE RAMP, NOT AT THE SETTLED VALUE, and the
+    // step sizes are deliberately far apart. Both choices are load-bearing:
+    //
+    //  - Every smoothing form converges to the same equilibrium, so a test that
+    //    runs the turn to completion passes under `FInterpTo` too. Measured: it
+    //    did. The transient is the only place the two forms differ at all.
+    //  - At BANK_LAMBDA = 5, 60 Hz vs 144 Hz puts `lambda*dt` at 0.083 vs 0.035,
+    //    where the dt-scaled lerp is within ~0.5% of the exponential — under any
+    //    tolerance loose enough not to be flaky. The error grows with the step,
+    //    so 1/60 vs 1/10 is what actually distinguishes them.
+    //
+    // 1/10 s is not a step the fixed loop ever runs (`Time` always hands out
+    // 1/60). It is here as an instrument, the same way this file's other
+    // framerate tests vary dt.
+    const at = (dt) => {
+      const r = makeRig();
+      forceFlying(r.hero);
+      flyTurn(r.hero, r.controller, { rate: 1.2, seconds: 0.5, dt });
+      return r.hero.roll;
+    };
+    expect(at(1 / 60)).toBeCloseTo(at(1 / 10), 3);
+    // And the ordinary display case still holds, which is the one players meet.
+    expect(at(1 / 60)).toBeCloseTo(at(1 / 144), 3);
+  });
+
+  it('tips the hero INTO the turn on the scene graph, not just in the number', () => {
+    const scene = new THREE.Scene();
+    const hero3d = new Hero({ scene, position: new THREE.Vector3(0, 0, 0) });
+    const collision = new CollisionWorld({ halfExtent: 150 });
+    const controller = new LocomotionController({ hero: hero3d.state, collision });
+    const state = hero3d.state;
+
+    forceFlying(state);
+    state.facing = 0; // facing -Z, so the hero's left is -X
+    flyTurn(state, controller, { rate: 1.2, seconds: 1 });
+    // Pitch is whatever the speed lean makes it; the bank must read correctly
+    // composed WITH it, which is the whole reason it sits on a different node.
+    hero3d.syncTransform();
+    hero3d.group.updateMatrixWorld(true);
+
+    const q = hero3d.group.getWorldQuaternion(new THREE.Quaternion());
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q).normalize();
+    // Turning LEFT: the head must lean toward the hero's left, which at
+    // facing 0 is world -X.
+    expect(up.x).toBeLessThan(-0.05);
+  });
+});

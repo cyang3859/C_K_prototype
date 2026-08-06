@@ -135,6 +135,9 @@ export class Game {
       collision: this.collision,
       cameraRig: this.cameraRig,
       heroEntity: this.hero,
+      // Hit stop. The clock owns "how does the loop stop advancing"; combat only
+      // reports that a blow landed. See `Time.hold`.
+      hitStop: (s) => this.time.hold(s),
     });
 
     this.input = new Input({ element: this.renderer.domElement });

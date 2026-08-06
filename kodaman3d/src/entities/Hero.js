@@ -99,6 +99,10 @@ export class Hero {
     this.group = new THREE.Group();
     this.group.name = 'hero';
     this.group.position.copy(this.state.position);
+    // Yaw THEN bank, so the bank is about the post-yaw forward axis. Three.js
+    // composes an Euler in the literal order of its name, so 'YZX' is Ry·Rz·Rx —
+    // and `bodyPivot`'s pitch supplies the trailing Rx. See `syncTransform`.
+    this.group.rotation.order = 'YZX';
 
     // Shared materials, reused across every part, which is what makes a persona
     // swap a colour write rather than a mesh rebuild.
@@ -148,7 +152,9 @@ export class Hero {
     // teleport the cape.
     this._capePhase = 0;
     this._stridePhase = 0;
-    /** In-progress attack tell: `{kind, t, dur}` or null. See `playAttack`. */
+    /** Which arm the NEXT punch swings. Flipped per punch by `playAttack`. */
+    this._punchLeft = false;
+    /** In-progress attack tell: `{kind, t, dur, left}` or null. See `playAttack`. */
     this._attack = null;
 
     this.setPersona('super');
@@ -244,6 +250,27 @@ export class Hero {
   syncTransform() {
     this.group.position.copy(this.state.position);
     this.group.rotation.y = this.state.facing;
+    // Bank. `state.roll` is POSITIVE FOR A LEFT BANK — see `_updateBank`.
+    //
+    // AXIS AND ORDER, EXPLICITLY, because getting either wrong here produces a
+    // pose that looks like a different bug than it is.
+    //
+    // AXIS. After the yaw, the body's forward is local −Z and its right is local
+    // +X (right = forward × up = (−Z) × (+Y) = +X). A rotation of +θ about +Z
+    // maps up (0,1,0) to (−sinθ, cosθ, 0), i.e. the HEAD tips toward −X, the
+    // hero's LEFT. Positive roll is therefore a left bank, which is what banking
+    // into a left turn (increasing yaw) needs — no negation, unlike pitch.
+    //
+    // ORDER IS LOAD-BEARING AND IS WHY THIS SITS ON THE GROUP, NOT THE PIVOT.
+    // The bank must be about the DIRECTION OF FLIGHT. Putting it on `bodyPivot`
+    // alongside the pitch would apply it in the already-pitched frame, and at
+    // MAX_FORWARD_PITCH the body is horizontal — so a "roll" there rotates about
+    // a nearly vertical axis and reads as the hero slewing sideways, not
+    // banking. Splitting it across the two nodes gives Ry·Rz·Rx: yaw, then bank
+    // about the flight direction, then pitch down into it. The group's Euler
+    // order is set to 'YZX' in the constructor so its own two terms compose that
+    // way round.
+    this.group.rotation.z = this.state.roll;
     // Body pitch. `state.pitch` is POSITIVE FOR NOSE-DOWN by construction: the
     // controller computes it as `-velocity.y / PITCH_SPEED_DIVISOR`, so a dive
     // (velocity.y < 0) yields a positive number. That convention is what the
@@ -287,7 +314,13 @@ export class Hero {
         : kind === 'laser'
           ? ABILITY.LASER_FX_S
           : ABILITY.FREEZE_FX_S;
-    this._attack = { kind, t: 0, dur };
+    // ALTERNATE THE PUNCHING ARM (`RESEARCH_MANOFSTEEL_REPO.md` §7d). Every
+    // punch swinging the same arm reads as one animation replaying, which is
+    // exactly what it was; alternating reads as a combo. The toggle advances on
+    // punches only, so a laser between two punches does not silently consume a
+    // side and make the pair repeat.
+    if (kind === 'punch') this._punchLeft = !this._punchLeft;
+    this._attack = { kind, t: 0, dur, left: this._punchLeft };
   }
 
   update(dt) {
@@ -315,15 +348,17 @@ export class Hero {
    */
   _attackArmPose() {
     if (!this._attack) return null;
-    const { kind, t, dur } = this._attack;
+    const { kind, t, dur, left } = this._attack;
     const p = Math.min(t / dur, 1); // 0..1 through the tell
 
     if (kind === 'punch') {
-      // Fast out, slower back: thrust peaks at ~30% and eases home. The right
-      // arm drives, the left counter-swings behind for the shoulder rotation a
-      // real punch has.
+      // Fast out, slower back: thrust peaks at ~30% and eases home. One arm
+      // drives and the other counter-swings behind, for the shoulder rotation a
+      // real punch has — and which arm does the driving ALTERNATES per punch.
       const thrust = p < 0.3 ? p / 0.3 : 1 - (p - 0.3) / 0.7;
-      return [-0.9 * thrust, 2.4 * thrust];
+      const drive = 2.4 * thrust;
+      const counter = -0.9 * thrust;
+      return left ? [drive, counter] : [counter, drive];
     }
     if (kind === 'laser') {
       // Eye beams: no arm swing in the 2D art either. Arms pull back and down
