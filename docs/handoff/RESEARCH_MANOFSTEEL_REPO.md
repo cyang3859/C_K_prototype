@@ -148,3 +148,100 @@ we just removed.
 3. **Speed-thresholded landing** (§3b) — one comparison, real payoff in readability.
 4. **Soft target lock** (§3c) — the real fix for melee aiming friction, but it is a design change
    and should be the user's call, not a silent adoption.
+
+---
+
+## 7. Combat and heat vision — yes, and more useful than the flight material
+
+Read from `Combat.h` and `HeatVision.h`. **Four of these map directly onto problems this project
+actually hit in playtesting**, which makes them worth more than any of the flight tuning.
+
+### 7a. Attacks dash to the target — the fix for our melee aiming friction
+
+```cpp
+bool IsWithinStrikeDistance();
+bool StopWhenNearTarget(bool PendingAction);
+bool IsDashingToAttack;
+```
+
+Attacking closes the distance rather than requiring the player to already be in range. This is
+**exactly** the friction found on 2026-08-05: a 1.5 m punch reach against a patrolling enemy while
+the hero moves at 7.5 m/s meant swings whiffed because the target drifted. The answer shipped in
+this repo is not "make the hitbox bigger" — it is "let the attack carry you the last metre."
+Combined with §3c's target lock, that is the real solution to melee feeling fiddly.
+
+### 7b. Hit stop — the cheapest game-feel win available
+
+```cpp
+void StartHitStop();  void EndHitStop();
+float HitStopTimer;   bool HitStopEnabled;
+```
+
+A brief freeze-frame on impact. This is the single most standard technique for making a hit feel
+like it connected, it costs one timer, and it needs no art. It complements the
+`STAGGER_IMMUNITY_S` work rather than duplicating it: stagger is what the *victim* does, hit stop
+is what the *frame* does.
+
+### 7c. Input buffering
+
+```cpp
+bool HasPendingAttack;  void CheckForPendingAttack();
+```
+
+An attack pressed *during* an attack is queued and plays next, instead of being dropped. Our
+current model silently discards a press made during a cooldown — the HUD says "on cooldown" and
+nothing happens. Buffering is what makes a combo feel responsive rather than sticky.
+
+### 7d. Alternating strikes, non-repeating
+
+```cpp
+TArray<UAnimMontage*> StrikeL, StrikeR;
+bool ArmUsed;
+UAnimMontage* GetLeftOrRightStrike(bool LeftOrRight);
+UAnimMontage* GetRandomMontageFromArray(int& Previous, TArray<UAnimMontage*> Montages);
+```
+
+Punches alternate arms, and the variant is drawn at random *while excluding the previous one*
+(`Previous` is passed by reference for exactly that). **This one we can use immediately** — the
+hero rig already has `armLeft` and `armRight` joints and `playAttack('punch')` currently always
+swings the right. Alternating arms is a two-line change with a real readability payoff.
+
+Also present: `IsBeatdown` / `Beatdown.cpp` — a finisher/flurry mode — and `CheckMovementMode`,
+so combat behaves differently on the ground versus in the air. `FlightCombat` being its own
+component (§3d) is the same idea at the architectural level.
+
+### 7e. Heat vision is a SUSTAINED beam that travels, not our one-shot hitscan
+
+```cpp
+float LaserSpeed = 3000;          // uu/s — the beam EXTENDS at a speed
+float LaserDistance;              // grows over time, set from a trace
+void LaserDistanceCalculation(const FHitResult&, bool IsTargetGotHit);
+bool IsPressingLaserEyes;         // press-and-HOLD, not a single shot
+void LaserTriggered(); void LaserStarted(); void LaserCompleted(); void StopLaser();
+void SpawnLaserHitSparks(const FVector& Scale);
+void SpawnLaserSmoke(const FVector& Scale);
+void SetMeshPhysics(UStaticMeshComponent* Target, bool Enable);
+```
+
+This is a genuinely different design from ours. Ours is an instant hitscan on a 1 s cooldown that
+fires once. Theirs is **held**, the beam **extends at 3000 uu/s** until a trace stops it, and it
+sprays sparks and smoke at the contact point while burning decals into the surface
+(`BurnVFX.cpp`, `FBurnDecalStruct.h`) and can unfreeze physics on what it hits.
+
+**Not a bug in ours — a fork.** A held beam you sweep across a target is a different feel from a
+committed one-shot, and the 2D prototype's laser is a one-shot, so ours is the faithful port. But
+if the user wants the sustained-beam feel, the pieces are: a beam length that ramps at a speed
+rather than snapping to the hit point, and a hold input rather than an edge.
+
+Our recently-added impact glow (`AttackFX.js`) is the same instinct as their hit sparks + smoke,
+which is mild corroboration that endpoint VFX is the right call for a beam.
+
+### Ranked for adoption
+
+| | Why | Cost |
+|---|---|---|
+| 1. Alternating L/R punch | rig already has both arms; `playAttack` always swings right | ~2 lines |
+| 2. Hit stop | biggest feel-per-line win in the whole repo | one timer |
+| 3. Attack dash-to-target | the actual fix for the melee whiffing found in playtest | moderate |
+| 4. Input buffering | turns "on cooldown, nothing happened" into a queued swing | small |
+| 5. Sustained beam | a design fork, not a fix — user's call | moderate |
