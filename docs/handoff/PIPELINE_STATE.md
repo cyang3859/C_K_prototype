@@ -155,6 +155,82 @@ session-5 snapshot.
 
 ---
 
+## Session 14 closed 2026-08-05, deliberately, by the user
+
+**Everything committed AND pushed.** `origin/dev` in sync, **0 ahead / 0 behind**. **331 tests**,
+clean production build. `main` untouched at `5f62309`. `kodaman_prototype.html` **zero diff**. No
+dev server left running. Working tree clean apart from the pre-existing untracked
+`KODAMAN_HANDOFF.md`. No agent running at close.
+
+### What this session did
+
+1. **Closed the Standards 4/5/8 duplication cluster** and **merged PR #3 into `dev`** (`cac59e7`)
+   on the user's explicit go-ahead, per locked decision 4. QA ran on the merged base.
+2. **Named the rename table** — `RENAME_MAPPING.md` approved, including Level 1's subtitle
+   (**THE SUNLIT CITY**) after the user deferred that choice. Nothing outstanding in it.
+3. **Built Phase 3 step 1 whole**: `HealthSystem` → `EnemyAI` → `Abilities` → wired into the scene
+   with `Enemy.js` / `CombatSystem.js`, plus attack tells in `AttackFX.js`. Still **no Rapier**.
+4. **Reworked the controls** after playtest, on research.
+5. **Reviewed two external references** for mechanics to adopt.
+
+### ⚠️ The through-line of this session: I shipped broken things and called them verified
+
+Four separate times, something passed a numeric check and was visibly wrong or absent:
+
+| What I claimed | What was true |
+|---|---|
+| "Combat wired and verified in the browser" | enemies spawned **behind the player**, attacks unhittable |
+| "Beam visible, 7.2 m, 0.67 opacity" | **invisible on screen** — it fires along the view axis |
+| "Attacks aim where you look" | true horizontally; **altitude was ignored entirely** (punch from 120 m up) |
+| luminance probe read 0 → "nothing renders" | probe was aimed at an **enemy occluded by the hero** |
+
+**Every one was caught by the user playing, or by a screenshot — none by tests or numbers.**
+
+The root cause is a testing habit, recorded so it does not recur: **my browser probes built their
+own fixtures.** They repositioned enemies in front of the hero before attacking, so they verified
+the combat logic thoroughly and never once exercised the spawn, the approach, or aiming while
+stationary.
+
+**Standing rule from here: at least one check per feature must run the way a player meets it** —
+fresh load, nothing repositioned, real dispatched input only. And **when a measurement says
+"nothing at all", take a screenshot before believing it.**
+
+### Next session — pick from these, in recommended order
+
+1. **Velocity-derived lean** (`RESEARCH_MANOFSTEEL_REPO.md` §2). Biggest flight-feel win available
+   **before** the Phase 5 animation pipeline, because it is arithmetic on the velocity vector and
+   capsules can bank. Port the maths, not `FInterpTo` — we already have the correct exponential
+   form.
+2. **Alternating L/R punch** (§7d). ~2 lines; the rig already has both arms and `playAttack` always
+   swings the right.
+3. **Hit stop** (§7b). One timer, no art, the biggest feel-per-line win in that repo.
+4. **Attack dash-to-target** (§7a). The real fix for the melee whiffing found in playtest — their
+   answer is not a bigger hitbox but letting the attack carry you the last metre.
+5. **Rapier — Phase 3 step 2.** Still the only genuinely novel risk left in Phase 3 (`RAPIER.init()`
+   gate, lazy-import bundle boundary), and still isolated from gameplay logic that already works.
+
+**Open question for the user, unresolved:** whether flight should be pitch-coupled ("fly where you
+look"). The controls research says decoupled is the dominant convention and we built that; the
+online spec document assumed coupled. The aim vector already carries pitch after the combat fix,
+so a toggle is cheap if the user wants to A/B it.
+
+### Cost log — session 14
+
+| Agent | Tokens |
+|---|---|
+| research — controls (run 1, produced nothing) | ~50,000 |
+| research — controls (run 2) | ~172,000 |
+| research — Superman UE5 demo | ~69,000 |
+| **total** | **~291,000** |
+
+`ManOfSteel` was reviewed inline via the authenticated GitHub API — no agent, no tokens.
+
+⚠️ **The controls research agent spawned a child despite being told twice not to**, which is why
+run 1 returned in 64 s having written nothing while reporting success. **Verify a subagent's
+deliverable exists on disk before believing its summary** — this cost a full wasted run.
+
+---
+
 ## 2026-08-05 — combat was 2D inside a 3D game (`0ded25e`)
 
 User: "each attack forces the direction to be forward, it doesn't attack in the direction I'm
