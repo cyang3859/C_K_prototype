@@ -155,6 +155,42 @@ session-5 snapshot.
 
 ---
 
+## 2026-08-05 — combat was 2D inside a 3D game (`0ded25e`)
+
+User: "each attack forces the direction to be forward, it doesn't attack in the direction I'm
+looking." Horizontal aim was already correct — measured, all four camera directions hit the enemy
+in that direction. **The bug was the other axis.**
+
+Every position and the facing vector were flattened to X/Z, so combat had no concept of altitude.
+Two symptoms, one cause:
+
+- **Pitch was invisible.** Looking down at a target never aimed at it.
+- **Vertical distance did not exist.** Measured: **the hero could punch an enemy 120 m below**,
+  because the only gap that counted was the 1 m horizontal one.
+
+`project()` now works in 3D — forward component along the aim vector, plus the magnitude of the
+full perpendicular rejection as off-axis distance. **`y` is optional and defaults to 0**, so any
+caller working in a plane keeps the old behaviour, which is why the existing 322 tests needed no
+edits. The aim vector is built from camera yaw AND pitch; attacks originate at the eyes, and
+enemies are targeted at centre of mass.
+
+| Case | Before | Now |
+|---|---|---|
+| Level, 1 m ahead | hit | hit |
+| 10 m above, 1 m ahead, level gaze | **hit** | miss |
+| 120 m above, 1 m ahead, level gaze | **hit** | miss |
+| Hovering low, aiming down at it | miss | hit |
+
+**331 tests.** Two test-authoring lessons: one assertion sat exactly on the 60° wedge boundary and
+was testing a tie-break rather than a behaviour; and two "expected miss" cases were my own bad
+placements, not defects — at 1.5 m altitude the hero's EYES are 3.1 m above an enemy's centre,
+which really is out of punch range.
+
+⚠️ **The user also reported the freeze arm silhouette I flagged for their eye was fine.** My
+concern was unfounded — recorded so it is not re-raised.
+
+---
+
 ## 2026-08-05 — attacks had no visible tell (`996cfc7`)
 
 User playtest: abilities resolved correctly and displayed nothing. The Phase-7 VFX deferral was
