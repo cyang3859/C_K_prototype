@@ -155,6 +155,43 @@ session-5 snapshot.
 
 ---
 
+## ⚠️ 2026-08-05 — combat shipped broken, and the testing method is why
+
+The user loaded the game, saw no enemies, and found the attack keys did nothing. Both true, and
+the session had reported combat working. **Four bugs (`1fe7d6a`), every one invisible to both the
+unit tests and the browser probes:**
+
+1. **Enemies spawned BEHIND the player.** Hero spawns at z=13 facing −Z, camera behind it; the
+   encounter was placed at z=26–40, over the player's shoulder.
+2. **The punch hitbox was a narrow box.** Correct for a side view, wrong for 3D: an enemy 0.78 m
+   away — inside the 1.15 m reach — fell outside it. Six consecutive punches missed.
+3. **Reach measured to the target's CENTRE**, silently docking every ability a body radius.
+4. **Attacks aimed where the hero last WALKED.** `facing` comes from the movement direction, so
+   standing still and attacking swung at wherever the last step ended.
+
+### The method failure, which matters more than the bugs
+
+**Every browser probe repositioned the enemies in front of the hero before attacking.** That
+verified the combat logic perfectly and never once exercised the spawn, the approach, or aiming
+while stationary. The probes were testing a fixture they built themselves.
+
+**Rule going forward: at least one check per feature must run the way a player meets it** — fresh
+load, no repositioning, no direct calls into the system, driving only real input. Everything else
+is a unit test wearing a browser costume. `validateSpawns` now covers the two placement mistakes
+that already happened twice (behind the camera, inside a solid box) because neither throws.
+
+Also worth keeping: **a screenshot is cheap and catches what numbers hide.** A luminance probe
+earlier read 0 because it sampled an enemy occluded by the hero; a screenshot settled it in
+seconds.
+
+### Verified the right way now
+
+Fresh load → walk in → attack, all through dispatched input: punch kills (with dodges in
+between), freeze lands, laser kills, corpses despawn. All four enemies visible on load.
+**315 tests.**
+
+---
+
 ## Phase 3 started 2026-08-05 — combat, logic first
 
 `dev` carries Phase 2, so Phase 3 is unblocked. **`HealthSystem.js` + 38 tests landed**
