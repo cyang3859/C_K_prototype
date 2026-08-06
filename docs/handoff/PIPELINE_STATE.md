@@ -155,6 +155,57 @@ session-5 snapshot.
 
 ---
 
+## Session 13, part 2 — PR #3 IS MERGED, and the names are approved
+
+**PR #3 merged 2026-08-06 into `dev` as `cac59e7`**, a merge commit matching the repo's existing
+convention. Merged on the user's explicit go-ahead; locked decision 4 was honoured — the user was
+asked and answered rather than the merge being assumed from "proceed".
+
+**QA on the merged base passed, measured not assumed:**
+
+| Check | Result |
+|---|---|
+| Tests on merged `dev` | **189/189** |
+| Production build | clean, 646 kB / 171 kB gzip, 35 modules, 1.0 s |
+| Scene renders | 53 draw calls, 146,416 triangles, 23 programs, 38 textures |
+| District A visible | frame darkens **85.2 luma** with the city toggled on |
+| District B visible | frame darkens **57.1 luma** |
+| Console | one 404 for `favicon.ico`; nothing else |
+
+⚠️ **A first luminance probe read −2.2 and looked like a failure.** It was taken 240 m outside
+District B, where atmospheric haze washes the city out; 30 extra draw calls were being made the
+whole time. Standing inside the districts gave the real numbers above. **A single luminance
+sample is not evidence unless the camera is somewhere the geometry can actually fill the frame** —
+worth remembering before reporting a scene as broken.
+
+### Names: APPROVED — see `RENAME_MAPPING.md`
+
+The user approved the table as proposed on 2026-08-05. **Two things remain open:**
+
+1. **Level 1's subtitle is still unnamed.** `City of Heroes` (`kodaman_prototype.html:15298`,
+   `:15308`) is NCsoft's mark for a superhero game and is player-visible title-screen text — the
+   strongest collision in the project, and §C4 missed it because its grep covered DC terms only.
+   The replacement was left to the user and the approval did not name one, so it stays open.
+2. **No trademark clearance search has been run, and no agent can run one.** Approval settles
+   taste, not availability. Meridian, Halcyon, Ironhaven and Aurum are the generic ones to search.
+
+### Housekeeping
+
+**A stale Vite dev server from an earlier session is still listening on port 5173** (PID 13261 at
+the time of writing). This session used **5174** rather than killing a process it did not start.
+Worth stopping when convenient — and worth noting that CLAUDE.md's cleanup step exists precisely
+to prevent this.
+
+**CLAUDE.md is slightly stale on the debug handle:** it documents `window.__game.world`, but the
+handle now exposes `districts`, `props` and `terrain` separately. There is no `world` key.
+
+### Do this first next session
+
+**Phase 2 content porting**, which is now unblocked: `dev` carries the 3D build and the name
+mapping is approved. Name Level 1's subtitle before the title card ports.
+
+---
+
 ## Session 13 closed 2026-08-05 — the duplication cluster is DONE
 
 **Standards 4, 5 and 8 are all closed** (`3507b3f`, `797b5d8`), which was session 12's named

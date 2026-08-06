@@ -1,6 +1,17 @@
-# Rename mapping — concrete names for sign-off
+# Rename mapping — APPROVED
 
-**Status: PROPOSAL. Nothing here is applied.** Per locked decision 6, agents propose and the
+**Status: APPROVED by the user 2026-08-05.** All proposed names below are accepted as written.
+This is now the reference the Engineer stage ports Phase 2 content against.
+
+**One item is still unnamed and needs the user:** the Level 1 subtitle replacing
+`City of Heroes` (see below). It was deliberately left open for the user to choose and the
+approval did not name it, so it stays open rather than being filled in by an agent.
+
+Nothing is applied yet — approval settles *which names*, and the renames land as content ports,
+per the 2026-07-30 decision that the cost is paid during Phase 2 porting when the code is being
+rewritten anyway. `kodaman_prototype.html` is still never edited.
+
+**Original status line, for the record: PROPOSAL. Nothing here is applied.** Per locked decision 6, agents propose and the
 user approves. This document turns `RESEARCH_FINDINGS.md` §C4's "proposed replacement" column —
 which held *descriptions* ("a new reporter-companion name") rather than usable names — into
 concrete candidates you can accept, swap, or overrule line by line.
@@ -88,14 +99,19 @@ choosing the names.
 
 ---
 
-## Sign-off
+## Sign-off — GRANTED 2026-08-05
 
-Per locked decision 6 nothing is applied until you approve. Useful shapes for your reply:
+The user approved the table as proposed. Settled: **Nora Vance** (reporter companion),
+**Meridian** (hero companion), **Ashgrove Industries / Elliot Ashgrove**, **Kestrel Ridge Secure
+Hospital**, **Aurum Dynamics / Lucian Arden**, **Ironhaven**, **helionite / helion-born**,
+**Alexia / Enthalia / Enyalios** with **The Enthalian Coast**, and **The Weekly Planet** for the
+stray `Daily Planet` line.
 
-- "All primaries, except Lois → Reyna Cruz" — I record it and the table is settled.
-- "Primaries fine, hold the Wonder Woman arc" — partial approval works; the arc is only needed
-  when Level 3 ports.
-- Overrule anything. These are candidates, not recommendations to adopt as-is.
+**Still open — Level 1's subtitle.** `City of Heroes` must not ship, but the replacement was left
+to the user and has not been chosen. Standing suggestions: *The Sunlit City* · *Angel City* ·
+*Cityside*. Until it is named, treat the Level 1 title card as blocked for porting.
 
-**Once approved, this table becomes the reference the Engineer stage ports against.** No agent
-applies a rename before then.
+**Still owed — trademark clearance.** No search has been run and no agent can run one. Approval
+settles taste, not availability. **Meridian, Halcyon, Ironhaven, Aurum** are the most generic and
+want a USPTO TESS plus games-class web search before public release. This is the same gap that
+let `City of Heroes` survive the original audit.
