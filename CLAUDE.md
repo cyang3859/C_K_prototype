@@ -9,8 +9,16 @@ what used to be "the human is the only instrument" is now directly measurable.
 
 What this means in practice for `kodaman3d`:
 
-- Start the dev server (`cd kodaman3d && npm run dev`, port 5173), navigate, and drive the scene
-  through `window.__game` — it exposes `scene`, `renderer`, `hero`, `cameraRig`, `world`, `sky`.
+- Start the dev server (`cd kodaman3d && npm run dev`, port 5173), navigate, and drive the scene.
+  **If 5173 is already in use, that is a stale server from an earlier session — stop it rather
+  than hopping to another port.** `vite.config.js` sets `strictPort` precisely so this fails
+  loudly: these instructions hard-code 5173, so a leftover server on it once had an agent driving
+  a stale build while believing it was the new one.
+  through `window.__game` — it exposes `scene`, `renderer`, `hero`, `cameraRig`, `sky`, `time`,
+  `input`, `collision`, and the world as three separate handles: `districts`, `props`, `terrain`.
+  (There is no `world` key; this line used to claim one.) District geometry is baked in WORLD
+  space, so `districtA`/`districtB` groups sit at the origin — get real district centres from
+  `DISTRICT_A_ORIGIN` / `DISTRICT_B_ORIGIN` in `src/world/districts.js`, not from group positions.
 - Set hero pose via `hero.state.position` / `hero.state.facing`, **not** `hero.group.position`
   — the group is overwritten from state every frame. Camera via `cameraRig.yaw` / `.pitch`;
   allow ~1.2 s for the rig to settle before capturing.

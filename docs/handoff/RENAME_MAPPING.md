@@ -3,9 +3,14 @@
 **Status: APPROVED by the user 2026-08-05.** All proposed names below are accepted as written.
 This is now the reference the Engineer stage ports Phase 2 content against.
 
-**One item is still unnamed and needs the user:** the Level 1 subtitle replacing
-`City of Heroes` (see below). It was deliberately left open for the user to choose and the
-approval did not name it, so it stays open rather than being filled in by an agent.
+**Level 1's subtitle is now named too: THE SUNLIT CITY.** The user deferred the choice on
+2026-08-05 after the approval, so it is settled rather than open. Reasoning: it is the only
+candidate that is descriptive rather than a proper noun, which is what keeps it clear of the
+trademark register — *Angel City* is a real production company, a real football club and heavily
+used in LA media, and *Cityside* reads like a brand. "The Sunlit City" also earns its keep in the
+fiction: `RESEARCH_LA_WORLDBUILDING.md` §1.1-1.2 makes the two grids and their light the
+district-differentiating device, and the hero's power set is being renamed around a solar root
+(*helionite*, *helion-born*, *Meridian*). The level title now points at the same idea.
 
 Nothing is applied yet — approval settles *which names*, and the renames land as content ports,
 per the 2026-07-30 decision that the cost is paid during Phase 2 porting when the code is being
@@ -75,7 +80,7 @@ alternates are there so you have something to react against.
 | **Kryptonite / Kryptonian** | 5 + 1 | **helionite** · **helion-born** | Sun-derived, so the hero's weakness and origin share a root with Meridian's name. Cheapest rename with the highest recognisability payoff. |
 | **Wonder Woman / Diana / Themyscira / Ares** | 61 | companion **Alexia** · island **Enthalia** · antagonist **Enyalios** · level name **The Enthalian Coast** | §C4's own reasoning: Ares alone is public-domain Greek, but *this* combination is DC-coded. Renaming companion and island breaks the association. **Enyalios** is a genuine classical epithet of Ares — public domain, keeps the war-god register, drops the DC read. The level's `The Amazon` subtitle moves with the arc. |
 | **"Daily Planet"** | 1 | **The Weekly Planet** | See above. Free, and fixes a continuity bug. |
-| **"City of Heroes"** (missed by §C4) | 2, player-visible | **needs your call** | Level 1's title-screen subtitle. Suggestions: *The Sunlit City* · *Angel City* · *Cityside*. Flagging rather than picking, because level names are tone-setting in a way an agent should not decide alone. |
+| **"City of Heroes"** (missed by §C4) | 2, player-visible | **The Sunlit City** | Level 1's title-screen subtitle. Chosen on the user's deferral: descriptive rather than a proper noun, so it stays clear of the register (*Angel City* is a real company, club and media staple). Ties to the solar root the rest of the rename uses. |
 | Darkseid / Superman / Batman | 5 | reword in place | Comment-only: "colossus-class", "heroic-flight lean", "stealth-combat AI". No logic touched. |
 
 **Not flagged, confirmed fine:** "Kodaman" is the project's own name. Enemy archetype strings
@@ -107,9 +112,8 @@ Hospital**, **Aurum Dynamics / Lucian Arden**, **Ironhaven**, **helionite / heli
 **Alexia / Enthalia / Enyalios** with **The Enthalian Coast**, and **The Weekly Planet** for the
 stray `Daily Planet` line.
 
-**Still open — Level 1's subtitle.** `City of Heroes` must not ship, but the replacement was left
-to the user and has not been chosen. Standing suggestions: *The Sunlit City* · *Angel City* ·
-*Cityside*. Until it is named, treat the Level 1 title card as blocked for porting.
+**Level 1's subtitle: THE SUNLIT CITY**, chosen on the user's deferral 2026-08-05. The Level 1
+title card is no longer blocked. `City of Heroes` must still never ship.
 
 **Still owed — trademark clearance.** No search has been run and no agent can run one. Approval
 settles taste, not availability. **Meridian, Halcyon, Ironhaven, Aurum** are the most generic and
