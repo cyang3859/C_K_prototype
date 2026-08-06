@@ -65,6 +65,21 @@ export const COMBAT = Object.freeze({
   /** Corpse linger before despawn, for the tumble-fade. 24 frames. */
   DEATH_FADE_S: 24 * FRAME,
 
+  /**
+   * Seconds after a stagger ENDS during which another hit cannot re-stagger.
+   *
+   * NOT FROM THE 2D GAME — it has no equivalent, because 2D stagger was purely
+   * cosmetic and never interrupted anything. It exists because making stagger
+   * interrupt (see `EnemyAI.STAGGER_INTERRUPTS`) created a stun-lock: punch
+   * cooldown is 0.300 s and stagger is 0.233 s, so sustained punching left a
+   * 0.067 s gap and measured every tier — including the boss — unable to act
+   * for ~78% of a fight it lost in 1.6 s.
+   *
+   * Tuned to the measurement rather than guessed: at 0.5 s a boss acts for the
+   * majority of the fight while individual hits still visibly interrupt.
+   */
+  STAGGER_IMMUNITY_S: 0.5,
+
   /** Chance a non-boss enemy sidesteps an attack entirely. */
   DODGE_CHANCE: 0.28,
   /** Lockout after a successful dodge, so they cannot chain them. 70 frames. */
@@ -111,6 +126,7 @@ export const HP = Object.freeze({
  * @property {boolean} boss     bosses never dodge
  * @property {number} invulnFor seconds of remaining i-frames
  * @property {number} hitReactFor seconds of remaining flinch
+ * @property {number} staggerImmuneFor seconds during which a hit cannot re-stagger
  * @property {number} frozenFor seconds of remaining freeze
  * @property {number} dodgeCooldownFor seconds until it may dodge again
  * @property {number} deathFadeFor seconds a corpse lingers before despawn
@@ -131,6 +147,7 @@ export function createHealth(max, { boss = false } = {}) {
     boss,
     invulnFor: 0,
     hitReactFor: 0,
+    staggerImmuneFor: 0,
     frozenFor: 0,
     dodgeCooldownFor: 0,
     deathFadeFor: 0,
@@ -172,7 +189,14 @@ export function applyDamage(h, amount, { knock = 0, invulnFor = 0, rng = Math.ra
 
   const applied = Math.min(amount, h.hp);
   h.hp -= applied;
-  h.hitReactFor = COMBAT.HIT_REACT_S;
+  // Stagger only if not still inside the immunity window a previous stagger
+  // opened. The hit itself always lands — immunity gates the INTERRUPT, not the
+  // damage, so mashing punch still kills at full speed; it just cannot hold the
+  // target helpless the whole way there.
+  if (h.staggerImmuneFor <= 0) {
+    h.hitReactFor = COMBAT.HIT_REACT_S;
+    h.staggerImmuneFor = COMBAT.HIT_REACT_S + COMBAT.STAGGER_IMMUNITY_S;
+  }
   h.invulnFor = invulnFor;
   h.knockback = clamp(h.knockback + knock, -COMBAT.KNOCKBACK_CAP_M, COMBAT.KNOCKBACK_CAP_M);
 
@@ -236,6 +260,7 @@ export function tickHealth(h, dt) {
   if (dt < 0) throw new Error(`HealthSystem: dt must be >= 0, got ${dt}`);
   h.invulnFor = countdown(h.invulnFor, dt);
   h.hitReactFor = countdown(h.hitReactFor, dt);
+  h.staggerImmuneFor = countdown(h.staggerImmuneFor, dt);
   h.dodgeCooldownFor = countdown(h.dodgeCooldownFor, dt);
   if (h.alive) {
     h.frozenFor = countdown(h.frozenFor, dt);

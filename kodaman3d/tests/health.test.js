@@ -99,6 +99,71 @@ describe('applyDamage — the basic ledger', () => {
   });
 });
 
+describe('stagger immunity — the anti-stun-lock window', () => {
+  it('staggers the first hit', () => {
+    const h = createHealth(99);
+    applyDamage(h, 1, { rng: never });
+    expect(h.hitReactFor).toBeCloseTo(COMBAT.HIT_REACT_S);
+  });
+
+  it('does NOT re-stagger a follow-up landed inside the window', () => {
+    const h = createHealth(99);
+    applyDamage(h, 1, { rng: never });
+    tickHealth(h, COMBAT.HIT_REACT_S); // flinch over, immunity still running
+    expect(h.hitReactFor).toBe(0);
+    applyDamage(h, 1, { rng: never });
+    expect(h.hitReactFor).toBe(0); // hit landed, but no new stagger
+  });
+
+  it('still applies full damage while stagger-immune — immunity gates the interrupt only', () => {
+    const h = createHealth(99);
+    applyDamage(h, 1, { rng: never });
+    const before = h.hp;
+    const r = applyDamage(h, 5, { rng: never });
+    expect(r.outcome).toBe('damaged');
+    expect(h.hp).toBe(before - 5);
+  });
+
+  it('staggers again once the window expires', () => {
+    const h = createHealth(99);
+    applyDamage(h, 1, { rng: never });
+    tickHealth(h, COMBAT.HIT_REACT_S + COMBAT.STAGGER_IMMUNITY_S);
+    applyDamage(h, 1, { rng: never });
+    expect(h.hitReactFor).toBeCloseTo(COMBAT.HIT_REACT_S);
+  });
+
+  it('outlasts the punch cooldown — which is the entire point', () => {
+    // Punch cooldown is 0.300 s and a stagger is 0.233 s, so without immunity a
+    // punch flurry re-staggers before the previous flinch ends and the target
+    // never acts. The window must exceed the punch cadence to break that.
+    const PUNCH_COOLDOWN_S = 18 / 60;
+    expect(COMBAT.HIT_REACT_S + COMBAT.STAGGER_IMMUNITY_S).toBeGreaterThan(PUNCH_COOLDOWN_S);
+  });
+
+  it('leaves a punched target able to act for most of a sustained flurry', () => {
+    // The regression this window exists to prevent, asserted end to end: before
+    // it, every tier including the boss was measured able to act ~22% of the
+    // time. Simulated here at the real punch cadence against boss HP.
+    const PUNCH_COOLDOWN_S = 18 / 60;
+    const DT = 1 / 60;
+    const h = createHealth(HP.BOSS, { boss: true });
+    let ticks = 0;
+    let free = 0;
+    let cd = 0;
+    while (h.alive && ticks < 3600) {
+      if (cd <= 0) {
+        applyDamage(h, 1, { rng: never });
+        cd = PUNCH_COOLDOWN_S;
+      }
+      cd -= DT;
+      if (h.hitReactFor <= 0) free++;
+      tickHealth(h, DT);
+      ticks++;
+    }
+    expect(free / ticks).toBeGreaterThan(0.5);
+  });
+});
+
 describe('applyDamage — invulnerability', () => {
   it('ignores hits entirely while i-frames are up', () => {
     const h = enemy();
