@@ -155,6 +155,53 @@ session-5 snapshot.
 
 ---
 
+## 2026-08-05 — attacks had no visible tell (`996cfc7`)
+
+User playtest: abilities resolved correctly and displayed nothing. The Phase-7 VFX deferral was
+drawn in the wrong place — **an ability with no tell is unreadable, not unpolished.** You cannot
+tell a punch fired, whiffed, or was refused by its cooldown. Enemy-side feedback (white flash,
+blue frozen, tumble-fade) existed but only shows once you connect.
+
+Punch is an arm swing on the existing rig; laser and freeze are world geometry, so they live in
+`AttackFX.js` — two persistent meshes reused per shot, never allocated (§D4). Durations are the
+2D game's own `*_EFFECT` timers (10/12/18 frames). **Tells fire on the ability FIRING, never on
+the keypress**, so "on cooldown" is visibly distinct from "missed".
+
+### ⚠️ The beam alone did not work, and the reason generalises
+
+Attacks snap the hero to face the camera, so **the beam always fires directly away from the
+viewer** — it foreshortens to nearly a point and hides behind the hero's own body. Measured:
+confirmed visible, 7.2 m long, 0.67 opacity, and **invisible in a screenshot from the default
+camera.** No thickness fixes that; it is geometry.
+
+What reads from behind are the **ends** — a muzzle flash at the eyes and an impact burst where it
+lands, the impact scaled larger on a hit than a miss. **Generalisable: for a camera-aligned
+third-person game, any effect that travels along the view axis needs to be legible at its
+endpoints, because its length is free but its projected length is nearly zero.**
+
+This is the third time this session a numeric check passed while the thing was invisible on
+screen. Screenshots caught all three.
+
+### Verified from the DEFAULT camera, not a staged angle
+
+| | Result |
+|---|---|
+| Punch | right arm 0 → 1.58 rad, returns to rest |
+| Laser | beam 8.34 m, impact burst on target, enemy lit white |
+| Freeze | cone clearly visible, fades over 0.3 s |
+| Cooldown | refused press plays no new tell |
+
+**322 tests.** Still no Rapier — step 1 remains complete and step 2 unstarted.
+
+### Open for the user's eye
+
+The freeze arm pose (both arms sweeping forward at 1.5 rad) was verified numerically and in one
+screenshot, but a large near-camera arm silhouette in that frame is worth a human look — the
+rig's sign convention has bitten before (`Hero.js` documents the B5 arms-backwards defect at
+length).
+
+---
+
 ## 2026-08-05 — controls: W and S were bound to two axes each
 
 User playtest found three problems with one cause. `Input.js` had
