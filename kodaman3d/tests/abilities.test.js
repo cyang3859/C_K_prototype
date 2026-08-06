@@ -13,7 +13,9 @@ import {
 } from '../src/combat/Abilities.js';
 import { COMBAT, HP, createHealth, isFrozen } from '../src/combat/HealthSystem.js';
 import { CombatSystem, SPAWNS } from '../src/combat/CombatSystem.js';
+import { CameraRig } from '../src/controllers/CameraRig.js';
 import { CollisionWorld } from '../src/world/Collision.js';
+import { createHeroState } from '../src/controllers/LocomotionController.js';
 import { HERO_HEIGHT_M } from '../src/core/Scale.js';
 import { Hero } from '../src/entities/Hero.js';
 
@@ -817,5 +819,81 @@ describe('Hero punch animation — alternating arms', () => {
     hero.playAttack('laser');
     hero.playAttack('punch');
     expect(drivingArm(hero)).not.toBe(first);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The seam between CameraRig's convention and CombatSystem's aim
+//
+// ⚠️ THIS IS THE TEST THAT WAS MISSING, and its shape is the point. The pure
+// tests above prove `Abilities` handles a 3D aim vector correctly, and they are
+// right — they build `facing` by hand. The defect lived in the ONE LINE that
+// translates `CameraRig.pitch` into that vector, and no test crossed between the
+// two modules, so both halves were "tested" while the game aimed 28.65° away
+// from the crosshair at rest.
+//
+// The expected direction is therefore taken from a REAL CameraRig's camera
+// matrix. Restating `_aimFrom`'s own formula here would have agreed with the
+// bug, which is this repo's recurring hollow-enforcement failure.
+// ---------------------------------------------------------------------------
+
+describe('attacks aim where the CAMERA actually looks', () => {
+  function rigAt(yaw, pitch) {
+    const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 2000);
+    const hero = createHeroState({ position: new THREE.Vector3(0, 0, 0) });
+    const collision = new CollisionWorld({ halfExtent: 150 });
+    const rig = new CameraRig({ camera, hero, collision });
+    rig.yaw = yaw;
+    rig.pitch = pitch;
+    rig.update(1 / 60, { look: { dx: 0, dy: 0 }, wheel: 0 });
+    // Settle the arm/height easing so the camera is where it means to be.
+    for (let i = 0; i < 240; i++) rig.update(1 / 60, { look: { dx: 0, dy: 0 }, wheel: 0 });
+    camera.updateMatrixWorld(true);
+    const e = camera.matrixWorld.elements;
+    return { rig, forward: new THREE.Vector3(-e[8], -e[9], -e[10]).normalize() };
+  }
+
+  /** The aim CombatSystem would use at this yaw/pitch. */
+  function aimOf(yaw, pitch) {
+    const combat = Object.create(CombatSystem.prototype);
+    const attacker = { pos: { x: 0, y: 0, z: 0 }, facing: { x: 0, y: 0, z: 0 } };
+    combat._aimFrom(yaw, pitch, attacker);
+    return new THREE.Vector3(attacker.facing.x, attacker.facing.y, attacker.facing.z);
+  }
+
+  const cases = [
+    ['default resting pitch', 0, 0.25],
+    ['level', 0, 0],
+    ['looking down hard', 0, 0.9],
+    ['looking up', 0, -0.5],
+    ['turned right and pitched down', 1.1, 0.4],
+    ['turned left and pitched up', -2.2, -0.3],
+  ];
+
+  for (const [label, yaw, pitch] of cases) {
+    it(`matches the camera's own forward direction — ${label}`, () => {
+      const { forward } = rigAt(yaw, pitch);
+      const aim = aimOf(yaw, pitch);
+      const deg = (Math.acos(Math.min(1, Math.max(-1, aim.dot(forward)))) * 180) / Math.PI;
+      expect(deg).toBeLessThan(0.5);
+    });
+  }
+
+  it('aims BELOW the horizon when the camera looks down, and above when it looks up', () => {
+    // The sign, stated in the terms a player would use. `CameraRig.pitch` is an
+    // ORBIT angle — positive raises the camera, so positive means looking DOWN.
+    expect(aimOf(0, 0.4).y).toBeLessThan(0);
+    expect(aimOf(0, -0.4).y).toBeGreaterThan(0);
+    expect(aimOf(0, 0).y).toBeCloseTo(0, 9);
+  });
+
+  it('leaves the punch wedge its full angular budget at the resting pitch', () => {
+    // The user-visible symptom: at rest the aim error consumed half the 60°
+    // punch wedge, so any horizontal offset then pushed the target outside it.
+    // The laser's 25° cone was smaller than the error outright.
+    const { forward } = rigAt(0, 0.25);
+    const aim = aimOf(0, 0.25);
+    const deg = (Math.acos(Math.min(1, Math.max(-1, aim.dot(forward)))) * 180) / Math.PI;
+    expect(deg).toBeLessThan((25 * 0.1)); // well inside even the laser's cone
   });
 });

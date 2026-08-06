@@ -157,6 +157,52 @@ session-5 snapshot.
 
 ## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
 
+### ⚠️ 2026-08-06 — THE AIM WAS INVERTED VERTICALLY, AND IT HAD SHIPPED
+
+**User playtest: "attacks still struggle when navigating horizontally on the screen."** The
+complaint named the horizontal axis; **the defect was on the vertical one**, and that is why it
+presented the way it did.
+
+`CameraRig.pitch` is an **orbit** angle, not a look angle — `_computeDesired` places the camera at
+`pivot.y + sin(pitch)*distance`, so **positive pitch RAISES the camera and it looks DOWN**. The
+rig's own comment says so. `CombatSystem._aimFrom` used `+sin(pitch)`, so every attack aimed on the
+wrong side of the horizon.
+
+**Measured in a browser at the DEFAULT resting pitch (0.25 rad):**
+
+| | Before | After |
+|---|---|---|
+| Angle between the aim and the camera's real forward | **28.65°** | **0.00°** |
+| Off-axis error on a **dead-centre** ground enemy | 43.1° | 14.5° |
+| Horizontal room left inside the 60° punch wedge | 43° | **63°** |
+| Horizontal room left inside the 25° laser cone | **none — could not hit dead centre** | 22° |
+
+**That is the whole user report, explained.** The vertical error consumed roughly half the punch
+wedge's angular budget before the player aimed at anything, so the two errors added and any
+horizontal offset pushed the target out. And since the error (28.65°) **exceeded the laser's entire
+25° cone**, a ground target centred on the screen was outside it at any distance.
+
+**⚠️ WHY NOTHING CAUGHT IT — the important part.** `abilities.test.js` has a whole
+`aim follows pitch` block, and it passes, and it was never wrong: it builds `facing` **by hand**
+(`y: -sin(a)` for "aiming down") and proves `Abilities` resolves a 3D aim correctly. It does.
+**The defect was in the single line translating the rig's convention into that vector, and no test
+crossed the boundary between the two modules.** Both halves were "covered" while the game aimed
+28.65° from the crosshair at rest. This is the same hollow-enforcement shape as the session-11
+findings, in a new place: not a test that could not fail, but **two correct tests with an untested
+seam between them.**
+
+The regression test derives the expected direction from a **real `CameraRig`'s camera matrix**
+across six yaw/pitch combinations, rather than restating `_aimFrom`'s formula — a restatement would
+have agreed with the bug. Both mutations (restoring the sign, dropping pitch entirely) fail it.
+
+**388 tests.** Verified in a real fight afterwards: a punch with the target **35° off-centre**
+damaged, and the laser now acquires a ground target from 12.6 m at the resting pitch.
+
+**Not changed, and worth a separate decision:** non-boss enemies have a **28% dodge chance**
+(`COMBAT.DODGE_CHANCE`, a faithful 2D port with a 1.17 s anti-chain cooldown). Two of three swings
+in the verification run were dodged. That is balance, not a defect — but it is a plausible second
+contributor to combat feeling unreliable, and it is a dial the user may want moved.
+
 **380 tests** (was 331), clean production build, console clean apart from the two known lines.
 Browser-verified end to end — see **`BROWSER_SPOT_CHECK_7.md`**, which has every measurable result
 filled in and four genuinely-human questions left open.

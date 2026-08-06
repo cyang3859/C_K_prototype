@@ -279,11 +279,36 @@ export class CombatSystem {
    * plane only".
    *
    * The vector is unit-length, which `project()` relies on.
+   *
+   * ⚠️ THE VERTICAL SIGN IS NEGATED, AND IT SHIPPED WRONG FOR A DAY.
+   * `CameraRig.pitch` is an ORBIT angle, not a look angle: `_computeDesired`
+   * places the camera at `pivot.y + sin(pitch) * distance`, so a POSITIVE pitch
+   * raises the camera and it looks DOWN. The rig's own comment says exactly
+   * that. The camera's forward is therefore
+   * `(-sin(yaw)·cos(p), −sin(p), -cos(yaw)·cos(p))`, and this used `+sin(p)`.
+   *
+   * Measured in the browser at the DEFAULT pitch of 0.25 rad: the aim sat
+   * **28.65° away from where the camera was actually looking**, always on the
+   * wrong side of the horizon. Consequences, and they are not subtle:
+   *  - the punch wedge is 60°, so **half the angular budget was gone before the
+   *    player aimed at anything**, which is why attacks degraded as soon as a
+   *    target moved off-centre horizontally — the two errors add.
+   *  - the laser cone is 25°, which the error **exceeds on its own**, so a
+   *    ground target centred on screen was outside the cone at any distance.
+   *
+   * ⚠️ WHY NO TEST CAUGHT IT, which matters more than the sign. The pure tests
+   * in `abilities.test.js` build `facing` BY HAND (`y: -sin(a)` for "aiming
+   * down") and prove `Abilities` handles a 3D aim correctly — which it does.
+   * The defect was never in that layer. It was in this one line translating the
+   * rig's convention into that vector, and nothing crossed the boundary between
+   * the two modules. The regression test now derives the expected direction
+   * from a REAL `CameraRig`'s camera matrix rather than restating this formula,
+   * because a test that restates it would have agreed with the bug.
    */
   _aimFrom(yaw, pitch, attacker) {
     const cp = Math.cos(pitch);
     attacker.facing.x = -Math.sin(yaw) * cp;
-    attacker.facing.y = Math.sin(pitch);
+    attacker.facing.y = -Math.sin(pitch);
     attacker.facing.z = -Math.cos(yaw) * cp;
   }
 
