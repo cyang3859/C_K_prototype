@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 import { createAbilityState, freeze, laser, punch, tickAbilities } from './Abilities.js';
+import { AttackFX } from './AttackFX.js';
 import { Enemy } from '../entities/Enemy.js';
 import { yawForward } from '../core/Scale.js';
 
@@ -73,8 +74,11 @@ export class CombatSystem {
    * @param {THREE.Scene} opts.scene
    * @param {{position: THREE.Vector3, facing: number}} opts.hero the hero's sim state
    */
-  constructor({ scene, hero, collision = null, cameraRig = null }) {
+  constructor({ scene, hero, collision = null, cameraRig = null, heroEntity = null }) {
     this.scene = scene;
+    /** The hero's VISUAL, for attack animations. Optional: headless rigs pass none. */
+    this.heroEntity = heroEntity;
+    this.fx = new AttackFX({ scene });
     this.collision = collision;
     this.hero = hero;
     this.cameraRig = cameraRig;
@@ -173,9 +177,20 @@ export class CombatSystem {
       attacker.facing = { x: this._forward.x, z: this._forward.z };
     }
 
-    if (input.wasPressed('KeyJ')) this._resolve('PUNCH', punch(this.abilities, attacker, targets));
-    if (input.wasPressed('KeyK')) this._resolve('LASER', laser(this.abilities, attacker, targets));
-    if (input.wasPressed('KeyL')) this._resolve('FREEZE', freeze(this.abilities, attacker, targets));
+    // The tell plays only when the ability actually FIRED, never on the mere
+    // keypress — so a press refused by its cooldown is visibly a no-op and the
+    // player can tell "not ready" from "missed".
+    if (input.wasPressed('KeyJ')) {
+      this._resolve('PUNCH', punch(this.abilities, attacker, targets), attacker);
+    }
+    if (input.wasPressed('KeyK')) {
+      this._resolve('LASER', laser(this.abilities, attacker, targets), attacker);
+    }
+    if (input.wasPressed('KeyL')) {
+      this._resolve('FREEZE', freeze(this.abilities, attacker, targets), attacker);
+    }
+
+    this.fx.update(dt);
 
     const ctx = { heroPos, heroCarrying: false, civilians: [] };
     for (const e of this.enemies) e.update(dt, ctx);
@@ -188,12 +203,23 @@ export class CombatSystem {
     }
   }
 
-  /** Turn an ability result into flashes and a HUD line. */
-  _resolve(name, result) {
+  /** Turn an ability result into animation, flashes and a HUD line. */
+  _resolve(name, result, attacker) {
     if (!result.fired) {
       this.lastEvent = `${name} — on cooldown`;
       return;
     }
+
+    // Fired: play the tell, hit or miss.
+    const kind = name.toLowerCase();
+    this.heroEntity?.playAttack(kind);
+    const pos = this.hero.position;
+    if (kind === 'laser') {
+      this.fx.showBeam(pos, attacker.facing, result.hits[0]?.target.pos ?? null);
+    } else if (kind === 'freeze') {
+      this.fx.showCone(pos, this.hero.facing);
+    }
+
     if (result.hits.length === 0) {
       this.lastEvent = `${name} — miss`;
       return;
@@ -209,5 +235,6 @@ export class CombatSystem {
   dispose() {
     for (const e of this.enemies) e.dispose();
     this.enemies.length = 0;
+    this.fx.dispose();
   }
 }

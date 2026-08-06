@@ -4,6 +4,7 @@ import { TUNING } from '../config/tuning.js';
 import { HERO_HEIGHT_M } from '../core/Scale.js';
 import { disposeObject3D } from '../core/dispose.js';
 import { LocomotionState, createHeroState } from '../controllers/LocomotionController.js';
+import { ABILITY } from '../combat/Abilities.js';
 
 /**
  * Hero.js — the primitive-built hero mesh and its CPU-animated cape.
@@ -147,6 +148,8 @@ export class Hero {
     // teleport the cape.
     this._capePhase = 0;
     this._stridePhase = 0;
+    /** In-progress attack tell: `{kind, t, dur}` or null. See `playAttack`. */
+    this._attack = null;
 
     this.setPersona('super');
   }
@@ -270,13 +273,67 @@ export class Hero {
    *
    * @param {number} dt seconds
    */
+  /**
+   * Play an attack's visible tell. Called when an ability actually FIRES —
+   * not when the key is pressed, so an attack refused by its cooldown produces
+   * no animation and the player learns the difference.
+   *
+   * @param {'punch'|'laser'|'freeze'} kind
+   */
+  playAttack(kind) {
+    const dur =
+      kind === 'punch'
+        ? ABILITY.PUNCH_FX_S
+        : kind === 'laser'
+          ? ABILITY.LASER_FX_S
+          : ABILITY.FREEZE_FX_S;
+    this._attack = { kind, t: 0, dur };
+  }
+
   update(dt) {
     const s = this.state;
     const speed = Math.hypot(s.velocity.x, s.velocity.z);
     const flying = s.flightActive;
 
+    if (this._attack) {
+      this._attack.t += dt;
+      if (this._attack.t >= this._attack.dur) this._attack = null;
+    }
+
     this._animateLimbs(dt, speed, flying);
     this._animateCape(dt, speed, flying);
+  }
+
+  /**
+   * Arm pose for an in-progress attack, or null when not attacking.
+   *
+   * OVERRIDES the stride and flight poses rather than blending with them. A
+   * punch that half-plays because the hero happens to be running reads as a
+   * stumble; the swing is short enough (0.17 s) that snapping to it and easing
+   * out is the clearer read. Returns `[leftX, rightX]` shoulder rotations,
+   * where POSITIVE IS FORWARD — see the axis note in `_animateLimbs`.
+   */
+  _attackArmPose() {
+    if (!this._attack) return null;
+    const { kind, t, dur } = this._attack;
+    const p = Math.min(t / dur, 1); // 0..1 through the tell
+
+    if (kind === 'punch') {
+      // Fast out, slower back: thrust peaks at ~30% and eases home. The right
+      // arm drives, the left counter-swings behind for the shoulder rotation a
+      // real punch has.
+      const thrust = p < 0.3 ? p / 0.3 : 1 - (p - 0.3) / 0.7;
+      return [-0.9 * thrust, 2.4 * thrust];
+    }
+    if (kind === 'laser') {
+      // Eye beams: no arm swing in the 2D art either. Arms pull back and down
+      // so the head reads as the source, plus a slight brace.
+      const k = Math.sin(p * Math.PI);
+      return [-0.5 * k, -0.5 * k];
+    }
+    // Freeze breath: both arms sweep forward and out, framing the cone.
+    const k = Math.sin(p * Math.PI);
+    return [1.5 * k, 1.5 * k];
   }
 
   /**
@@ -290,6 +347,23 @@ export class Hero {
    * @param {boolean} flying
    */
   _animateLimbs(dt, speed, flying) {
+    const attack = this._attackArmPose();
+    if (attack) {
+      // Snap to the attack pose; legs keep whatever the locomotion pose wants,
+      // so a punch thrown mid-run still has running legs under it.
+      const k = 1 - Math.exp(-26 * dt); // fast, but not a single-frame pop
+      approachRotation(this.joints.armLeft, attack[0], 0, 0.12, k);
+      approachRotation(this.joints.armRight, attack[1], 0, -0.12, k);
+      if (!flying) {
+        this._stridePhase += dt * (2.2 + speed * 0.9);
+        const wave = Math.sin(this._stridePhase);
+        const swing = Math.min(speed / 7.5, 1.4) * 0.85;
+        approachRotation(this.joints.legLeft, -wave * swing, 0, 0.05, k);
+        approachRotation(this.joints.legRight, wave * swing, 0, -0.05, k);
+      }
+      return;
+    }
+
     if (flying) {
       // Flight pose: arms forward and slightly out, legs together and trailing.
       // Eased rather than snapped so takeoff reads as a transition.

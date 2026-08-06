@@ -74,6 +74,17 @@ export const ABILITY = Object.freeze({
    */
   PUNCH_HALF_ANGLE_RAD: (60 * Math.PI) / 180,
   PUNCH_COOLDOWN_S: 18 / 60,
+  /**
+   * Seconds the ability's VISIBLE tell lasts.
+   *
+   * Ported from the 2D game's `*_EFFECT` timers (`:185-187`), which are exactly
+   * this: how long the swing, the beam and the cone are drawn. They are shorter
+   * than the cooldowns on purpose — the tell ends well before the ability is
+   * ready again, so the player reads "that fired" separately from "I can fire
+   * again". Kept here rather than in the renderer so the numbers stay beside
+   * the cooldowns they are paired with.
+   */
+  PUNCH_FX_S: 10 / 60,
   PUNCH_KNOCKBACK_M: 9 * PX_TO_M,
 
   /**
@@ -88,6 +99,7 @@ export const ABILITY = Object.freeze({
    */
   LASER_HALF_ANGLE_RAD: (25 * Math.PI) / 180,
   LASER_COOLDOWN_S: 60 / 60,
+  LASER_FX_S: 12 / 60,
   /** The 2D call passes knock=0: "no knockback while beam is active". */
   LASER_KNOCKBACK_M: 0,
 
@@ -99,6 +111,7 @@ export const ABILITY = Object.freeze({
   FREEZE_REACH_M: reach(110),
   FREEZE_HALF_ANGLE_RAD: (45 * Math.PI) / 180,
   FREEZE_COOLDOWN_S: 80 / 60,
+  FREEZE_FX_S: 18 / 60,
 });
 
 /**

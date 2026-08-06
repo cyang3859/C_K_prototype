@@ -134,6 +134,7 @@ export class Game {
       hero: this.hero.state,
       collision: this.collision,
       cameraRig: this.cameraRig,
+      heroEntity: this.hero,
     });
 
     this.input = new Input({ element: this.renderer.domElement });
