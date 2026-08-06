@@ -186,10 +186,30 @@ checks, dropping the knockback cap, letting freeze permit dodging, letting the d
 repeat). Each failed exactly one test. A green suite that has never been shown to fail is not
 evidence.
 
-### Next: `Enemy.js` + `EnemyAI.js`
+### `EnemyAI.js` landed (`09342b8`) — 264 tests
 
-The FSM (idle → aggro → attack → stagger → death) asserting against `HealthSystem`, still no
-Rapier.
+The FSM, with the 2D game's implicit `continue` cascade made explicit and its ORDER preserved:
+dead → thrown → stagger → frozen → chase → guard → patrol.
+
+⚠️ **Speeds do not port through `PX_TO_M`.** 2.3 px/frame naively converts to 27.6 m/s — a
+100 km/h enemy. Speeds are stored as fractions of the 2D hero's 5.5 px/frame cap and multiplied
+by the live `TUNING.MAX_SPEED` at call time. Distances DO convert (360 px sense radius = 72 m).
+`Scale.js` warns about exactly this and it is easy to get wrong in both directions.
+
+**One deliberate deviation, `STAGGER_INTERRUPTS` (default true).** 2D `hitReact` is cosmetic and
+a flinching enemy keeps walking; here a hit suppresses movement for 0.23 s. **The user may want
+to A/B this against 2D parity** — it is a flag for that reason.
+
+**Mutation testing earned its keep here.** Hard-coding the speed inside `chaseSpeed()` passed the
+entire original 34-test suite, because the live-tuning test only exercised the patrol branch.
+Each movement branch reads `TUNING` on its own line, so covering one proves nothing about the
+rest. All four are now checked separately. **Generalisable lesson: a "reads live config" test
+covers one call site, not a policy.**
+
+### Next: `Abilities.js`
+
+Punch / laser / freeze against `HealthSystem` and the FSM, still no Rapier. Then Rapier last,
+for thrown-prop momentum.
 
 ---
 
