@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 import { CameraRig } from '../controllers/CameraRig.js';
+import { CombatSystem } from '../combat/CombatSystem.js';
 import { CollisionWorld } from '../world/Collision.js';
 import { DISTRICTS } from '../world/districts.js';
 import { DebugHud } from '../ui/DebugHud.js';
@@ -32,9 +33,10 @@ import { disposeObject3D } from './dispose.js';
  *
  *   1. input.beginStep()      refresh the derived input snapshot
  *   2. locomotion.update()    reads input, writes the hero transform
- *   3. world.update()         static in Phase 1; present so the shape is right
- *   4. cameraRig.update()     reads the hero's FINAL transform for this step
- *   5. input.endStep()        clear this-step edge flags
+ *   3. combat.update()        resolves attacks, then advances every enemy
+ *   4. world.update()         static in Phase 1; present so the shape is right
+ *   5. cameraRig.update()     reads the hero's FINAL transform for this step
+ *   6. input.endStep()        clear this-step edge flags
  *
  * The camera MUST update after locomotion within the SAME step. Updating it
  * first — or deferring it to the render phase — makes the camera trail the hero
@@ -127,6 +129,8 @@ export class Game {
       tuning: TUNING,
     });
 
+    this.combat = new CombatSystem({ scene: this.scene, hero: this.hero.state });
+
     this.input = new Input({ element: this.renderer.domElement });
     this.input.attach();
     this.input.onPointerLockChange = (locked) => {
@@ -146,6 +150,7 @@ export class Game {
       time: this.time,
       hero: this.hero.state,
       cameraRig: this.cameraRig,
+      combat: this.combat,
       startHidden: playtest,
     });
 
@@ -210,17 +215,22 @@ export class Game {
     this.hero.syncTransform();
     this.hero.update(dt);
 
-    // 3. World. Static in Phase 1; the call exists so the step has its final
+    // 3. Combat, AFTER locomotion so an attack resolves from the hero's final
+    //    position this step, and BEFORE the camera so a kill is visible on the
+    //    same frame the hit landed.
+    this.combat.update(dt, input);
+
+    // 4. World. Static in Phase 1; the call exists so the step has its final
     //    shape for Phase 2's time-of-day and streaming work.
     for (const district of this.districts) district.update(dt);
     this.props.update(dt);
     this.terrain.update(dt);
     this.sky.update(dt);
 
-    // 4. Camera, AFTER locomotion, reading the hero's final transform.
+    // 5. Camera, AFTER locomotion, reading the hero's final transform.
     this.cameraRig.update(dt, input);
 
-    // 5. Clear this-step edge flags and consume the accumulated mouse deltas.
+    // 6. Clear this-step edge flags and consume the accumulated mouse deltas.
     input.endStep();
   }
 
@@ -259,6 +269,7 @@ export class Game {
   destroy() {
     this.stop();
     window.removeEventListener('focus', this._onFocus);
+    this.combat?.dispose();
 
     if (this.input) this.input.detach();
     if (this.debugHud) this.debugHud.dispose();

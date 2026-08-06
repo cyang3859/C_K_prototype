@@ -26,11 +26,12 @@ export class DebugHud {
    * @param {object} args.hero hero state
    * @param {import('../controllers/CameraRig.js').CameraRig} args.cameraRig
    */
-  constructor({ renderer, time, hero, cameraRig, startHidden = false }) {
+  constructor({ renderer, time, hero, cameraRig, combat = null, startHidden = false }) {
     this.renderer = renderer;
     this.time = time;
     this.hero = hero;
     this.cameraRig = cameraRig;
+    this.combat = combat;
     /**
      * `startHidden` is for standalone playtest builds handed to people who are
      * not developers. Everything is still BUILT and still toggleable with F1 —
@@ -179,6 +180,15 @@ export class DebugHud {
     const rig = this.cameraRig;
 
     const speed = Math.hypot(h.velocity.x, h.velocity.z);
+    // Combat is optional so the HUD still works in any harness that builds one
+    // without it — the readout simply omits the two lines.
+    const combatLines = this.combat
+      ? [
+          `enemies    ${this.combat.enemies.filter((e) => e.health.alive).length} alive` +
+            `  (${this.combat.enemies.length} tracked)`,
+          `attack     ${this.combat.lastEvent || '—'}`,
+        ]
+      : [];
     this.readout.textContent = [
       `state      ${h.state}${h.flightActive ? '  [flight]' : ''}`,
       `onGround   ${h.onGround}`,
@@ -190,6 +200,7 @@ export class DebugHud {
       `fps        ${fmt(this.time.fps, 1)}   steps/frame ${this.time.stepsLastFrame}`,
       `draw calls ${info.render.calls}   tris ${info.render.triangles}`,
       `geometries ${info.memory.geometries}   textures ${info.memory.textures}`,
+      ...combatLines,
     ].join('\n');
   }
 
