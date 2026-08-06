@@ -155,6 +155,74 @@ session-5 snapshot.
 
 ---
 
+## 2026-08-05 — controls: W and S were bound to two axes each
+
+User playtest found three problems with one cause. `Input.js` had
+`jumpDown = forward` and `descend = back`, so each movement key drove a horizontal AND a vertical
+intent. **Fixed in `5d2b2a5`.**
+
+| | Before | Now |
+|---|---|---|
+| Ground move / fly horizontally | W A S D | W A S D (unchanged) |
+| Take off | W tap | **Space** tap |
+| Climb | W held | **Space** held |
+| Descend | S held | **X** held (Ctrl also accepted) |
+| Dash | Shift | Shift (unchanged) |
+| Land | G | G (unchanged) |
+
+Mapping-only: no change to the flight FSM, hover damping, or `_updateHorizontal`, which was
+already camera-relative in all four states.
+
+### `RESEARCH_CONTROLS.md` — and where I overrode it
+
+A background research agent surveyed shipped titles (473 lines, 34 citations). Finding:
+**"WASD horizontal + dedicated vertical keys, camera decoupled from thrust" is the dominant
+convention** across Anthem, Just Cause, Saints Row IV, Arkham Knight and Minecraft. "Fly where
+you look" is a flight-sim pattern essentially absent from mouse-aimed third-person action games —
+and that reasoning binds harder here than in the sources, because **combat now aims along the
+camera**, so pitch-coupled flight would dive the hero every time the player aimed at a ground
+target.
+
+⚠️ **Its recommended descend key was wrong for this project.** It proposed Ctrl — correctly
+sourced — but reasoned about a native game. **This ships in a browser, and `Ctrl+W` is close-tab
+on Windows and Linux, which a page cannot `preventDefault` away.** Descend + forward would close
+the player's tab mid-flight. X is primary; Ctrl is also bound because it is the convention and is
+harmless on macOS. **Generalisable: research about desktop games needs a browser-platform pass
+before its key choices are usable here.**
+
+It also flagged the landing-abort rule as a behaviour change. It is the reverse — 2D aborts on the
+CLIMB key, which `jumpDown` now is. The old aliasing was the bug.
+
+Its citation base is community-heavy (15 Steam threads, 8 Wikipedia vs. a handful of first-party
+pages) and its gap list says so honestly. Good enough for "what is the convention", not for exact
+key letters.
+
+⚠️ **The agent spawned a child agent despite being told twice not to.** The first run returned in
+64 s having written nothing, reporting the briefing back as its result; the child was still
+writing to the same file during the second run and produced duplicate sections, which the agent
+caught and de-duplicated. **Verify a subagent's deliverable exists before believing its summary.**
+
+### Verified in the browser, all three complaints
+
+| Input | Result |
+|---|---|
+| W on ground | 6.22 m forward, **0** climb, still grounded (dash: 9.16 m) |
+| W in flight | 6.54 m forward, **0.00** altitude change |
+| W + Space | 6.45 m forward **and** 5.80 m climb, together |
+| W + X + Shift | **14.97 m forward** while descending 4.99 m — `reversed: false` |
+
+**322 tests**, including a regression suite pinning that no movement key touches a vertical axis.
+
+### Cost log — control research
+
+| Agent | Tokens |
+|---|---|
+| research (run 1, produced nothing) | ~50,000 |
+| research (run 2, produced the file) | ~172,000 |
+| **total** | **~222,000** |
+
+---
+
 ## ⚠️ 2026-08-05 — combat shipped broken, and the testing method is why
 
 The user loaded the game, saw no enemies, and found the attack keys did nothing. Both true, and
