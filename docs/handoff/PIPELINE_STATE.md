@@ -157,6 +157,42 @@ session-5 snapshot.
 
 ## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
 
+### 2026-08-06 — SSKTJL character-design research: DONE, but THIN, and honest about it
+
+`RESEARCH_SSKTJL_CHARACTER.md` (366 lines). User request: they like *Suicide Squad: Kill the
+Justice League*'s Superman design and want ours similar in style.
+
+⚠️ **The evidence base is weak, and the document says so rather than padding.** **ArtStation
+403'd on every fetch** — both the art-direction feature and every individual concept-art page —
+so the one place the artists' own words would live was unreachable. **The single load-bearing
+source is one CBR paragraph**: New 52-style crest, triangular panel accents across the bodysuit,
+a "rocky/meteorite" surface. Everything else is either background on the 2011 *comic* redesign
+(well documented, but not about the game) or search-tool paraphrase that could not be checked
+against the original page. **No source anywhere gives a proportion figure, a colour value or a
+material number** — every number in §3 is the agent's own authored translation of adjectives, and
+it labels them as such.
+
+**Nothing is implemented.** The three cheapest, best-sourced proposals: a **chest emblem** (the
+most directly-sourced claim, and our hero currently expresses it nowhere), a **bulkier build**
+(`SHOULDER_X` 0.34 → 0.39, `HIP_X` 0.15 → 0.14, torso radius 0.28 → 0.31), and a **rougher, faintly
+metallic suit** (0.6/0.05 → 0.7/0.15).
+
+⚠️ **The materials change must be `gl.readPixels`-spot-checked before it ships** — locked decision
+22 exists because an unmeasured metalness change was rejected three times on the world's facades,
+and the hero must not repeat it.
+
+Two useful flags from the agent: the **torso radius is hardcoded in `_buildBody()`**, outside the
+`RIG` object, and should be promoted to a named field while being touched; and the cape geometry
+change should re-run `capeTorsoGap()` (§CAPE-1), since a wider torso and a longer cape are exactly
+the clearance case that test exists to catch. **Quaternius (decision 15) has no clean match** for
+this body type — better as a rig/skeleton donor than a mesh source.
+
+**The gap is closeable by the user, not by more agent time.** They can see the game; the agent
+could not. Their own description of what they like — or reference images — is worth more than
+another research run against sources that block automated fetching.
+
+**Cost: ~86,600 tokens.**
+
 ### 2026-08-06 — input buffering (§7c), on the user's pick
 
 A press made during a cooldown was **silently discarded**, so a player mashing at a combo's
