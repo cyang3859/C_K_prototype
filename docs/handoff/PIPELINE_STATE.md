@@ -1901,6 +1901,11 @@ characters. The mapping table is needed before Phase 2 content porting begins.
 column currently holds **descriptions, not names** — e.g. "new reporter-companion name",
 "invented secure-facility name". Nothing in it is usable as-is.
 
+**Done 2026-08-05, session 13 — `RENAME_MAPPING.md` holds concrete candidates awaiting
+sign-off**, including two terms §C4 missed (`City of Heroes`, player-visible and an NCsoft mark
+in the same goods class; `The Amazon`, the Level 3 arc label). Still PROPOSAL — locked decision
+6 keeps approval with the user, and no trademark clearance search has been run.
+
 Before Phase 2 porting starts, someone must turn that column into concrete names. Per locked
 decision 6 the user approves them. A reasonable split, offered when the user next engages:
 the user supplies names for the characters they care about (the companion at 345 refs

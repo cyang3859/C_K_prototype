@@ -701,6 +701,15 @@ identifiers like `powerGirl` rather than a plain word match, or because relevant
 possessive/inflected forms the regex missed. Treat the "Total" column as the reliable number and
 the category split as directional, not final.)
 
+> ⚠️ **SUPERSEDED, 2026-08-05 — see `RENAME_MAPPING.md` for concrete names.** The
+> "proposed replacement" column below holds *descriptions* ("a new reporter-companion name"),
+> not usable names, and nothing in it can be applied as-is. `RENAME_MAPPING.md` turns it into
+> named candidates awaiting sign-off, and adds **two terms this audit missed**: `City of Heroes`
+> (`:15298`, `:15308`) is player-visible title-screen text and an NCsoft mark for a superhero
+> game — the same goods class, the strongest collision in the project — and `The Amazon`
+> (`:15330`) is the Level 3 arc's own label sitting on top of Diana/Themyscira. Both were missed
+> because this audit grepped DC character terms only. The table below stays as the dated finding.
+
 **Full mapping table.** "Proposed replacement" names are placeholders for user selection, not
 recommendations to adopt as-is — flagged with — where genuine renaming judgment (tone, era,
 in-universe consistency) is needed rather than a mechanical swap.
