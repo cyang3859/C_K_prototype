@@ -142,14 +142,16 @@ export function isReady(s, name) {
 
 /**
  * @typedef {object} Attacker
- * @property {{x:number,z:number}} pos
- * @property {{x:number,z:number}} facing unit vector the attacker is looking along
+ * @property {{x:number, y?:number, z:number}} pos eye position; `y` defaults to 0
+ * @property {{x:number, y?:number, z:number}} facing UNIT vector, aim direction.
+ *   Include `y` to aim up or down; omitting it means level.
  */
 
 /**
  * @typedef {object} Target
- * @property {{x:number,z:number}} pos
+ * @property {{x:number, y?:number, z:number}} pos centre of mass; `y` defaults to 0
  * @property {import('./HealthSystem.js').Health} health
+ * @property {number} [radius] body radius, metres
  */
 
 /**
@@ -253,6 +255,12 @@ const radiusOf = (t) => (typeof t.radius === 'number' ? t.radius : DEFAULT_TARGE
  * so a target off to one side is not treated as further away than it is. The
  * angular test is what makes a melee arc feel fair in 3D: everything the player
  * can see themselves swinging at is inside it.
+ *
+ * ⚠️ FULLY 3D, AND IT USED TO NOT BE. Every position and the facing vector were
+ * flattened to X/Z, which made altitude invisible to combat: measured, the hero
+ * could punch an enemy standing 120 m below, because the only gap that counted
+ * was the 1 m horizontal one. The same flattening meant looking down at a target
+ * did not aim at it — pitch simply was not part of the calculation.
  */
 function inWedge(attacker, point, range, halfAngle, radius = 0) {
   const { along, lateral } = project(attacker, point);
@@ -278,7 +286,11 @@ function nearestInCone(attacker, targets) {
   let bestD = Infinity;
   for (const t of targets) {
     if (!t.health.alive || !inCone(attacker, t.pos)) continue;
-    const d = Math.hypot(t.pos.x - attacker.pos.x, t.pos.z - attacker.pos.z);
+    const d = Math.hypot(
+      t.pos.x - attacker.pos.x,
+      (t.pos.y ?? 0) - (attacker.pos.y ?? 0),
+      t.pos.z - attacker.pos.z
+    );
     if (d < bestD) {
       bestD = d;
       best = t;
@@ -287,10 +299,27 @@ function nearestInCone(attacker, targets) {
   return best;
 }
 
-/** Decompose the attacker→point offset into forward and sideways components. */
+/**
+ * Decompose the attacker→point offset into a forward component and the
+ * magnitude of everything perpendicular to it.
+ *
+ * `y` is optional throughout and defaults to 0, so a caller that legitimately
+ * works in a plane — every unit test here, and any future top-down mode — still
+ * gets exactly the old behaviour.
+ */
 function project(attacker, point) {
-  const dx = point.x - attacker.pos.x;
-  const dz = point.z - attacker.pos.z;
   const f = attacker.facing;
-  return { along: dx * f.x + dz * f.z, lateral: dx * -f.z + dz * f.x };
+  const fy = f.y ?? 0;
+  const dx = point.x - attacker.pos.x;
+  const dy = (point.y ?? 0) - (attacker.pos.y ?? 0);
+  const dz = point.z - attacker.pos.z;
+
+  const along = dx * f.x + dy * fy + dz * f.z;
+  // The rejection of d onto the facing axis: what is left after removing the
+  // forward part. Its magnitude is the true off-axis distance in 3D, which is
+  // what the wedge's half-angle should be measured against.
+  const px = dx - along * f.x;
+  const py = dy - along * fy;
+  const pz = dz - along * f.z;
+  return { along, lateral: Math.hypot(px, py, pz) };
 }

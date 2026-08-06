@@ -410,3 +410,79 @@ describe('starter encounter placement', () => {
     }
   });
 });
+
+
+/**
+ * Vertical reach — the "punch someone 120 m below you" regression.
+ *
+ * Every position and the facing vector used to be flattened to X/Z, so altitude
+ * was invisible to combat: a target 1 m ahead horizontally was in range whether
+ * it stood beside the hero or 120 m below. Measured in the browser before the
+ * fix; these pin it.
+ */
+describe('altitude is part of reach, not ignored', () => {
+  const level = { pos: { x: 0, y: 1.6, z: 0 }, facing: { x: 1, y: 0, z: 0 } };
+  const at = (x, y) => ({ pos: { x, y, z: 0 }, health: createHealth(99) });
+
+  it('hits a target level with the attacker and just ahead', () => {
+    expect(punch(createAbilityState(), level, [at(0.9, 1.6)], { rng: never }).hits).toHaveLength(1);
+  });
+
+  it('MISSES a target 1 m ahead horizontally but 20 m below', () => {
+    expect(punch(createAbilityState(), level, [at(0.9, -20)], { rng: never }).hits).toEqual([]);
+  });
+
+  it('MISSES one 120 m below — the exact case that shipped as a hit', () => {
+    expect(punch(createAbilityState(), level, [at(0.9, -120)], { rng: never }).hits).toEqual([]);
+  });
+
+  it('MISSES one directly overhead but far above', () => {
+    expect(punch(createAbilityState(), level, [at(0, 40)], { rng: never }).hits).toEqual([]);
+  });
+
+  it('laser respects altitude too', () => {
+    const far = { pos: { x: 30, y: -60, z: 0 }, health: createHealth(99) };
+    expect(laser(createAbilityState(), level, [far], { rng: never }).hits).toEqual([]);
+  });
+
+  it('freeze respects altitude too', () => {
+    expect(freeze(createAbilityState(), level, [at(1.5, -30)]).hits).toEqual([]);
+  });
+});
+
+describe('aim follows pitch, so looking down hits what is below', () => {
+  /**
+   * Attacker at 20 m, aiming steeply downward at 80 degrees below level.
+   *
+   * 80 rather than 60 deliberately: at exactly 60 a level target sits ON the
+   * punch wedge's 60-degree boundary, so the test would be asserting a
+   * tie-break rather than a behaviour.
+   */
+  const a = (80 * Math.PI) / 180;
+  const diving = {
+    pos: { x: 0, y: 20, z: 0 },
+    facing: { x: Math.cos(a), y: -Math.sin(a), z: 0 },
+  };
+
+  it('hits a target along the downward aim line', () => {
+    // 1.2 m along the aim vector — inside punch reach + body radius.
+    const t = {
+      pos: { x: Math.cos(a) * 1.2, y: 20 - Math.sin(a) * 1.2, z: 0 },
+      health: createHealth(99),
+    };
+    expect(punch(createAbilityState(), diving, [t], { rng: never }).hits).toHaveLength(1);
+  });
+
+  it('still misses something level with the attacker when aiming down', () => {
+    const t = { pos: { x: 1.2, y: 20, z: 0 }, health: createHealth(99) };
+    expect(punch(createAbilityState(), diving, [t], { rng: never }).hits).toEqual([]);
+  });
+
+  it('lets the laser pick a target far below when aimed at it', () => {
+    const t = {
+      pos: { x: Math.cos(a) * 25, y: 20 - Math.sin(a) * 25, z: 0 },
+      health: createHealth(99),
+    };
+    expect(laser(createAbilityState(), diving, [t], { rng: never }).hits).toHaveLength(1);
+  });
+});

@@ -37,6 +37,11 @@ import { yawForward } from '../core/Scale.js';
  */
 const STARTER_PATROL_M = 2.5;
 
+/** Metres above the feet an enemy's centre of mass sits. Matches Enemy.js's capsule. */
+const ENEMY_CENTRE_Y = 0.85;
+/** Metres above the feet the hero's attacks originate — the eyes, not the feet. */
+const EYE_HEIGHT_M = 1.62;
+
 /**
  * A starter encounter, in front of the hero's spawn.
  *
@@ -134,9 +139,23 @@ export class CombatSystem {
     return e;
   }
 
-  /** Live enemies only — the shape `Abilities` expects for its target list. */
+  /**
+   * Live enemies only, in the shape `Abilities` expects.
+   *
+   * ⚠️ `pos` CARRIES Y HERE, and `Enemy.pos` deliberately does not. The AI walks
+   * on a plane and has no use for altitude, but combat absolutely does — without
+   * it the hero could punch a target on the ground from 120 m up, which is
+   * exactly what shipped until this was measured. `y` is the enemy's centre of
+   * mass, not its feet, so reach is judged to the middle of the body.
+   */
   get targets() {
-    return this.enemies.filter((e) => e.health.alive).map((e) => ({ pos: e.pos, health: e.health, enemy: e }));
+    return this.enemies
+      .filter((e) => e.health.alive)
+      .map((e) => ({
+        pos: { x: e.pos.x, y: ENEMY_CENTRE_Y, z: e.pos.z },
+        health: e.health,
+        enemy: e,
+      }));
   }
 
   /**
@@ -154,11 +173,17 @@ export class CombatSystem {
   update(dt, input) {
     tickAbilities(this.abilities, dt);
 
-    const heroPos = { x: this.hero.position.x, z: this.hero.position.z };
+    const p = this.hero.position;
+    const heroPos = { x: p.x, z: p.z };
     // Reused scratch: this runs every fixed step, and per-step vector garbage in
     // the combat path is exactly what §D4 warns immediate-mode ports produce.
     yawForward(this.hero.facing, this._forward);
-    const attacker = { pos: heroPos, facing: { x: this._forward.x, z: this._forward.z } };
+    // Attacks are aimed from the hero's EYES, not their feet, and the aim vector
+    // carries pitch — see `_aimFrom`.
+    const attacker = {
+      pos: { x: p.x, y: p.y + EYE_HEIGHT_M, z: p.z },
+      facing: { x: this._forward.x, y: 0, z: this._forward.z },
+    };
     const targets = this.targets;
 
     const attacking =
@@ -173,8 +198,7 @@ export class CombatSystem {
     // attack frame also makes the hero visibly turn into the blow.
     if (attacking && this.cameraRig) {
       this.hero.facing = this.cameraRig.yaw;
-      yawForward(this.hero.facing, this._forward);
-      attacker.facing = { x: this._forward.x, z: this._forward.z };
+      this._aimFrom(this.cameraRig.yaw, this.cameraRig.pitch ?? 0, attacker);
     }
 
     // The tell plays only when the ability actually FIRED, never on the mere
@@ -201,6 +225,25 @@ export class CombatSystem {
       this.enemies[i].dispose();
       this.enemies.splice(i, 1);
     }
+  }
+
+  /**
+   * Write the camera's full 3D aim direction into `attacker.facing`.
+   *
+   * YAW ALONE IS NOT WHERE THE PLAYER IS LOOKING. The hero's body can only
+   * yaw, so `hero.facing` is a single angle — but the CAMERA also pitches, and
+   * a player looking down at something on the ground below reasonably expects
+   * to hit it. Building the aim vector from yaw AND pitch is what makes
+   * "attacks go where I am looking" true rather than "true in the horizontal
+   * plane only".
+   *
+   * The vector is unit-length, which `project()` relies on.
+   */
+  _aimFrom(yaw, pitch, attacker) {
+    const cp = Math.cos(pitch);
+    attacker.facing.x = -Math.sin(yaw) * cp;
+    attacker.facing.y = Math.sin(pitch);
+    attacker.facing.z = -Math.cos(yaw) * cp;
   }
 
   /** Turn an ability result into animation, flashes and a HUD line. */
