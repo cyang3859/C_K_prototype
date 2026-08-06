@@ -155,6 +155,44 @@ session-5 snapshot.
 
 ---
 
+## Phase 3 started 2026-08-05 — combat, logic first
+
+`dev` carries Phase 2, so Phase 3 is unblocked. **`HealthSystem.js` + 38 tests landed**
+(`7b2dea5`). **227 tests total.**
+
+**The phase is being taken in two steps, deliberately not as planned.** `IMPLEMENTATION_PLAN.md`
+§Phase 3 bundles Rapier integration, three abilities, an enemy FSM and damage math into one
+"Large" deliverable. The novel risk is only in two of its acceptance criteria — the
+`await RAPIER.init()` race (1) and the lazy-import boundary holding so Phase 1/2 entry paths do
+not pull ~700–850 KB of WASM (6). Everything else is pure logic this repo already tests well.
+
+1. **Now:** `HealthSystem` → `Enemy` FSM → `Abilities`, no Rapier at all. Hits criteria 2–4 and
+   stays unit-testable.
+2. **Then:** Rapier, for criterion 5's real momentum on thrown props, where the init gate and
+   bundle boundary get answered in isolation rather than tangled with gameplay bugs.
+
+⚠️ **Phase 3's stated dependency is over-stated.** It reads "Phase 2 (world **+ streaming** must
+exist)", but `districts.js:23` says Phase 2 deliberately built no chunks, streaming or LOD. Two
+fixed 300 m districts do not need streaming. Read literally, that dependency would block Phase 3
+on work nobody should do yet.
+
+**A fourth `KODAMAN_HANDOFF.md` error found.** It gives laser damage as 2; the prototype's
+`LASER_DMG` is **5**. Together with the line count and the cape description, that document should
+be treated as unreliable throughout — the prototype source is the authority.
+
+**Test discipline used here, worth keeping:** the 38 tests passed on the first run, so four
+mutations were applied to the module to prove they had teeth (reordering the i-frame and dodge
+checks, dropping the knockback cap, letting freeze permit dodging, letting the despawn signal
+repeat). Each failed exactly one test. A green suite that has never been shown to fail is not
+evidence.
+
+### Next: `Enemy.js` + `EnemyAI.js`
+
+The FSM (idle → aggro → attack → stagger → death) asserting against `HealthSystem`, still no
+Rapier.
+
+---
+
 ## Session 13, part 2 — PR #3 IS MERGED, and the names are approved
 
 **PR #3 merged 2026-08-06 into `dev` as `cac59e7`**, a merge commit matching the repo's existing
