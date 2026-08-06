@@ -1,0 +1,8 @@
+node_modules/
+dist/
+
+# Vite / tooling noise
+.vite/
+*.local
+.DS_Store
+dist-standalone/
