@@ -157,6 +157,47 @@ session-5 snapshot.
 
 ## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
 
+### ✅ 2026-08-06 — THE ASSET IS IN THE REPO, and the free tier was the right one
+
+`kodaman3d/public/models/hero/` — see its **`README.md`** for provenance, the repair applied, and
+every measured figure. The user downloaded the pack; the spike was run against the real files.
+
+**⚠️ The free/paid question is CLOSED, and the answer was the good one.** itch.io's "2 base models"
+turn out to be **`Superhero_Male_FullBody` and `Superhero_Female_FullBody`** — the free tier is
+*exactly* the build §ART-1 asked for. **No $19.99 purchase was needed.** CC0 confirmed from the
+pack's own licence file.
+
+**Measured from the file, not assumed:**
+
+| | |
+|---|---|
+| Triangles | 14,318 |
+| Meshes / materials | 3 / 3 (body, eyes, eyebrows) |
+| Skin | 1, **65 joints** |
+| Animations | **0** — clips are a separate download |
+| Height | **1.81 m** vs our `HERO_HEIGHT_M` 1.85 — already our scale |
+| Feet | at the origin, matching `Collision.js`'s convention |
+| Facing | **+Z; ours is −Z** — needs one 180° correction at load |
+
+**Draw calls: 3 primitives → 6 (3 main / 3 shadow).** Adding hair and the cape naively gives 10,
+**over decision 14's budget of 8**. The way back under is already identified: the **eyebrows mesh
+and the hair mesh share material `MI_Hair_1`**, so merging them yields body + eyes + hair/brows +
+cape = **4 groups / 8 calls, exactly the budget.**
+
+**⚠️ THE PACK SHIPS TWO DANGLING TEXTURE REFERENCES** — the glTF asks for `T_Hair_1_Normal_png.png`
+and `T_Eye_Normal_png.png`, neither of which exists in the pack (the real files have no `_png`
+suffix). **Repaired in our copy and documented**, because unrepaired it 404s two normal maps and
+presents as "our GLTFLoader is broken" rather than "the asset is mislabelled." Re-applying the
+repair is required if these are ever re-downloaded.
+
+**Known follow-up, deliberately NOT done:** 15 MB of PNG against a 664 kB production bundle, with
+~4 MB 4K normal maps on a stylized low-poly character. Downscaling to 1K would reach ~1 MB with no
+visible loss at gameplay distance — **left at vendor resolution so the user sees full fidelity
+first and the decision stays reversible.**
+
+**Still needed before the hero can move: the Universal Animation Library** (separate CC0 download,
+120+ clips on this same rig).
+
 ### ✅ 2026-08-06 — USER DECISION: replace the primitive hero with a RIGGED HUMANOID
 
 The user compared our hero side by side with their reference and called ours **"novice and
