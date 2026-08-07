@@ -5,6 +5,7 @@ import { HERO_HEIGHT_M } from '../core/Scale.js';
 import { disposeObject3D } from '../core/dispose.js';
 import { LocomotionState, createHeroState } from '../controllers/LocomotionController.js';
 import { ABILITY } from '../combat/Abilities.js';
+import { CLIPS } from './HeroModel.js';
 
 /**
  * Hero.js — the primitive-built hero mesh and its CPU-animated cape.
@@ -86,8 +87,23 @@ export class Hero {
    * @param {THREE.Scene} args.scene
    * @param {THREE.Vector3} [args.position] starting feet position
    */
-  constructor({ scene, position = new THREE.Vector3(0, 0, 30) }) {
+  constructor({ scene, position = new THREE.Vector3(0, 0, 30), model = null }) {
     this.scene = scene;
+
+    /**
+     * The loaded rigged mesh from `HeroModel.js`, or null for the primitive body.
+     *
+     * ⚠️ NULL IS A SUPPORTED, TESTED PATH, NOT A FALLBACK NOBODY RUNS. Every
+     * suite in `tests/` constructs a Hero with no model: glTF loading needs a
+     * DOM and a fetch, and the moment those become mandatory the locomotion,
+     * cape and orientation tests stop running under `environment: 'node'`. The
+     * primitives are what keeps this class testable without WebGL.
+     */
+    this.model = model;
+    /** @type {THREE.AnimationMixer|null} */
+    this.mixer = null;
+    /** @type {Map<string, THREE.AnimationAction>} */
+    this.actions = new Map();
 
     /**
      * The simulation state the locomotion controller mutates. Created here so
@@ -156,8 +172,54 @@ export class Hero {
     this._punchLeft = false;
     /** In-progress attack tell: `{kind, t, dur, left}` or null. See `playAttack`. */
     this._attack = null;
+    /** The action currently faded in, so `play()` can cross-fade off it. */
+    this._current = null;
 
     this.setPersona('super');
+
+    if (this.model) this._attachModel();
+  }
+
+  /**
+   * Swap the primitive body for the loaded rigged mesh.
+   *
+   * THE PRIMITIVES ARE HIDDEN, NOT DELETED, and that is deliberate for this
+   * milestone: `visible = false` keeps every joint reference, the cape rig and
+   * the rest pose intact, so a single flag flips back to the known-good body if
+   * the rig turns out wrong in a browser. They can be deleted once the rigged
+   * hero has been through a human pass — not before.
+   *
+   * MOUNTED UNDER `bodyPivot`, offset down by the hip height, so the mesh's feet
+   * land on the group origin (`state.position`, the collider's convention) while
+   * the flight lean still rotates about the HIPS exactly as it always has. Hung
+   * off `group` instead, the pitch would rotate the body about its feet and the
+   * hero would tip like a felled tree.
+   */
+  _attachModel() {
+    for (const child of [this.torso, this.head, ...Object.values(this.joints)]) {
+      if (child) child.visible = false;
+    }
+    this.model.root.position.y = -RIG.HIP_Y;
+    this.bodyPivot.add(this.model.root);
+
+    this.mixer = new THREE.AnimationMixer(this.model.root);
+    for (const clip of this.model.clips) {
+      this.actions.set(clip.name, this.mixer.clipAction(clip));
+    }
+    this.play(CLIPS.idle);
+  }
+
+  /**
+   * Cross-fade to a clip by its library name. No-op without a rig.
+   * @param {string} name see `CLIPS` in HeroModel.js
+   * @param {number} [fade] seconds
+   */
+  play(name, fade = 0.2) {
+    const next = this.actions.get(name);
+    if (!next || next === this._current) return;
+    next.reset().fadeIn(fade).play();
+    if (this._current) this._current.fadeOut(fade);
+    this._current = next;
   }
 
   // ------------------------------------------------------------------- build
@@ -331,6 +393,15 @@ export class Hero {
     if (this._attack) {
       this._attack.t += dt;
       if (this._attack.t >= this._attack.dur) this._attack = null;
+    }
+
+    if (this.mixer) {
+      // The rig drives its own limbs; the procedural stride would fight the
+      // clip. The CAPE still runs — it is our geometry, not the asset's, and
+      // nothing in the library animates it.
+      this.mixer.update(dt);
+      this._animateCape(dt, speed, flying);
+      return;
     }
 
     this._animateLimbs(dt, speed, flying);
@@ -604,6 +675,16 @@ export class Hero {
   }
 
   dispose() {
+    // Stop the mixer before the graph goes away. An AnimationMixer holds bindings
+    // to the nodes it drives, and Vite's HMR re-evaluates this module on every
+    // save — the exact scenario `core/dispose.js` exists for.
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      this.mixer.uncacheRoot(this.mixer.getRoot());
+      this.mixer = null;
+      this.actions.clear();
+      this._current = null;
+    }
     disposeObject3D(this.group);
     // The shared limb geometry is referenced by four meshes; traversal disposes
     // it four times, which is idempotent and fine. Materials are likewise

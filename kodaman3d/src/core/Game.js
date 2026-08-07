@@ -7,6 +7,7 @@ import { DISTRICTS } from '../world/districts.js';
 import { DebugHud } from '../ui/DebugHud.js';
 import { District } from '../world/District.js';
 import { Hero } from '../entities/Hero.js';
+import { loadHeroModel } from '../entities/HeroModel.js';
 import { Input } from './Input.js';
 import { LocomotionController } from '../controllers/LocomotionController.js';
 import { Renderer } from './Renderer.js';
@@ -114,7 +115,26 @@ export class Game {
     // Spawn on the annex sidewalk, clear of every building footprint, facing the
     // boulevard so the first thing the player sees is the street. The annex has
     // not moved in world space, so this is Phase 1's spawn exactly.
-    this.hero = new Hero({ scene: this.scene, position: new THREE.Vector3(0, 0, 13) });
+    // Load the rigged hero before constructing it. `init()` was already async
+    // for exactly this — a previous session left the seam in rather than
+    // retrofitting one into a running loop later, and this is it being used.
+    //
+    // A LOAD FAILURE IS NOT FATAL. `loadHeroModel` rejecting leaves `model`
+    // null, and Hero falls back to the primitive body it has always had. A
+    // missing asset should cost the hero's looks, never the whole game — and
+    // the console warning names the real cause instead of a blank screen.
+    let heroModel = null;
+    try {
+      heroModel = await loadHeroModel();
+      this.heroModelStats = heroModel.stats;
+    } catch (err) {
+      console.warn('Game: hero model failed to load, using the primitive body.', err);
+    }
+    this.hero = new Hero({
+      scene: this.scene,
+      position: new THREE.Vector3(0, 0, 13),
+      model: heroModel,
+    });
 
     this.locomotion = new LocomotionController({
       hero: this.hero.state,
