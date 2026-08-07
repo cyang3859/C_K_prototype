@@ -157,6 +157,43 @@ session-5 snapshot.
 
 ## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
 
+### ✅ 2026-08-06 — USER DECISION: replace the primitive hero with a RIGGED HUMANOID
+
+The user compared our hero side by side with their reference and called ours **"novice and
+blocky."** They are right, and the reason is structural, not tuning: **the entire hero is four
+geometries** — one torso capsule, one head sphere, one limb capsule reused 4×, one cape plane. No
+face, hair, hands, shoulders, belt, boots or emblem. **"Blocky" IS those four shapes**, so the
+research document's §3 proposals (widen `SHOULDER_X`, raise roughness) rearrange the same
+primitives and cannot close the gap. **§3's body numbers are superseded; its material reasoning
+may still inform the new mesh.**
+
+**Locked decision 9 already authorized this** — *"accepts imported rigged assets, which supersedes
+the Phase 1 primitives-only constraint from Phase 2 onward."* The hero was still primitives out of
+inertia, not policy.
+
+**See `ENGINEER_BRIEF_RIGGED_HERO.md`** for the full order of work.
+
+**⚠️ The research agent's "Quaternius has no clean match" was WRONG** — its own lowest-confidence
+claim, honestly flagged as unverified. **Quaternius "Universal Base Characters" ships an explicitly
+named "Superhero" proportion** (Superhero / Regular / Teen, male+female), humanoid-rigged, CC0,
+glTF/GLB, ~13k tris, 20 hairstyles, modelled face. Plus the **Universal Animation Library**: 120+
+CC0 clips on the same rig, far exceeding §CLIP-3's four-asset floor. It satisfies decisions 14, 15
+and 16 and §ART-1 simultaneously.
+
+**⚠️ ONE THING BLOCKS THE START, AND IT IS THE USER'S:** itch.io states the free Standard tier is
+**"2 base models and 5 hairstyles"**, with all 8 models in the **$19.99** tier — while the pack
+description reads as though all 6 proportions are free. **The two contradict each other and I could
+not resolve it; the download is behind an itch.io flow I cannot complete.** If Superhero is not in
+the free tier, spending $19.99 is the user's call. **Locked decision 18 already pre-answered the
+licence half**: the split is content, not licence, everything is CC0, and the paid tier "can be
+bought later without rework" — so starting on the Regular build and swapping later costs nothing
+structural.
+
+**Do the spike before touching `Hero.js`:** load the GLB and measure meshes/materials/draw calls
+against decision 14's **8-call, 4-material-group budget**, which decision 14's own text warns a
+naively-imported rig blows silently. **Decision 17's floating-origin test comes due the moment a
+rigged hero exists** — its stated precondition disappears here.
+
 ### 2026-08-06 — SSKTJL character-design research: DONE, but THIN, and honest about it
 
 `RESEARCH_SSKTJL_CHARACTER.md` (366 lines). User request: they like *Suicide Squad: Kill the
