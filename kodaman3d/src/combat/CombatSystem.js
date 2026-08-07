@@ -12,7 +12,7 @@ import {
 } from './Abilities.js';
 import { AttackFX } from './AttackFX.js';
 import { Enemy } from '../entities/Enemy.js';
-import { HERO_HEIGHT_M, HERO_RADIUS_M, yawForward } from '../core/Scale.js';
+import { HERO_HEIGHT_M, HERO_RADIUS_M, shortestAngleDelta, yawForward } from '../core/Scale.js';
 
 /**
  * CombatSystem.js — owns the live enemies and routes the hero's attacks at them.
@@ -81,10 +81,21 @@ export const SPAWNS = Object.freeze([
 /** Metres. Hero spawn, mirrored from Game.js so the guard below can be honest. */
 const HERO_SPAWN_Z = 13;
 
+/**
+ * rad/s the body turns toward the aim direction when attacking.
+ *
+ * 12 matches `TUNING.YAW_SLERP_RATE`, the rate the locomotion controller already
+ * turns the hero at, so an attack turn reads as the same character rather than
+ * as a different system yanking the model. A 180° about-face takes ~0.26 s.
+ */
+const AIM_TURN_RATE = 12.0;
+
 /** Key code -> ability, in the order presses are read each step. */
 const ATTACK_KEYS = Object.freeze([
   ['KeyJ', 'punch'],
-  ['KeyK', 'laser'],
+  // KeyK/laser is deliberately ABSENT: it is a held beam handled separately in
+  // `update`, not an edge-triggered press. Leaving it here as well fired it
+  // twice on the frame the key went down.
   ['KeyL', 'freeze'],
 ]);
 
@@ -140,6 +151,11 @@ export class CombatSystem {
      * ONE SLOT, NOT A QUEUE — see the note in `update`.
      */
     this._buffered = null;
+    /** Aim yaw the body is easing toward, or null. See `_fire`. */
+    this._faceTarget = null;
+    /** Seconds the laser key has been held, and time until its next damage tick. */
+    this._laserHeld = 0;
+    this._laserTickIn = 0;
     this._dashDir = new THREE.Vector3();
     this._dashOrigin = new THREE.Vector3();
 
@@ -273,11 +289,49 @@ export class CombatSystem {
       }
     }
 
+    // ⚠️ THE LASER IS HELD, NOT PRESSED. User decision 2026-08-06: it sustains
+    // while the key is down and has no cooldown (`RESEARCH_MANOFSTEEL_REPO.md`
+    // §7e found the same press-and-hold shape in a real superhero prototype).
+    //
+    // Damage is on a TICK, and that is what keeps "no cooldown" from meaning
+    // "kills everything instantly": without it the beam would resolve a full
+    // laser hit on every fixed step, 60 times a second. The tick is the rate
+    // limit that the cooldown used to be.
+    if (input.isDown?.('KeyK')) {
+      this._laserHeld += dt;
+      if (this._laserTickIn <= 0) {
+        this._fire('laser', attacker);
+        this._laserTickIn = ABILITY.LASER_TICK_S;
+      } else {
+        // Still firing: keep the beam drawn even on steps that deal no damage,
+        // or a held beam would strobe at the tick rate.
+        this._sustainBeam(attacker);
+      }
+      this._laserTickIn -= dt;
+    } else if (this._laserHeld > 0) {
+      this._laserHeld = 0;
+      this._laserTickIn = 0;
+    }
+
     // The buffered press fires the instant its cooldown clears.
     if (this._buffered && isReady(this.abilities, this._buffered.name)) {
       const name = this._buffered.name;
       this._buffered = null;
       this._fire(name, attacker);
+    }
+
+    // Ease the body toward the last aim direction. Rate-limited rather than
+    // exponential so the turn has a duration a designer can reason about:
+    // TURN_RATE rad/s means a 180° about-face takes ~0.25 s.
+    if (this._faceTarget !== null) {
+      const delta = shortestAngleDelta(this.hero.facing, this._faceTarget);
+      const step = AIM_TURN_RATE * dt;
+      if (Math.abs(delta) <= step) {
+        this.hero.facing = this._faceTarget;
+        this._faceTarget = null;
+      } else {
+        this.hero.facing += Math.sign(delta) * step;
+      }
     }
 
     this.fx.update(dt);
@@ -360,7 +414,18 @@ export class CombatSystem {
     // straight at an enemy and the hero is not. Snapping to the camera on the
     // attack frame also makes the hero visibly turn into the blow.
     if (this.cameraRig) {
-      this.hero.facing = this.cameraRig.yaw;
+      // ⚠️ THE BODY TURNS, IT DOES NOT SNAP — and the distinction only became
+      // visible once the hero was a rigged human. Snapping `facing` to the
+      // camera was invisible on a symmetric capsule, but a player who has
+      // orbited the camera round to look at the hero's face sees them whip
+      // 180° to face away the instant they press punch. Reported from a
+      // playtest as "the axis shifted on the hero".
+      //
+      // THE AIM IS UNAFFECTED: `attacker.facing` is built from the camera
+      // below, independent of the body, so hit registration is identical from
+      // the firing step onward. The turn is purely how the hero LOOKS getting
+      // there, which is why it can be smoothed at no gameplay cost.
+      this._faceTarget = this.cameraRig.yaw;
       this._aimFrom(this.cameraRig.yaw, this.cameraRig.pitch ?? 0, attacker);
     }
     // Re-read the live targets: an earlier fire this same step may have killed
@@ -378,6 +443,36 @@ export class CombatSystem {
     } else {
       this._resolve('FREEZE', freeze(this.abilities, attacker, targets, opts), attacker);
     }
+  }
+
+  /**
+   * Redraw the held beam on a step between damage ticks.
+   *
+   * Without this the beam is only drawn on the frames it deals damage, so a
+   * held laser strobes at the tick rate — which reads as a broken effect rather
+   * than a sustained beam. Damage and visibility are deliberately on different
+   * clocks: the tick rate-limits the DAMAGE, the beam is continuous.
+   */
+  _sustainBeam(attacker) {
+    const targets = this.targets;
+    let best = null;
+    let bestD = Infinity;
+    for (const t of targets) {
+      const dx = t.pos.x - attacker.pos.x;
+      const dy = (t.pos.y ?? 0) - (attacker.pos.y ?? 0);
+      const dz = t.pos.z - attacker.pos.z;
+      const along = dx * attacker.facing.x + dy * attacker.facing.y + dz * attacker.facing.z;
+      if (along <= 0) continue;
+      const lat = Math.hypot(
+        dx - along * attacker.facing.x,
+        dy - along * attacker.facing.y,
+        dz - along * attacker.facing.z,
+      );
+      if (Math.atan2(lat, along) > ABILITY.LASER_HALF_ANGLE_RAD) continue;
+      const d = Math.hypot(dx, dy, dz);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    this.fx.showBeam(this.hero.position, attacker.facing, best?.pos ?? null);
   }
 
   /**

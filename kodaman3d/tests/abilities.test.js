@@ -82,7 +82,11 @@ describe('cooldowns', () => {
 
   it('carries the prototype cooldowns, converted from frames', () => {
     expect(ABILITY.PUNCH_COOLDOWN_S).toBeCloseTo(0.3); // 18 frames
-    expect(ABILITY.LASER_COOLDOWN_S).toBeCloseTo(1.0); // 60 frames
+    // ⚠️ THE LASER DELIBERATELY DIVERGES FROM THE 2D PORT. User decision
+    // 2026-08-06: it is a HELD beam with no cooldown, rate-limited by a damage
+    // tick instead. Punch and freeze still carry the prototype's numbers.
+    expect(ABILITY.LASER_COOLDOWN_S).toBe(0);
+    expect(ABILITY.LASER_TICK_S).toBeCloseTo(20 / 60);
     expect(ABILITY.FREEZE_COOLDOWN_S).toBeCloseTo(80 / 60);
   });
 });
@@ -225,12 +229,13 @@ describe('laser', () => {
     expect(laser(createAbilityState(), hero, [off], { rng: never }).hits).toEqual([]);
   });
 
-  it('still spends the cooldown when it fires into empty air', () => {
+  it('is ready again immediately — the beam is held, not fired once', () => {
     const s = createAbilityState();
-    const r = laser(s, hero, [], { rng: never });
-    expect(r.fired).toBe(true);
-    expect(r.hits).toEqual([]);
-    expect(isReady(s, 'laser')).toBe(false);
+    laser(s, hero, [], { rng: never });
+    // No cooldown to spend. The rate limit lives in CombatSystem's damage tick,
+    // because "how often may this deal damage while held" is a question about
+    // the held input, not about the pure resolution.
+    expect(isReady(s, 'laser')).toBe(true);
   });
 
   it('keeps its lock on a strafing target instead of flickering to a new one', () => {
@@ -375,8 +380,13 @@ describe('the balance the 2D game shipped', () => {
     expect(byPunch.health.alive).toBe(false);
   });
 
-  it('buys the laser its power with a cooldown three times the punch\'s', () => {
-    expect(ABILITY.LASER_COOLDOWN_S / ABILITY.PUNCH_COOLDOWN_S).toBeCloseTo(60 / 18);
+  it('rate-limits the held laser instead of gating it behind a cooldown', () => {
+    // The 2D game bought the laser's power with a 60-frame cooldown. Holding it
+    // replaces that with a damage tick, and the tick must be SLOWER than the
+    // punch cooldown or a held beam strictly dominates melee — which is the
+    // balance the old cooldown ratio was protecting.
+    expect(ABILITY.LASER_COOLDOWN_S).toBe(0);
+    expect(ABILITY.LASER_TICK_S).toBeGreaterThan(ABILITY.PUNCH_COOLDOWN_S);
   });
 });
 
@@ -981,12 +991,14 @@ describe('CombatSystem — input buffering', () => {
 
   it('holds ONE press, not a queue — the latest wins', () => {
     const { combat, fired } = makeCombat();
+    // Uses freeze, not laser: the laser is a HELD beam now and never goes
+    // through the press/buffer path at all.
     combat.abilities.punchFor = 0.1;
-    combat.abilities.laserFor = 0.1;
+    combat.abilities.freezeFor = 0.1;
     combat.update(1 / 60, keys('KeyJ')); // buffered
-    combat.update(1 / 60, keys('KeyK')); // replaces it
+    combat.update(1 / 60, keys('KeyL')); // replaces it
     idle(combat, 20);
-    expect(fired).toEqual(['laser']);
+    expect(fired).toEqual(['freeze']);
   });
 
   it('fires a buffered attack the moment the cooldown clears, not a step later', () => {

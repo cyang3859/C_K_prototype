@@ -98,7 +98,23 @@ export const ABILITY = Object.freeze({
    * feel is a lock-on, not a marksmanship test.
    */
   LASER_HALF_ANGLE_RAD: (25 * Math.PI) / 180,
-  LASER_COOLDOWN_S: 60 / 60,
+  /**
+   * ⚠️ THE LASER IS A HELD BEAM WITH NO COOLDOWN. User decision 2026-08-06.
+   *
+   * This supersedes the 2D port's one-shot-on-a-1-second-timer, and it is a
+   * deliberate design fork rather than a bug fix — see
+   * `RESEARCH_MANOFSTEEL_REPO.md` §7e, which found the same shape in a real
+   * superhero prototype: `IsPressingLaserEyes` is press-and-HOLD, and the beam
+   * sustains while held rather than firing once.
+   *
+   * A cooldown of 0 does NOT mean unlimited damage: the beam damages on a TICK
+   * (`LASER_TICK_S`), so holding it deals damage at a bounded rate. Without the
+   * tick, "no cooldown" would resolve a full laser hit every fixed step — 60
+   * times a second — and one-shot every enemy in the game instantly.
+   */
+  LASER_COOLDOWN_S: 0,
+  /** Seconds between damage ticks while the beam is held. */
+  LASER_TICK_S: 20 / 60,
   LASER_FX_S: 12 / 60,
   /** The 2D call passes knock=0: "no knockback while beam is active". */
   LASER_KNOCKBACK_M: 0,
