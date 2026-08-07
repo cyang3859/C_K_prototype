@@ -66,9 +66,50 @@ cut the total to roughly 1 MB with no visible loss at gameplay distances.
 full fidelity before anything is thrown away. Committed at vendor resolution so the decision stays
 reversible.
 
-## Still missing: the animations
+## Animations — `UAL1_Standard.glb`
 
-**This pack contains 0 animation clips.** The rig is posed but has nothing to play. Clips come from
-Quaternius's separate **Universal Animation Library** (120+ clips, CC0, GLB, authored on this same
-universal humanoid rig), which satisfies **locked decision 16**'s floor several times over. That is
-a separate download.
+Quaternius **Universal Animation Library**, Standard (free) tier. **CC0**, licence kept as
+`LICENSE_Quaternius_AnimLib_CC0.txt`. **43 clips** (the advertised "120+" is the paid tier).
+
+### ⚠️ THE SKELETONS MATCH EXACTLY — NO RETARGETING IS NEEDED
+
+Verified by comparing both files' joint lists: **65 joints, identical names, identical order.**
+Names are Unreal-mannequin style (`root`, `pelvis`, `spine_01`, `clavicle_l`, `upperarm_l`,
+`hand_l`, `index_01_l`, …). Three.js `AnimationMixer` binds tracks by node name, so these clips
+apply directly to the hero's skeleton. **Do not write a retargeting layer; there is nothing to
+retarget.**
+
+### ⚠️ THE NON-ROOT-MOTION FILE IS THE CORRECT ONE, AND THIS IS NOT A PREFERENCE
+
+The pack ships two builds: `UAL1_Standard_RM.glb` has **root motion baked into every clip**, and
+`UAL1_Standard.glb` does not. **Only the non-RM file is committed here.**
+
+`LocomotionController` owns the hero's position outright — it integrates velocity and writes
+`state.position`, and every tuning constant, the collision resolve and the whole flight FSM depend
+on that being the single source of truth. A clip that also translates the root would fight it, and
+the symptom (a hero that drifts, or slides during a walk cycle) reads as a physics bug rather than
+an animation one. Root motion would have to be stripped at load anyway, so the correct file is the
+one that never had it.
+
+### Clips this project actually needs, all confirmed present
+
+| Need | Clip |
+|---|---|
+| Decision 16's floor: idle / walk / run | `Idle_Loop`, `Walk_Loop`, `Jog_Fwd_Loop`, `Sprint_Loop` |
+| Takeoff / landing (the flight FSM has real states for these) | `Jump_Start`, `Jump_Loop`, `Jump_Land` |
+| **The alternating punch** — two distinct strikes, which is exactly what `playAttack`'s L/R toggle wants | `Punch_Cross`, `Punch_Jab` |
+| Enemy hit reactions and death (`HealthSystem` already models both) | `Hit_Chest`, `Hit_Head`, `Death01` |
+| Dodge (`EnemyAI`'s dodge roll is currently invisible) | `Roll` |
+| Bind-pose reference for decision 17's floating-origin test | `A_TPose` |
+
+**There is no flight clip, exactly as §CLIP-5 predicted** ("flying humans are not a mocap
+category"), and locked decision 16 already accepts that the flight hold is custom. **`Swim_Fwd_Loop`
+is worth trying as the base for it** — a horizontal body with the arms leading is the same posture
+a flying pose needs, and it is free.
+
+### Known follow-up: the animation GLB carries a mesh we do not use
+
+7.6 MB, and it contains a mannequin mesh alongside the clips. Only `gltf.animations` is wanted; the
+scene should be discarded at load. Stripping the mesh and the unused clips offline (e.g.
+`gltf-transform`) would cut this substantially. Not done yet — same reasoning as the textures below:
+measure the real cost in a browser first.
