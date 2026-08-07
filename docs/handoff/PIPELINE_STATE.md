@@ -157,6 +157,61 @@ session-5 snapshot.
 
 ## Session 15, 2026-08-06 — the feel cluster is BUILT: items 1–4 of session 14's list
 
+### ✅ 2026-08-06 — THE RIGGED HERO IS IN AND THE USER HAS SEEN IT
+
+**It works.** User confirmed all six checks: a human-proportioned hero, correct scale, feet on the
+ground, facing away on spawn, wearing the costume, idling rather than T-posed. Screenshots show a
+readable superhero — blue suit, red trunks and boots, gold belt, gold shield, bare face and hands.
+
+**Two playtest reports, both fixed (`734c6b7`):**
+
+1. **"The axis shifted on the hero — he faced away whenever I punched."** Snapping `facing` to the
+   camera yaw was invisible on a symmetric capsule and is very visible on a rigged human: a player
+   who has orbited to see the hero's face watches them whip 180°. The body now turns at 12 rad/s,
+   matching `YAW_SLERP_RATE`. **Hit registration is untouched** — `attacker.facing` comes from the
+   camera independently of the body, which is exactly what made smoothing safe.
+2. **The laser is now a HELD beam with no cooldown** (user decision), matching §7e's
+   press-and-hold. ⚠️ **Damage is on a 20-frame TICK** — without it, "no cooldown" resolves a full
+   laser hit 60×/second. The beam redraws between ticks or it strobes.
+
+### ⚠️ KNOWN AND UNFIXED — the next session's list, in priority order
+
+1. **The cape is wrong and is now the worst element.** It is still the primitive flat plane
+   anchored for the old capsule torso — it reads as a rigid red sheet floating behind the hero.
+   **Re-anchor it to a spine/shoulder bone of the rig** and re-run `capeTorsoGap()` (§CAPE-1).
+2. **Attack tells drive HIDDEN primitive joints**, so punches now look like nothing happens.
+   `Punch_Cross` / `Punch_Jab` are in the library and map onto `playAttack`'s existing
+   alternating-arm toggle — that is the intended wiring.
+3. **Locomotion is idle-only.** Walking and flying slide with a static pose. `Walk_Loop`,
+   `Jog_Fwd_Loop`, `Sprint_Loop`, `Jump_Start/Loop/Land` are all present and named in `CLIPS`.
+4. **Enemies are still capsules** and look far worse beside a rigged hero — the contrast is created
+   by our own upgrade. Quaternius "Ultimate Modular Men" (11 characters, 24 anims, CC0) is the fix.
+5. **The hair reads white/grey** in the user's screenshot rather than a hair colour. Suspect the
+   `MI_Hair_1` base map or its colour space; unverified.
+6. **Decision 17's floating-origin test is now DUE.** A skinned mesh exists, which was its only
+   stated precondition.
+
+### 🔜 REQUESTED, NOT STARTED: the world-building redesign
+
+The user downloaded the **Downtown City MegaKit** (`~/Downloads/Downtown City MegaKit[Standard]`,
+244 MB, **153 glTF models**, CC0) and asked to redesign the environment with it. **Nothing has been
+started.**
+
+It is a **modular kit-of-parts**, not finished buildings: bricks, cornices, columns, window insets,
+trims, roofs, sidewalks, street sections, road decals, props (AC unit, bollard, drain, manhole,
+planter), plus 3 complete buildings.
+
+⚠️ **This is a substantial piece of work and should not be started casually.** Our districts are
+**procedurally generated boxes** baked into merged/instanced pools at a browser-verified **78 draw
+calls**, with equivalence guards pinning byte-identical placement output. A modular kit is the
+opposite shape — many small meshes assembled per building. Whoever picks this up must decide **how
+a kit-of-parts meets a procedural generator** before importing anything, and re-derive the draw-call
+budget. The existing guards (`districts.test.js`, `world.test.js`) are the safety net and must be
+perturbed to confirm they still bite.
+
+⚠️ **Playwright's MCP server disconnected mid-session** and browser verification moved to the user.
+Reconnect by restarting Claude Code (it is a project-scoped stdio server, `npx @playwright/mcp`).
+
 ### ✅ 2026-08-06 — THE ASSET IS IN THE REPO, and the free tier was the right one
 
 `kodaman3d/public/models/hero/` — see its **`README.md`** for provenance, the repair applied, and
